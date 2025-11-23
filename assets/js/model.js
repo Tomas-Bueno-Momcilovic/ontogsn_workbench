@@ -1,4 +1,3 @@
-// car.js
 import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
 import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
 import app from "./queries.js";
@@ -17,20 +16,18 @@ const XSD    = "http://www.w3.org/2001/XMLSchema#";
 // Global-ish state: current car config + clickable meshes
 let carConfig = null;
 const clickable = [];
+let overloadEventListener = null;
 
 // --- TTL → JS: load & parse car.ttl --------------------------------------
 
 async function loadCarConfigFromTTL(url) {
   const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch TTL: ${res.status} ${res.statusText}`);
-  }
-  const ttl = await res.text();
-
-  const parser = new Parser({ format: "text/turtle" });
-  const quads  = parser.parse(ttl);
-  const store  = new Store(quads);
-
+  if (!res.ok) { throw new Error(`Failed to fetch TTL: ${res.status} ${res.statusText}`); }
+  
+  const ttl     = await res.text();
+  const parser  = new Parser({ format: "text/turtle" });
+  const quads   = parser.parse(ttl);
+  const store   = new Store(quads);
   const carNode = namedNode(EX + "car1");
 
   function getOne(subject, predicate) {
@@ -47,77 +44,127 @@ async function loadCarConfigFromTTL(url) {
     return Number.isFinite(num) ? num : null;
   }
 
-  function getLiteralFloat(subject, predicateIri, fallback) {
+  function getLiteralNumber(subject, predicateIri, parseFn, expectedTypeName) {
     const obj = getOne(subject, namedNode(predicateIri));
-    if (!obj || obj.termType !== "Literal") return fallback;
-    const num = parseFloat(obj.value);
-    return Number.isFinite(num) ? num : fallback;
+
+    if (!obj) {throw new Error(`Missing required ${expectedTypeName} literal ${predicateIri} for subject ${subject.value}`);}
+    if (obj.termType !== "Literal") {throw new Error(`Expected a literal for ${predicateIri} on ${subject.value}, got ${obj.termType}`);}
+
+    const num = parseFn(obj.value);
+    if (!Number.isFinite(num)) {throw new Error(`Invalid ${expectedTypeName} value "${obj.value}" for ${predicateIri} on ${subject.value}`);}
+    return num;
   }
 
-  function getLiteralInt(subject, predicateIri, fallback) {
-    const obj = getOne(subject, namedNode(predicateIri));
-    if (!obj || obj.termType !== "Literal") return fallback;
-    const num = parseInt(obj.value, 10);
-    return Number.isFinite(num) ? num : fallback;
-  }
+  const getLiteralFloat = (subject, predicateIri) =>
+    getLiteralNumber(subject, predicateIri, parseFloat, "float");
 
+  const getLiteralInt = (subject, predicateIri) =>
+    getLiteralNumber(subject, predicateIri, v => parseInt(v, 10), "int");
+
+  // BASIC CAR DATA (schema:Car)
   const vinNode  = getOne(carNode, namedNode(SCHEMA + "vehicleIdentificationNumber"));
   const nameNode = getOne(carNode, namedNode(SCHEMA + "name"));
 
+  // Body
   const width  = getQuantValue(carNode, SCHEMA + "width");
   const height = getQuantValue(carNode, SCHEMA + "height");
   const depth  = getQuantValue(carNode, SCHEMA + "depth");
 
-  // Parts (same as before)
+  // Parts
   const partPred  = namedNode(EX + "hasPart");
   const partNodes = store.getObjects(carNode, partPred, null);
-  const parts = partNodes.map(node => {
+  const parts     = partNodes.map(node => {
     const labelNode = getOne(node, namedNode(SCHEMA + "name"));
-    return {
-      iri:   node.value,
-      label: labelNode ? labelNode.value : node.value
-    };
+    return {iri:   node.value,
+            label: labelNode ? labelNode.value : node.value };
   });
 
-  // --- NEW: wheel geometry from ex:StandardWheel -------------------------
-  const wheelTypeNode = namedNode(EX + "StandardWheel");
+  // Helper: find a part resource by its schema:name
+  function findPartNodeByLabel(label) {
+    const part = parts.find(p => p.label === label);
+    return part ? namedNode(part.iri) : null;
+  }
 
-  const wheelParams = {
-    radius:   getLiteralFloat(wheelTypeNode, EX + "radius",   0.4),
-    width:    getLiteralFloat(wheelTypeNode, EX + "width",    0.5),
-    segments: getLiteralInt  (wheelTypeNode, EX + "segments", 24),
-    y:        getLiteralFloat(wheelTypeNode, EX + "y",        0.5),
-    offsetX:  getLiteralFloat(wheelTypeNode, EX + "offsetX",  1.4),
-    offsetZ:  getLiteralFloat(wheelTypeNode, EX + "offsetZ",  0.85)
+  // License plate geometry (from ex:frontLicensePlate)
+  const frontPlateNode = findPartNodeByLabel("Front license plate");
+  if (!frontPlateNode) {
+    throw new Error("No front license plate part found in TTL (schema:name 'Front license plate').");
+  }
+
+  const licensePlateParams = {
+    width:  getLiteralFloat(frontPlateNode, EX + "width"),
+    height: getLiteralFloat(frontPlateNode, EX + "height")
   };
 
-  // --- Geometry for body / bumper / doors / cabin from ex:car1 ----------
+  // Wheels
+  const wheelTypeNode = namedNode(EX + "StandardWheel");
+  const wheelParams = {
+    radius:   getLiteralFloat(wheelTypeNode, EX + "radius"),
+    width:    getLiteralFloat(wheelTypeNode, EX + "width"),
+    segments: getLiteralInt  (wheelTypeNode, EX + "segments"),
+    y:        getLiteralFloat(wheelTypeNode, EX + "y"),
+    offsetX:  getLiteralFloat(wheelTypeNode, EX + "offsetX"),
+    offsetZ:  getLiteralFloat(wheelTypeNode, EX + "offsetZ")
+  };
+
+  // Geometry from ex:car1
   const geometry = {
-    // Body (matches your ex:bodyLength, ex:bodyHeight, ex:bodyDepth, ex:bodyCenterY)
-    BODY_LENGTH:   getLiteralFloat(carNode, EX + "bodyLength",   4.54),
-    BODY_HEIGHT:   getLiteralFloat(carNode, EX + "bodyHeight",   0.75),
-    BODY_DEPTH:    getLiteralFloat(carNode, EX + "bodyDepth",    2.0),
-    BODY_CENTER_Y: getLiteralFloat(carNode, EX + "bodyCenterY",  0.9),
-
+    // Body
+    BODY_LENGTH:   getLiteralFloat(carNode, EX + "bodyLength"),
+    BODY_HEIGHT:   getLiteralFloat(carNode, EX + "bodyHeight"),
+    BODY_DEPTH:    getLiteralFloat(carNode, EX + "bodyDepth"),
+    BODY_CENTER_Y: getLiteralFloat(carNode, EX + "bodyCenterY"),
     // Bumper
-    BUMPER_THICKNESS_X: getLiteralFloat(carNode, EX + "bumperThicknessX", 0.05),
-    BUMPER_HEIGHT_Y:    getLiteralFloat(carNode, EX + "bumperHeightY",    0.10),
-    BUMPER_DEPTH_Z:     getLiteralFloat(carNode, EX + "bumperDepthZ",     1.80),
-
-    // Doors (note: TTL uses ex:doorDepthOffset, we map that to DOOR_Z_OFFSET)
-    DOOR_BOTTOM_Y: getLiteralFloat(carNode, EX + "doorBottomY",    0.525),
-    DOOR_TOP_Y:    getLiteralFloat(carNode, EX + "doorTopY",       1.28),
-    DOOR_FRONT_X:  getLiteralFloat(carNode, EX + "doorFrontX",     0.9),
-    DOOR_BACK_X:   getLiteralFloat(carNode, EX + "doorBackX",     -0.4),
-    DOOR_DEPTH_Z:  getLiteralFloat(carNode, EX + "doorDepthZ",     0.12),
-    DOOR_Z_OFFSET: getLiteralFloat(carNode, EX + "doorDepthOffset",0.95),
-
-    // Cabin – you don’t yet have these in TTL, so we keep JS defaults for now
-    CABIN_WIDTH_X:   2.15,
-    CABIN_HEIGHT_Y:  0.80,
-    CABIN_DEPTH_Z:   1.70,
-    CABIN_CENTER_X: -0.50,
-    CABIN_CENTER_Y:  1.55
+    BUMPER_THICKNESS_X: getLiteralFloat(carNode, EX + "bumperThicknessX"),
+    BUMPER_HEIGHT_Y:    getLiteralFloat(carNode, EX + "bumperHeightY"),
+    BUMPER_DEPTH_Z:     getLiteralFloat(carNode, EX + "bumperDepthZ"),
+    BUMPER_CENTER_Y:    getLiteralFloat(carNode, EX + "bumperCenterY"),
+    // Doors
+    DOOR_BOTTOM_Y: getLiteralFloat(carNode, EX + "doorBottomY"),
+    DOOR_TOP_Y:    getLiteralFloat(carNode, EX + "doorTopY"),
+    DOOR_FRONT_X:  getLiteralFloat(carNode, EX + "doorFrontX"),
+    DOOR_BACK_X:   getLiteralFloat(carNode, EX + "doorBackX"),
+    DOOR_DEPTH_Z:  getLiteralFloat(carNode, EX + "doorDepthZ"),
+    DOOR_Z_OFFSET: getLiteralFloat(carNode, EX + "doorDepthOffset"),
+    // Cabin
+    CABIN_WIDTH_X:  getLiteralFloat(carNode, EX + "cabinWidthX"),
+    CABIN_HEIGHT_Y: getLiteralFloat(carNode, EX + "cabinHeightY"),
+    CABIN_DEPTH_Z:  getLiteralFloat(carNode, EX + "cabinDepthZ"),
+    CABIN_CENTER_X: getLiteralFloat(carNode, EX + "cabinCenterX"),
+    CABIN_CENTER_Y: getLiteralFloat(carNode, EX + "cabinCenterY"),
+    // Windshields
+    WS_WIDTH_X:   getLiteralFloat(carNode, EX + "windshieldWidthX"),
+    WS_HEIGHT_Y:  getLiteralFloat(carNode, EX + "windshieldHeightY"),
+    WS_DEPTH_Z:   getLiteralFloat(carNode, EX + "windshieldDepthZ"),
+    // Front Windshield
+    FRONT_WS_CENTER_X:  getLiteralFloat(carNode, EX + "frontWindshieldCenterX"),
+    FRONT_WS_CENTER_Y:  getLiteralFloat(carNode, EX + "frontWindshieldCenterY"),
+    // Rear Windshield
+    REAR_WS_CENTER_X:   getLiteralFloat(carNode, EX + "rearWindshieldCenterX"),
+    REAR_WS_CENTER_Y:   getLiteralFloat(carNode, EX + "rearWindshieldCenterY"),
+    WS_CENTER_Z:        getLiteralFloat(carNode, EX + "windshieldCenterZ"),
+    LIGHT_WIDTH_X:      getLiteralFloat(carNode, EX + "lightWidthX"),
+    LIGHT_HEIGHT_Y:     getLiteralFloat(carNode, EX + "lightHeightY"),
+    LIGHT_DEPTH_Z:      getLiteralFloat(carNode, EX + "lightDepthZ"),
+    FRONT_LIGHT_CENTER_X: getLiteralFloat(carNode, EX + "frontLightCenterX"),
+    REAR_LIGHT_CENTER_X:  getLiteralFloat(carNode, EX + "rearLightCenterX"),
+    LIGHT_CENTER_Y:       getLiteralFloat(carNode, EX + "lightCenterY"),
+    LIGHT_CENTER_Z_ABS:   getLiteralFloat(carNode, EX + "lightCenterZAbs"),
+    // Roof Rack
+    ROOFRACK_WIDTH:   getLiteralFloat(carNode, EX + "roofRackWidth"),
+    ROOFRACK_DEPTH:   getLiteralFloat(carNode, EX + "roofRackDepth"),
+    ROOFRACK_HEIGHT:  getLiteralFloat(carNode, EX + "roofRackHeight"),
+    ROOFRACK_CENTER_Y:getLiteralFloat(carNode, EX + "roofRackCenterY"),
+    // Roof load: Box
+    BOX_WIDTH:   getLiteralFloat(carNode, EX + "boxWidth"),
+    BOX_DEPTH:   getLiteralFloat(carNode, EX + "boxDepth"),
+    BOX_HEIGHT:  getLiteralFloat(carNode, EX + "boxHeight"),
+    BOX_CENTER_Y:getLiteralFloat(carNode, EX + "boxCenterY"),
+    // Roof load: Luggage
+    LUGGAGE_WIDTH:   getLiteralFloat(carNode, EX + "luggageWidth"),
+    LUGGAGE_DEPTH:   getLiteralFloat(carNode, EX + "luggageDepth"),
+    LUGGAGE_HEIGHT:  getLiteralFloat(carNode, EX + "luggageHeight"),
+    LUGGAGE_CENTER_Y:getLiteralFloat(carNode, EX + "luggageCenterY")
   };
 
   return {
@@ -128,7 +175,8 @@ async function loadCarConfigFromTTL(url) {
     dimensions: { width, height, depth },
     parts,
     wheelParams,
-    geometry
+    geometry,
+    licensePlateParams
   };
 }
 
@@ -143,45 +191,50 @@ function findPartIriByName(name) {
 // --- Three.js scene creation ----------------------------------------------
 
 function createCarScene(config) {
-  clickable.length = 0;
-  const g = config.geometry;
+  const {geometry: g,
+         wheelParams: wp,
+         licensePlateParams: lp,
+         vin} = config;
+
+  const roofLoadMeshes = [];
+  let roofBoxMesh = null;
+  let roofLuggageMesh = null;
+
+  const overloadMeshes = new Set();
+  const BASE_COLOR     = 0xffffff;
+  const HIGHLIGHT_COLOR = 0xcf4040;
 
   // ---------- CONFIG / CONSTANTS ----------
 
-  const LICENSE_PLATE_TEXT = config.vin || "0N7065N";
+  const {
+    BODY_LENGTH, BODY_HEIGHT, BODY_DEPTH, BODY_CENTER_Y,
+    BUMPER_THICKNESS_X, BUMPER_HEIGHT_Y, BUMPER_DEPTH_Z, BUMPER_CENTER_Y,
+    DOOR_BOTTOM_Y, DOOR_TOP_Y, DOOR_FRONT_X, DOOR_BACK_X,
+    DOOR_DEPTH_Z, DOOR_Z_OFFSET, CABIN_WIDTH_X, CABIN_HEIGHT_Y, 
+    CABIN_DEPTH_Z, CABIN_CENTER_X, CABIN_CENTER_Y,
+    WS_WIDTH_X, WS_HEIGHT_Y, WS_DEPTH_Z,
+    FRONT_WS_CENTER_X, FRONT_WS_CENTER_Y,
+    REAR_WS_CENTER_X, REAR_WS_CENTER_Y, WS_CENTER_Z,
+    LIGHT_WIDTH_X, LIGHT_HEIGHT_Y, LIGHT_DEPTH_Z, FRONT_LIGHT_CENTER_X,
+    REAR_LIGHT_CENTER_X, LIGHT_CENTER_Y, LIGHT_CENTER_Z_ABS,
+    ROOFRACK_WIDTH, ROOFRACK_DEPTH, ROOFRACK_HEIGHT, ROOFRACK_CENTER_Y,
+    BOX_WIDTH, BOX_DEPTH, BOX_HEIGHT, BOX_CENTER_Y,
+    LUGGAGE_WIDTH, LUGGAGE_DEPTH, LUGGAGE_HEIGHT, LUGGAGE_CENTER_Y
+  } = g;  
 
-  // Body
-  const BODY_LENGTH   = g.BODY_LENGTH;
-  const BODY_HEIGHT   = g.BODY_HEIGHT;
-  const BODY_DEPTH    = g.BODY_DEPTH;
-  const BODY_CENTER_Y = g.BODY_CENTER_Y;
+  const LICENSE_PLATE_TEXT = config.vin;
   const BODY_FRONT_X  = BODY_LENGTH / 2;
   const BODY_BOTTOM_Y = BODY_CENTER_Y - BODY_HEIGHT / 2;
-  // Bumper
-  const BUMPER_THICKNESS_X = g.BUMPER_THICKNESS_X;
-  const BUMPER_HEIGHT_Y    = g.BUMPER_HEIGHT_Y;
-  const BUMPER_DEPTH_Z     = g.BUMPER_DEPTH_Z;
+
   // Wheels
-  const wp = config.wheelParams || {};
-  const WHEEL_RADIUS   = wp.radius   != null ? wp.radius   : 0.4;
-  const WHEEL_WIDTH    = wp.width    != null ? wp.width    : 0.5;
-  const WHEEL_SEGMENTS = wp.segments != null ? wp.segments : 24;
-  const WHEEL_Y        = wp.y        != null ? wp.y        : 0.5;
-  const WHEEL_OFFSET_X = wp.offsetX  != null ? wp.offsetX  : 1.4;
-  const WHEEL_OFFSET_Z = wp.offsetZ  != null ? wp.offsetZ  : 0.85;
-  // Doors
-  const DOOR_BOTTOM_Y = g.DOOR_BOTTOM_Y;
-  const DOOR_TOP_Y    = g.DOOR_TOP_Y;
-  const DOOR_FRONT_X  = g.DOOR_FRONT_X;
-  const DOOR_BACK_X   = g.DOOR_BACK_X;
-  const DOOR_DEPTH_Z  = g.DOOR_DEPTH_Z;
-  const DOOR_Z_OFFSET = g.DOOR_Z_OFFSET;
-  // Cabin
-  const CABIN_WIDTH_X  = g.CABIN_WIDTH_X;
-  const CABIN_HEIGHT_Y = g.CABIN_HEIGHT_Y;
-  const CABIN_DEPTH_Z  = g.CABIN_DEPTH_Z;
-  const CABIN_CENTER_X = g.CABIN_CENTER_X;
-  const CABIN_CENTER_Y = g.CABIN_CENTER_Y;
+  const {
+    radius:   WHEEL_RADIUS,
+    width:    WHEEL_WIDTH,
+    segments: WHEEL_SEGMENTS,
+    y:        WHEEL_Y,
+    offsetX:  WHEEL_OFFSET_X,
+    offsetZ:  WHEEL_OFFSET_Z
+  } = wp;
 
   // ---------- DOM / RENDERER / CAMERA ----------
 
@@ -212,7 +265,7 @@ function createCarScene(config) {
                                               ortho_near, 
                                               ortho_far);
 
-  camera.position.set(6, 5, 6);
+  camera.position.set(6, 6, 6);
   camera.lookAt(0, 1, 0);
 
   // ---------- INTERACTION (RAYCASTING) ----------
@@ -236,11 +289,11 @@ function createCarScene(config) {
   const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
 
   const baseFillMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    side: THREE.FrontSide,
-    polygonOffset: true,
-    polygonOffsetFactor: 1,
-    polygonOffsetUnits: 1
+    color:                0xffffff,
+    side:                 THREE.FrontSide,
+    polygonOffset:        true,
+    polygonOffsetFactor:  1,
+    polygonOffsetUnits:   1
   });
 
   // ---------- CAR GROUP & HELPERS ----------
@@ -249,8 +302,8 @@ function createCarScene(config) {
   scene.add(car);
 
   // generic "filled box + outline" builder, now with optional IRI
-  function outlinedBox(geometry, position, label, iri = null) {
-    const mesh = new THREE.Mesh(geometry, baseFillMaterial.clone());
+  function outlinedBox(geometry, position, label, iri = null, material = baseFillMaterial) {
+    const mesh  = new THREE.Mesh(geometry, material.clone());
     const edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(geometry),
       edgeMaterial
@@ -264,6 +317,7 @@ function createCarScene(config) {
 
     mesh.userData.label = label;
     mesh.userData.iri   = iri;
+    mesh.userData.edges = edges;
     clickable.push(mesh);
 
     return mesh;
@@ -272,33 +326,35 @@ function createCarScene(config) {
   // ---------- LICENSE PLATE ----------
 
   function addFrontLicensePlate(text) {
-    const plateWidth = 0.7;
-    const plateHeight = 0.15;
+    if (!lp) {throw new Error("Missing licensePlateParams from TTL.");}
+    
+    const plateWidth = lp.width;
+    const plateHeight = lp.height;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = 512;
+    const canvas  = document.createElement("canvas");
+    canvas.width  = 512;
     canvas.height = 128;
-    const ctx = canvas.getContext("2d");
+    const ctx     = canvas.getContext("2d");
 
     // background
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // text
-    ctx.fillStyle = "#000000";
-    ctx.font = 'bold 100px "Courier New", monospace';
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    ctx.fillStyle     = "#000000";
+    ctx.font          = 'bold 100px "Courier New", monospace';
+    ctx.textAlign     = "center";
+    ctx.textBaseline  = "middle";
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
-    const texture = new THREE.CanvasTexture(canvas);
+    const texture       = new THREE.CanvasTexture(canvas);
     const plateMaterial = new THREE.MeshBasicMaterial({
       map: texture,
       side: THREE.DoubleSide
     });
 
     const plateGeometry = new THREE.PlaneGeometry(plateWidth, plateHeight);
-    const plateMesh = new THREE.Mesh(plateGeometry, plateMaterial);
+    const plateMesh     = new THREE.Mesh(plateGeometry, plateMaterial);
 
     const plateEdges = new THREE.LineSegments(
       new THREE.EdgesGeometry(plateGeometry),
@@ -308,10 +364,11 @@ function createCarScene(config) {
 
     // plate sits slightly in front of the bumper
     const bumperCenterX = BODY_FRONT_X + BUMPER_THICKNESS_X / 2;
-    const plateOffsetX = 0.03;
+    const plateOffsetX  = 0.03;
+    const plateOffsetY  = 0.22;
 
     const plateCenterX = bumperCenterX + BUMPER_THICKNESS_X / 2 + plateOffsetX;
-    const plateCenterY = BODY_BOTTOM_Y + 0.22;
+    const plateCenterY = BODY_BOTTOM_Y + plateOffsetY;
     const plateCenterZ = 0;
 
     plateMesh.position.set(plateCenterX, plateCenterY, plateCenterZ);
@@ -324,93 +381,127 @@ function createCarScene(config) {
     car.add(plateMesh);
   }
 
+  function addLight(xSign, zSign, label) {
+    outlinedBox(
+      new THREE.BoxGeometry(LIGHT_WIDTH_X, LIGHT_HEIGHT_Y, LIGHT_DEPTH_Z),
+      new THREE.Vector3(
+        xSign > 0 ? FRONT_LIGHT_CENTER_X : REAR_LIGHT_CENTER_X,
+        LIGHT_CENTER_Y,
+        zSign > 0 ? LIGHT_CENTER_Z_ABS : -LIGHT_CENTER_Z_ABS
+      ),
+      label,
+      findPartIriByName(label)
+    );
+  }
+
+  function addRoofRack() {
+    const rackGeom = new THREE.BoxGeometry(
+      ROOFRACK_WIDTH,
+      ROOFRACK_HEIGHT,
+      ROOFRACK_DEPTH
+    );
+
+    // Put it on top of the body, centered in X/Z:
+    const rackCenterX = CABIN_CENTER_X;
+    const rackCenterY = CABIN_HEIGHT_Y + ROOFRACK_CENTER_Y;    // or BODY_CENTER_Y + BODY_HEIGHT/2 + 0.1
+    const rackCenterZ = 0;
+
+    outlinedBox(
+      rackGeom,
+      new THREE.Vector3(rackCenterX, rackCenterY, rackCenterZ),
+      "Roof rack",
+      findPartIriByName("Roof rack")
+    );
+  }
+
+  function clearOverloadHighlight() {
+    for (const mesh of overloadMeshes) {
+      mesh.material.color.set(BASE_COLOR);
+      // keep the selection's "original" color in sync
+      if (mesh === selectedMesh) {
+        selectedOriginalColor.copy(mesh.material.color);
+      }
+    }
+    overloadMeshes.clear();
+  }
+
+  function setOverloadedPartsByIri(iris) {
+    clearOverloadHighlight();
+
+    const iriSet = new Set(iris);
+    for (const mesh of clickable) {
+      const iri = mesh.userData?.iri;
+      if (!iri) continue;
+      if (iriSet.has(iri)) {
+        mesh.material.color.set(HIGHLIGHT_COLOR);
+        overloadMeshes.add(mesh);
+      }
+    }
+  }
+
+
   // ---------- CAR GEOMETRY ----------
 
   // Body
-  const bodyGeometry = new THREE.BoxGeometry(BODY_LENGTH, BODY_HEIGHT, BODY_DEPTH);
   outlinedBox(
-    bodyGeometry,
+    new THREE.BoxGeometry(BODY_LENGTH, BODY_HEIGHT, BODY_DEPTH),
     new THREE.Vector3(0, BODY_CENTER_Y, 0),
-    "Body",
-    findPartIriByName("Body")
+    "Body", findPartIriByName("Body")
   );
 
   // Cabin
-  const cabinGeometry = new THREE.BoxGeometry(
-    CABIN_WIDTH_X,
-    CABIN_HEIGHT_Y,
-    CABIN_DEPTH_Z
-  );
   outlinedBox(
-    cabinGeometry,
+    new THREE.BoxGeometry(CABIN_WIDTH_X, CABIN_HEIGHT_Y, CABIN_DEPTH_Z),
     new THREE.Vector3(CABIN_CENTER_X, CABIN_CENTER_Y, 0),
     "Cabin",
     findPartIriByName("Cabin")
   );
 
   // Windshields
-  const frontWindGeom = new THREE.BoxGeometry(1.0, 0.45, 1.66);
-  frontWindGeom.rotateZ(Math.PI / 1.4);
   outlinedBox(
-    frontWindGeom,
-    new THREE.Vector3(1.2 - 0.5, 1.41, 0),
+    new THREE.BoxGeometry(WS_WIDTH_X, WS_HEIGHT_Y, WS_DEPTH_Z).rotateZ(Math.PI / 1.4),
+    new THREE.Vector3(FRONT_WS_CENTER_X, FRONT_WS_CENTER_Y, WS_CENTER_Z),
     "Front windshield",
     findPartIriByName("Front windshield")
   );
 
-  const rearWindGeom = new THREE.BoxGeometry(1.0, 0.45, 1.66);
-  rearWindGeom.rotateZ(-Math.PI / 1.4);
   outlinedBox(
-    rearWindGeom,
-    new THREE.Vector3(-1.2 - 0.5, 1.4, 0),
+    new THREE.BoxGeometry(WS_WIDTH_X, WS_HEIGHT_Y, WS_DEPTH_Z).rotateZ(-Math.PI / 1.4),
+    new THREE.Vector3(REAR_WS_CENTER_X, REAR_WS_CENTER_Y, WS_CENTER_Z),
     "Rear windshield",
     findPartIriByName("Rear windshield")
   );
 
   // Lights
-  const frontLightGeom = new THREE.BoxGeometry(0.15, 0.25, 0.35);
-  const rearLightGeom = new THREE.BoxGeometry(0.15, 0.25, 0.35);
+  addLight(true,  true,  "Front-right light");
+  addLight(true,  false, "Front-left light");
+  addLight(false, true,  "Rear-right light");
+  addLight(false, false, "Rear-left light");
 
-  outlinedBox(
-    frontLightGeom,
-    new THREE.Vector3(2.25, 0.85, 0.7),
-    "Front-right light",
-    findPartIriByName("Front-right light")
-  );
-  outlinedBox(
-    frontLightGeom,
-    new THREE.Vector3(2.25, 0.85, -0.7),
-    "Front-left light",
-    findPartIriByName("Front-left light")
-  );
+  // Roof rack
+  addRoofRack();
 
-  outlinedBox(
-    rearLightGeom,
-    new THREE.Vector3(-2.25, 0.85, 0.7),
-    "Rear-right light",
-    findPartIriByName("Rear-right light")
+  // Roof load
+  roofBoxMesh = outlinedBox(
+    new THREE.BoxGeometry(BOX_WIDTH, BOX_HEIGHT, BOX_DEPTH),
+    new THREE.Vector3(CABIN_CENTER_X, CABIN_HEIGHT_Y + ROOFRACK_CENTER_Y + BOX_CENTER_Y, 0.25),
+    "Roof load",
+    findPartIriByName("Box")
   );
-  outlinedBox(
-    rearLightGeom,
-    new THREE.Vector3(-2.25, 0.85, -0.7),
-    "Rear-left light",
-    findPartIriByName("Rear-left light")
+  roofLoadMeshes.push(roofBoxMesh);
+
+  roofLuggageMesh = outlinedBox(
+    new THREE.BoxGeometry(LUGGAGE_WIDTH, LUGGAGE_HEIGHT, LUGGAGE_DEPTH),
+    new THREE.Vector3(CABIN_CENTER_X, CABIN_HEIGHT_Y + ROOFRACK_CENTER_Y + LUGGAGE_CENTER_Y, -0.35),
+    "Roof load",
+    findPartIriByName("Luggage")
   );
+  roofLoadMeshes.push(roofLuggageMesh);
 
   // Front bumper
-  const bumperGeom = new THREE.BoxGeometry(
-    BUMPER_THICKNESS_X,
-    BUMPER_HEIGHT_Y,
-    BUMPER_DEPTH_Z
-  );
-
-  const bumperCenterX = BODY_FRONT_X + BUMPER_THICKNESS_X / 2;
-  const bumperCenterY = 0.575;
-  const bumperCenterZ = 0;
-
   outlinedBox(
-    bumperGeom,
-    new THREE.Vector3(bumperCenterX, bumperCenterY, bumperCenterZ),
+    new THREE.BoxGeometry(BUMPER_THICKNESS_X, BUMPER_HEIGHT_Y, BUMPER_DEPTH_Z),
+    new THREE.Vector3(BODY_FRONT_X + BUMPER_THICKNESS_X / 2, BUMPER_CENTER_Y, 0),
     "Front bumper",
     findPartIriByName("Front bumper")
   );
@@ -419,12 +510,10 @@ function createCarScene(config) {
   addFrontLicensePlate(LICENSE_PLATE_TEXT);
 
   // Wheels
-  const wheelGeometry = new THREE.CylinderGeometry(
-    WHEEL_RADIUS,
-    WHEEL_RADIUS,
-    WHEEL_WIDTH,
-    WHEEL_SEGMENTS
-  );
+  const wheelGeometry = new THREE.CylinderGeometry(WHEEL_RADIUS,
+                                                   WHEEL_RADIUS,
+                                                   WHEEL_WIDTH,
+                                                   WHEEL_SEGMENTS);
   wheelGeometry.rotateZ(Math.PI / 2);
   wheelGeometry.rotateY(Math.PI / 2);
 
@@ -474,13 +563,8 @@ function createCarScene(config) {
 
     const sideOffset = zSide > 0 ? zSide + 0.01 : zSide - 0.01;
 
-    const doorGeom = new THREE.BoxGeometry(
-      doorWidthX,
-      doorHeightY,
-      DOOR_DEPTH_Z
-    );
     outlinedBox(
-      doorGeom,
+      new THREE.BoxGeometry(doorWidthX, doorHeightY, DOOR_DEPTH_Z),
       new THREE.Vector3(centerX, centerY, sideOffset),
       label,
       findPartIriByName(label)
@@ -513,40 +597,30 @@ function createCarScene(config) {
 
   // Mirrors
   function addMirror(zSide, label) {
-    const mirrorY = DOOR_TOP_Y + 0.05;
+    const mirrorY = DOOR_TOP_Y + 0.1;
     const mirrorX = DOOR_FRONT_X - 0.2;
 
     const mirrorWidthX  = 0.28;
     const mirrorHeightY = 0.16;
     const mirrorDepthZ  = 0.1;
 
-    const sideOffset = zSide > 0 ? zSide + 0.18 : zSide - 0.18;
+    const sideOffset = zSide > 0 ? zSide + 0.15 : zSide - 0.15;
 
-    const mirrorGeom = new THREE.BoxGeometry(
-      mirrorWidthX,
-      mirrorHeightY,
-      mirrorDepthZ
-    );
     outlinedBox(
-      mirrorGeom,
-      new THREE.Vector3(mirrorX, mirrorY, sideOffset),
+      new THREE.BoxGeometry(mirrorWidthX, mirrorHeightY, mirrorDepthZ),
+      new THREE.Vector3(mirrorX - 0.15, mirrorY, sideOffset),
       label,
       findPartIriByName(label)
     );
-
+    
     // stem
     const stemWidthX  = 0.08;
     const stemHeightY = 0.08;
     const stemDepthZ  = 0.18;
     const stemZ       = zSide > 0 ? zSide + 0.09 : zSide - 0.09;
 
-    const stemGeom = new THREE.BoxGeometry(
-      stemWidthX,
-      stemHeightY,
-      stemDepthZ
-    );
     outlinedBox(
-      stemGeom,
+      new THREE.BoxGeometry(stemWidthX, stemHeightY, stemDepthZ),
       new THREE.Vector3(mirrorX - 0.08, mirrorY - 0.05, stemZ),
       label + " stem",
       findPartIriByName(label + " stem")
@@ -580,7 +654,8 @@ function createCarScene(config) {
     const windowMesh = outlinedBox(
       windowGeom,
       new THREE.Vector3(windowCenterX, windowCenterY, sideOffset),
-      label
+      label,
+      findPartIriByName(label)
     );
 
     windowMesh.material.color.set(0xffffff);
@@ -632,7 +707,7 @@ function createCarScene(config) {
 
     selectedMesh = mesh;
     selectedOriginalColor.copy(mesh.material.color);
-    mesh.material.color.set(0xcf4040); // highlight
+    mesh.material.color.set(HIGHLIGHT_COLOR); // highlight
 
     if (infoEl) {
       const label = mesh.userData.label || "Unknown part";
@@ -653,6 +728,35 @@ function createCarScene(config) {
     renderer.render(scene, camera);
   }
   animate();
+
+  // --- Roof load visibility API ------------------------------------------
+  function setBoxVisible(visible) {
+    if (!roofBoxMesh) return;
+    roofBoxMesh.visible = visible;
+    if (roofBoxMesh.userData && roofBoxMesh.userData.edges) {
+      roofBoxMesh.userData.edges.visible = visible;
+    }
+  }
+
+  function setLuggageVisible(visible) {
+    if (!roofLuggageMesh) return;
+    roofLuggageMesh.visible = visible;
+    if (roofLuggageMesh.userData && roofLuggageMesh.userData.edges) {
+      roofLuggageMesh.userData.edges.visible = visible;
+    }
+  }
+
+  function setRoofLoadVisible(visible) {
+    setBoxVisible(visible);
+    setLuggageVisible(visible);
+  }
+
+  return {
+    setBoxVisible,
+    setLuggageVisible,
+    setRoofLoadVisible,
+    setOverloadedPartsByIri
+  };
 }
 
 // --- JS → TTL: export current scene as Turtle -----------------------------
@@ -737,15 +841,6 @@ function exportCarSnapshotToTTL() {
   addGeomFloat("bumperHeightY",    geom.BUMPER_HEIGHT_Y);
   addGeomFloat("bumperDepthZ",     geom.BUMPER_DEPTH_Z);
 
-  // if you really want wheel params only on ex:StandardWheel, you can DELETE
-  // these next lines; for now I’ll leave them so nothing breaks.
-  addGeomFloat("wheelRadius",   geom.WHEEL_RADIUS);
-  addGeomFloat("wheelWidth",    geom.WHEEL_WIDTH);
-  addGeomInt  ("wheelSegments", geom.WHEEL_SEGMENTS);
-  addGeomFloat("wheelY",        geom.WHEEL_Y);
-  addGeomFloat("wheelOffsetX",  geom.WHEEL_OFFSET_X);
-  addGeomFloat("wheelOffsetZ",  geom.WHEEL_OFFSET_Z);
-
   addGeomFloat("doorBottomY",     geom.DOOR_BOTTOM_Y);
   addGeomFloat("doorTopY",        geom.DOOR_TOP_Y);
   addGeomFloat("doorFrontX",      geom.DOOR_FRONT_X);
@@ -818,7 +913,6 @@ async function ensureCarConfig() {
   if (carConfig) return carConfig;
 
   try {
-    // Adjust this path if your car.ttl lives somewhere else
     carConfig = await loadCarConfigFromTTL("/assets/data/car.ttl");
     console.log("Loaded car config from TTL:", carConfig);
   } catch (err) {
@@ -847,14 +941,33 @@ export async function renderModelView({
 
   // Inject the car viewer UI into the right-hand block
   rootEl.innerHTML = `
-    <div id="scene-container" style="width:100%; height:${height}px;"></div>
-    <div id="ui" class="car-ui">
-      <div>
-        Selected part:
-        <span id="part-label">None</span>
+    <style>
+      .car-ui { position: absolute; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding: 0.4rem 0.7rem; 
+                display: flex; flex-direction: column; gap: 0.25rem; background: rgba(255, 255, 255, 0.85);
+                backdrop-filter: blur(4px); font-size: 0.85rem;}
+    </style>
+    <div id="scene-wrapper" style="position: relative; width:100%; height:${height}px;">
+      <div id="scene-container" style="width:100%; height:100%;"></div>
+
+      <div id="ui" class="car-ui">
+        <div>
+          Selected part:
+          <span id="part-label">None</span>
+        </div>
+        <div style="margin-top: 0.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+          <label style="display: inline-flex; align-items: center; gap: 0.25rem;">
+            <input id="toggle-roof-box" type="checkbox" checked>
+            Box
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 0.25rem;">
+            <input id="toggle-roof-luggage" type="checkbox" checked>
+            Luggage
+          </label>
+        </div>
+        <!-- <button id="download-ttl">Download TTL snapshot</button> -->
       </div>
-      <!-- <button id="download-ttl">Download TTL snapshot</button> -->
     </div>
+
     <pre id="ttl-output" class="car-ttl-output"></pre>
   `;
 
@@ -862,8 +975,71 @@ export async function renderModelView({
   clickable.length = 0;
 
   const cfg = await ensureCarConfig();
-  createCarScene(cfg);
+  const sceneCtl = createCarScene(cfg);
   setupDownloadButton();
+
+  // Wire up box / luggage toggles
+  const boxToggle     = document.getElementById("toggle-roof-box");
+  const luggageToggle = document.getElementById("toggle-roof-luggage");
+
+  if (sceneCtl) {
+    if (boxToggle && typeof sceneCtl.setBoxVisible === "function") {
+      sceneCtl.setBoxVisible(boxToggle.checked); // initial
+      boxToggle.addEventListener("change", () => {
+        sceneCtl.setBoxVisible(boxToggle.checked);
+      });
+    }
+
+    if (luggageToggle && typeof sceneCtl.setLuggageVisible === "function") {
+      sceneCtl.setLuggageVisible(luggageToggle.checked); // initial
+      luggageToggle.addEventListener("change", () => {
+        sceneCtl.setLuggageVisible(luggageToggle.checked);
+      });
+    }
+  }
+
+  // --- Overload propagation → color car parts ----------------------------
+  if (overloadEventListener) {
+    window.removeEventListener("car:overloadChanged", overloadEventListener);
+  }
+
+  overloadEventListener = async (ev) => {
+    const active = !!ev.detail?.active;
+    if (!sceneCtl || typeof sceneCtl.setOverloadedPartsByIri !== "function") return;
+
+    // If rule is turned off, just clear highlights
+    if (!active) {
+      sceneCtl.setOverloadedPartsByIri([]);
+      return;
+    }
+
+    // Rule is ON → ask the OntoGSN store which car elements are concerned
+    if (!app?.store) return;
+
+    const queryText = await fetch("/assets/data/propagate_overloadedCar.sparql").then(r => r.text());
+    const res = app.store.query(queryText);
+
+    const iris = [];
+    for (const b of res) {
+      for (const [, term] of b) {
+        if (term && term.termType === "NamedNode") {
+          iris.push(term.value);
+        }
+      }
+    }
+
+    console.log("[car overload] IRIs from SPARQL:", iris);
+    sceneCtl.setOverloadedPartsByIri(iris);
+  };
+
+  window.addEventListener("car:overloadChanged", overloadEventListener);
+  const overloadCheckbox = document.querySelector(
+    'input[type="checkbox"][data-queries*="propagate_overloadedCar.sparql"]'
+  );
+
+  if (overloadCheckbox && overloadCheckbox.checked) {
+    overloadEventListener({ detail: { active: true } });
+  }
 }
 
 // Wire the “Model View” button

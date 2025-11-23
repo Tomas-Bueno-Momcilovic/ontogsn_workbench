@@ -16,11 +16,13 @@ const BASE_PATH = (BASE_URL.protocol.startsWith("http") ? BASE_URL.href : BASE_U
 const MIME_TTL = "text/turtle";
 const BASE_ONTO = "https://w3id.org/OntoGSN/ontology#";
 const BASE_CASE = "https://w3id.org/OntoGSN/cases/ACT-FAST-robust-llm#";
+const BASE_CAR  = "https://example.org/car-demo#";
 
 // Centralize paths in one place for readability
 const PATHS = {
   onto    : "/assets/data/ontogsn_lite.ttl",
   example : "/assets/data/example_ac.ttl",
+  car     : "/assets/data/car.ttl",
   q       : {
     nodes     : "/assets/data/read_all_nodes.sparql",
     rels      : "/assets/data/read_all_relations.sparql",
@@ -51,6 +53,19 @@ class QueryApp {
     try {
       this._setBusy(true);
       const query = await fetchText(queryPath);
+
+      // Detect INSERT DATA and treat as SPARQL UPDATE
+      const trimmed = query.trim().toUpperCase();
+      if (isUpdateQuery(query)) {
+        await this.store.update(query);  // await is nice, since run(...) is async
+
+        if (!noTable && resultsEl) {
+          resultsEl.innerHTML = "<p>SPARQL UPDATE executed.</p>";
+        }
+        this._setStatus?.("SPARQL UPDATE executed.");
+        return; // don’t fall through to store.query(...)
+      }
+
       const res   = this.store.query(query);
       const rows  = bindingsToRows(res);
 
@@ -189,6 +204,16 @@ class QueryApp {
   async runInline(queryText, overlayClass = null, { noTable = false } = {}) {
     try {
       this._setBusy(true);
+
+      // Detect INSERT DATA and treat as SPARQL UPDATE
+      if (isUpdateQuery(queryText)) {
+        await this.store.update(queryText);
+        if (!noTable && resultsEl) {
+          resultsEl.innerHTML = "<p>SPARQL UPDATE executed.</p>";
+        }
+        this._setStatus?.("SPARQL UPDATE executed.");
+        return;
+      }
 
       const res   = this.store.query(queryText);
       const rows  = bindingsToRows(res);
@@ -340,10 +365,13 @@ class QueryApp {
     // Always load from BASE_PATH, used in both TEST and PROD
     const ontoURL    = `${BASE_PATH}${PATHS.onto}`;
     const exampleURL = `${BASE_PATH}${PATHS.example}`;
-    const [ttlOnto, ttlExample] = await Promise.all([getTTL(ontoURL), getTTL(exampleURL)]);
+    const carURL     = `${BASE_PATH}${PATHS.car}`;
+
+    const [ttlOnto, ttlExample, ttlCar] = await Promise.all([getTTL(ontoURL), getTTL(exampleURL), getTTL(carURL),]);
     try {
       this.store.load(ttlOnto, MIME_TTL, BASE_ONTO);
       this.store.load(ttlExample, MIME_TTL, BASE_CASE);
+      this.store.load(ttlCar,     MIME_TTL, BASE_CAR);
     } catch (e) {
       const preview = ttlOnto.slice(0, 300);
       show?.(`Parse error while loading TTL: ${e.message}\n\nPreview of ontogsn_lite.ttl:\n${preview}`);
@@ -388,27 +416,74 @@ class QueryApp {
     });
 
     document.addEventListener("change", (e) => {
-      const el = e.target instanceof Element ? e.target.closest('input[type="checkbox"][data-query][data-class]') : null;
+      const el = e.target instanceof Element 
+      ? e.target.closest('input[type="checkbox"][data-class]') : null;
       if (!el) return;
-      const path = el.getAttribute("data-query");
+
       const cls  = el.getAttribute("data-class") || "overlay";
       const noTable = el.dataset.noTable === "1" || el.dataset.noTable === "true";
-      if (!path) return;
+
+      const raw = el.getAttribute("data-queries") ?? el.getAttribute("data-query");
+      if (!raw) return;
+
+      const paths = raw
+        .split(/[;,]/)          // split on comma or semicolon
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      if (!paths.length) return;
+
+      const deletePath = el.getAttribute("data-delete-query");
+      const eventName  = el.getAttribute("data-event");
+
+      const isOverloadRule = paths.some(p =>
+        p.includes("propagate_overloadedCar.sparql")
+      );
 
       if (el.checked) {
-        // fetch IDs for this class and apply
-        this.run(path, cls, { noTable });
+        (async () => {
+          for (const path of paths) {
+            await this.run(path, cls, { noTable });
+          }
+          if (isOverloadRule) {
+            window.dispatchEvent(
+              new CustomEvent("car:overloadChanged", {
+                detail: { active: true }
+              })
+            );
+          }
+          if (eventName) {
+            window.dispatchEvent(new CustomEvent(eventName, { detail: { active: true } }));
+          }
+        })();
       } else {
-        // turn off this class overlay
-        this.overlays.set(cls, new Set());
-        this._reapplyOverlays();
-        this._setStatus?.(`Hid ${cls} overlay.`);
-      }
+        (async () => {
+          if (deletePath) {
+            await this.run(deletePath, cls, { noTable: true });
+          }
 
-      if (!el.checked && cls === "collection") {
-        this.graphCtl?.clearCollections?.();
-        this._setStatus?.("Hid collections overlay.");
-        return;
+          // turn off this class overlay
+          this.overlays.set(cls, new Set());
+          this._reapplyOverlays();
+          this._setStatus?.(`Hid ${cls} overlay.`);
+
+          if (cls === "collection") {
+            this.graphCtl?.clearCollections?.();
+            this._setStatus?.("Hid collections overlay.");
+          }
+
+          // Notify the car model that overload propagation is cleared
+          if (isOverloadRule) {
+            window.dispatchEvent(
+              new CustomEvent("car:overloadChanged", {
+                detail: { active: false }
+              })
+            );
+          }
+          if (eventName) {
+            window.dispatchEvent(new CustomEvent(eventName, { detail: { active: false } }));
+          }
+        })();
       }
     });
     const ctxBox = document.getElementById("toggle-context");
@@ -448,6 +523,24 @@ async function fetchText(relPath) {
   if (!r.ok) throw new Error(`Fetch failed ${r.status} for ${url}`);
   const txt = await r.text();
   return txt.replace(/^\uFEFF/, ""); // strip BOM
+}
+
+function getFirstKeyword(queryText) {
+  const lines = String(queryText).split(/\r?\n/);
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t) continue;           // skip empty
+    if (t.startsWith("#")) continue; // skip comments
+    if (/^(PREFIX|BASE)\b/i.test(t)) continue; // skip PREFIX/BASE
+    return t.split(/\s+/)[0].toUpperCase();
+  }
+  return "";
+}
+
+function isUpdateQuery(queryText) {
+  const kw = getFirstKeyword(queryText);
+  // basic set of SPARQL UPDATE operations
+  return ["INSERT","DELETE","LOAD","CREATE","DROP","CLEAR","COPY","MOVE","ADD"].includes(kw);
 }
 
 async function getTTL(url) {

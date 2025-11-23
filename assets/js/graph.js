@@ -104,9 +104,7 @@ export function visualizeSPO(rows, {
                       minW = 44, 
                       maxW = 180, 
                       pad  = 12) {
-    maxResult = Math.max(minW, 7.2 * String(t).length + pad);
-    result    = Math.min(maxW, maxResult);
-    return result
+    return Math.min(maxW, Math.max(minW, 7.2 * String(t).length + pad));
   }
 
   // --- Normalize predicates into Sets

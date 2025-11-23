@@ -72,17 +72,26 @@
       <label><input type="checkbox"
         data-query="/assets/data/rule_assumptionInvalidation.sparql"
         data-class="rule" data-no-table="1">
-        Invalid Assumptions
+        Invalid assumptions
       </label>
       <label><input type="checkbox"
         data-query="/assets/data/rule_truthContradiction.sparql"
         data-class="rule" data-no-table="1">
-        Contradicting Truth
+        Contradicting truth
       </label>
       <label><input type="checkbox"
         data-query="/assets/data/rule_untrueSolution.sparql"
         data-class="rule" data-no-table="1">
-        Untrue Solution
+        Untrue solution
+      </label>
+      <label><input type="checkbox"
+        data-queries="/assets/data/rule_checkLoadWeight.sparql;
+                      /assets/data/propagate_overloadedCar.sparql;
+                      /assets/data/write_defeater_overloadedCar.sparql"
+        data-delete-query="/assets/data/delete_defeater_overloadedCar.sparql"
+        data-class="rule" data-no-table="1"
+        data-event="car:overloadChanged">
+        Overloaded car
       </label>
     </div>
     <div id="rightButtons" class="btns">
