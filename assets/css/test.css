@@ -62,14 +62,26 @@ table.sparql thead th {
        align-items:stretch
 }
 
-#results,#graph{
+#leftPane,
+#graph {
        flex:1 1 0;
-       min-width:0
+       min-width:0;
 }
 
 #results{
        max-height:520px;
        overflow:auto
+}
+
+.left-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.left-tabs .tab.active {
+  font-weight: 600;
+  text-decoration: underline;
 }
 
 #leftButtons,#rightButtons{
@@ -160,4 +172,9 @@ body[aria-busy="true"] [data-query] {
 
 .pane[hidden] { 
        display: none; 
+}
+
+#leftPane {
+  display: flex;
+  flex-direction: column;
 }
