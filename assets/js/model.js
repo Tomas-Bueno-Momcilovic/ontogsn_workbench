@@ -17,6 +17,7 @@ const XSD    = "http://www.w3.org/2001/XMLSchema#";
 let carConfig = null;
 const clickable = [];
 let overloadEventListener = null;
+let currentSceneCtl = null;
 
 // --- TTL → JS: load & parse car.ttl --------------------------------------
 
@@ -240,8 +241,10 @@ function createCarScene(config) {
 
   const container = document.getElementById("scene-container");
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
+  const renderer = new THREE.WebGLRenderer({
+    antialias: !/Mobile|Android/.test(navigator.userAgent)
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.setClearColor(0xffffff, 1);
   container.appendChild(renderer.domElement);
@@ -302,6 +305,7 @@ function createCarScene(config) {
   scene.add(car);
 
   // generic "filled box + outline" builder, now with optional IRI
+
   function outlinedBox(geometry, position, label, iri = null, material = baseFillMaterial) {
     const mesh  = new THREE.Mesh(geometry, material.clone());
     const edges = new THREE.LineSegments(
@@ -671,7 +675,7 @@ function createCarScene(config) {
   // ---------- CONTROLS ----------
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
+  controls.enableDamping = false;
   controls.target.set(0, 0.8, 0);
   controls.update();
 
@@ -684,6 +688,7 @@ function createCarScene(config) {
     camera.right =  d * (width / height);
     camera.updateProjectionMatrix();
     renderer.setSize(width, height);
+    render();
   }
   window.addEventListener("resize", onWindowResize);
 
@@ -722,12 +727,22 @@ function createCarScene(config) {
 
   // ---------- ANIMATION LOOP ----------
 
+  /*
   function animate() {
     requestAnimationFrame(animate);
     controls.update();
     renderer.render(scene, camera);
   }
   animate();
+  */
+
+  function render() {
+    renderer.render(scene, camera);
+  }
+
+  render();
+
+  controls.addEventListener("change", render);
 
   // --- Roof load visibility API ------------------------------------------
   function setBoxVisible(visible) {
@@ -751,11 +766,45 @@ function createCarScene(config) {
     setLuggageVisible(visible);
   }
 
+  let animationId = null;
+
+  function animate() {
+    animationId = requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  function destroy() {
+    // Stop animation
+    if (animationId !== null) {
+      cancelAnimationFrame(animationId);
+    }
+
+    // Remove listeners
+    window.removeEventListener("resize", onWindowResize);
+    renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+
+    // Dispose WebGL resources
+    renderer.dispose();
+    scene.traverse(obj => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose && m.dispose());
+        } else {
+          obj.material.dispose && obj.material.dispose();
+        }
+      }
+    });
+  }
+
   return {
     setBoxVisible,
     setLuggageVisible,
     setRoofLoadVisible,
-    setOverloadedPartsByIri
+    setOverloadedPartsByIri,
+    destroy
   };
 }
 
@@ -955,12 +1004,13 @@ export async function renderModelView({
           <span id="part-label">None</span>
         </div>
         <div style="margin-top: 0.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+          Roof load:
           <label style="display: inline-flex; align-items: center; gap: 0.25rem;">
-            <input id="toggle-roof-box" type="checkbox" checked>
+            <input id="toggle-roof-box" type="checkbox" unchecked>
             Box
           </label>
           <label style="display: inline-flex; align-items: center; gap: 0.25rem;">
-            <input id="toggle-roof-luggage" type="checkbox" checked>
+            <input id="toggle-roof-luggage" type="checkbox" unchecked>
             Luggage
           </label>
         </div>
@@ -971,22 +1021,46 @@ export async function renderModelView({
     <pre id="ttl-output" class="car-ttl-output"></pre>
   `;
 
+  // Before creating a new scene:
+  if (currentSceneCtl && typeof currentSceneCtl.destroy === "function") {
+    currentSceneCtl.destroy();
+  }
+  
   // Reset clickable meshes for a fresh scene
   clickable.length = 0;
 
   const cfg = await ensureCarConfig();
   const sceneCtl = createCarScene(cfg);
+  currentSceneCtl = sceneCtl;
   setupDownloadButton();
 
   // Wire up box / luggage toggles
+  // Wire up box / luggage toggles + overloaded rule checkbox
   const boxToggle     = document.getElementById("toggle-roof-box");
   const luggageToggle = document.getElementById("toggle-roof-luggage");
+  const overloadCheckbox = document.querySelector(
+    'input[type="checkbox"][data-queries*="propagate_overloadedCar.sparql"]'
+  );
+
+  // Keep "Overloaded car" rule in sync with both roof-load toggles
+  function syncOverloadFromRoofToggles() {
+    if (!overloadCheckbox) return;
+    const shouldBeChecked = !!(boxToggle?.checked && luggageToggle?.checked);
+
+    // Nothing to do if it's already in the correct state
+    if (overloadCheckbox.checked === shouldBeChecked) return;
+
+    // Update the rule checkbox and let queries.js handle SPARQL + events
+    overloadCheckbox.checked = shouldBeChecked;
+    overloadCheckbox.dispatchEvent(new Event("change", { bubbles: true }));
+  }
 
   if (sceneCtl) {
     if (boxToggle && typeof sceneCtl.setBoxVisible === "function") {
       sceneCtl.setBoxVisible(boxToggle.checked); // initial
       boxToggle.addEventListener("change", () => {
         sceneCtl.setBoxVisible(boxToggle.checked);
+        syncOverloadFromRoofToggles();
       });
     }
 
@@ -994,11 +1068,12 @@ export async function renderModelView({
       sceneCtl.setLuggageVisible(luggageToggle.checked); // initial
       luggageToggle.addEventListener("change", () => {
         sceneCtl.setLuggageVisible(luggageToggle.checked);
+        syncOverloadFromRoofToggles();
       });
     }
   }
 
-  // --- Overload propagation → color car parts ----------------------------
+  // --- Overload propagation → color car parts + sync UI ------------------
   if (overloadEventListener) {
     window.removeEventListener("car:overloadChanged", overloadEventListener);
   }
@@ -1006,6 +1081,19 @@ export async function renderModelView({
   overloadEventListener = async (ev) => {
     const active = !!ev.detail?.active;
     if (!sceneCtl || typeof sceneCtl.setOverloadedPartsByIri !== "function") return;
+
+    // Sync Box + Luggage visibility and checkboxes from rule state
+    if (boxToggle && luggageToggle) {
+      boxToggle.checked   = active;
+      luggageToggle.checked = active;
+
+      if (typeof sceneCtl.setBoxVisible === "function") {
+        sceneCtl.setBoxVisible(active);
+      }
+      if (typeof sceneCtl.setLuggageVisible === "function") {
+        sceneCtl.setLuggageVisible(active);
+      }
+    }
 
     // If rule is turned off, just clear highlights
     if (!active) {
@@ -1033,10 +1121,8 @@ export async function renderModelView({
   };
 
   window.addEventListener("car:overloadChanged", overloadEventListener);
-  const overloadCheckbox = document.querySelector(
-    'input[type="checkbox"][data-queries*="propagate_overloadedCar.sparql"]'
-  );
 
+  // Initial sync: if rule is already on when Model View opens, apply it
   if (overloadCheckbox && overloadCheckbox.checked) {
     overloadEventListener({ detail: { active: true } });
   }
