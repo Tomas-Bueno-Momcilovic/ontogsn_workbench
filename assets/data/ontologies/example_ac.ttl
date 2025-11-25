@@ -280,8 +280,7 @@ case:G3_3_2
 case:G3_3_3
     a gsn:Goal ;
     schema:identifier "G3_3_3" ;
-    gsn:statement "Modifiable characters in prompts are checked against a blacklist of keywords in real-time." ;
-    gsn:supportedBy case:Placeholder .
+    gsn:statement "Modifiable characters in prompts are checked against a blacklist of keywords in real-time." .
 
 case:Sn3_3_1_1 a gsn:Solution . 
 case:Sn3_3_1_2 a gsn:Solution . 

@@ -95,10 +95,9 @@ class QueryApp {
         return;
       }
       
-      // The graph expects ?s ?p ?o
-      const graphRows = toTriples(rows);
-      if (graphRows.length) {
-        console.debug("[graph/run] triples:", graphRows.length, graphRows.slice(0, 5));
+      // GRAPH CASE: ?s ?p ?o (plus optional ?type etc.)
+      if (hasS && hasP && hasO) {
+        console.debug("[graph/run] rows:", rows.length, rows.slice(0, 5));
 
         if (this.graphCtl && typeof this.graphCtl.destroy === "function") {
           this.graphCtl.destroy();
@@ -107,7 +106,8 @@ class QueryApp {
           this._setStatus?.("No triples found in results (expecting ?s ?p ?o).");
         }
 
-        this.graphCtl = visualizeSPO(graphRows, {
+        // Pass FULL rows (s,p,o,type,...) to graph.js
+        this.graphCtl = visualizeSPO(rows, {
           mount: graphEl,
           height: 520,
           label: shorten,
@@ -133,7 +133,7 @@ class QueryApp {
         });
       
         if (this.graphCtl?.fit) this.graphCtl.fit();
-        this._setStatus?.(`Rendered graph from ${graphRows.length} triples.`);
+        this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
         this._applyVisibility();
 
         window.removeEventListener("resize", this._onResize);
@@ -224,11 +224,9 @@ class QueryApp {
       const hasP = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "p");
       const hasO = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "o");
 
-      // Graph case
-      const graphRows = toTriples(rows);
-
-      if (graphRows.length) {
-        console.debug("[graph/inline] triples:", graphRows.length, graphRows.slice(0, 5));
+      // Graph case: full rows (s,p,o,type,...)
+      if (hasS && hasP && hasO) {
+        console.debug("[graph/inline] rows:", rows.length, rows.slice(0, 5));
 
         if (this.graphCtl?.destroy) { 
           this.graphCtl.destroy(); 
@@ -237,7 +235,7 @@ class QueryApp {
           this._setStatus?.("No triples found in results (expecting ?s ?p ?o).");
         }
 
-        this.graphCtl = visualizeSPO(graphRows, {
+        this.graphCtl = visualizeSPO(rows, {
           mount: graphEl,
           height: 520,
           label: shorten,

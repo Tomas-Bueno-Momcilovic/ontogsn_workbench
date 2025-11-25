@@ -1,35 +1,5 @@
-/**
- * graph.js — GSN DAG renderer (supportedBy, inContextOf, challenges).
- * Public API:
- *   visualizeSPO(rows: Array<{s,p,o}>, options) -> controller
- * Controller methods:
- *   - fit(): auto-zoom
- *   - reset(): back to initial view
- *   - highlightByIds(ids, className): highlight nodes + incident edges
- *   - clearAll(): remove highlights
- *   - destroy(): cleanup event listeners + DOM
- * Emits custom events:
- *   - "gsn:contextClick", detail: { id }
- *   - "gsn:defeaterClick", detail: { id }
- */
-
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
-/**
- * visualizeSPO
- * Renders a GSN tree (supportedBy) with same-level "in context of" nodes.
- *
- * @param {Array<{s:string,p:string,o:string}>} rows  SPARQL rows (?s ?p ?o)
- * @param {Object} options
- *   - mount:   CSS selector or HTMLElement to mount into (default "#graph")
- *   - width:   number | null (auto width if null)
- *   - height:  number (default 520)
- *   - supportedBy: string[] of allowed predicate values for supportedBy
- *   - contextOf:   string[] of allowed predicate values for inContextOf
- *   - label:   (id:string)=>string label mapper (shorten IRIs, etc.)
- *   - theme:   "light"|"dark" (minor styling tweak)
- * @returns {Object} controller with { fit(), reset(), destroy() }
- */
 export function visualizeSPO(rows, {
   mount      = "#graph",
   width      = null,
@@ -113,6 +83,45 @@ export function visualizeSPO(rows, {
   const ctxSet  = new Set(contextOf.map(norm));
   const chalSet = new Set(challenges.map(norm));
 
+  // Base node height used for layout + shape drawing
+  const NODE_H = 26;
+
+    function kindFromTypeIri(typeIri) {
+      if (!typeIri) return null;
+      const t = String(typeIri);
+
+      if (t.endsWith("#Goal")         || t.endsWith("/Goal"))         return "goal";
+      if (t.endsWith("#Strategy")     || t.endsWith("/Strategy"))     return "strategy";
+      if (t.endsWith("#Solution")     || t.endsWith("/Solution"))     return "solution";
+      if (t.endsWith("#Context")      || t.endsWith("/Context"))      return "context";
+      if (t.endsWith("#Assumption")   || t.endsWith("/Assumption"))   return "assumption";
+      if (t.endsWith("#Justification")|| t.endsWith("/Justification"))return "justification";
+
+      return null;
+    }
+
+  // Infer a GSN element kind from the short label (e.g. "G1", "S1", "Sn1", "A1", "J1").
+  // Adjust this if your identifiers use a different convention.
+  function inferNodeKind(id, labelText, typeIri) {
+    const fromType = kindFromTypeIri(typeIri);
+    if (fromType) return fromType;
+
+    const txt = String(labelText || id);
+    const p2  = txt.slice(0, 2).toUpperCase();
+    const p1  = txt.charAt(0).toUpperCase();
+
+    if (p2 === "SN") return "solution";
+    if (p1 === "S")  return "strategy";
+    if (p1 === "C")  return "context";
+    if (p1 === "A")  return "assumption";
+    if (p1 === "J")  return "justification";
+
+    return "goal";
+  }
+
+  // OntoGSN type per node, from SPARQL (?type)
+  const nodeType = new Map();
+
   // --- Build adjacency from rows
   const children = new Map();
   const parents  = new Map();
@@ -125,8 +134,21 @@ export function visualizeSPO(rows, {
   for (const r of rows) {
     if (!r || !r.s || !r.p || !r.o) continue;
     const S = norm(r.s), P = norm(r.p), O = norm(r.o);
+
+    // accept ?typeS / ?typeO (new) and ?type (old) for compatibility
+    const tS = r.typeS || r.type;
+    const tO = r.typeO;
+
+    if (tS) {
+      const T = norm(tS);
+      if (T) nodeType.set(S, T);
+    }
+    if (tO) {
+      const TO = norm(tO);
+      if (TO) nodeType.set(O, TO);
+    }
+
     if (supSet.has(P)) {
-      // only supportedBy triples define the tree’s nodes
       allNodes.add(S); allNodes.add(O);
       add(children, S, O); add(parents, O, S);
     } else if (ctxSet.has(P)) {
@@ -135,6 +157,7 @@ export function visualizeSPO(rows, {
       add(defeat, O, S);
     }
   }
+
 
   // --- Roots = nodes never seen as object of supportedBy
   const supportedObjects = new Set([...parents.keys()]);
@@ -189,28 +212,55 @@ export function visualizeSPO(rows, {
   const dy    = 80;
   d3.tree().nodeSize([dx, dy])(root);
 
-  // Position map: id -> {x,y}
+  // Position map: id -> {x,y,data}
   const pos = new Map();
-  root.descendants().forEach(d => { if (d.data.id !== "__ROOT__") pos.set(d.data.id, { x: d.x, y: d.y, data: d.data }); });
+  root.descendants().forEach(d => {
+    if (d.data.id !== "__ROOT__") {
+      pos.set(d.data.id, { x: d.x, y: d.y, data: d.data });
+    }
+  });
 
   // Unique nodes for rendering (no duplicates)
-  const nodes = [...pos.entries()].map(([id, v]) => ({ id, label: v.data.label, x: v.x, y: v.y, contexts: v.data.contexts || [] }));
+  const nodes = [...pos.entries()].map(([id, v]) => {
+    const lbl      = v.data.label;
+    const typeIri  = nodeType.get(id) || null;
+    const kind     = inferNodeKind(id, lbl, typeIri);
+    return {
+      id,
+      label: lbl,
+      x: v.x,
+      y: v.y,
+      w: labelWidth(lbl),
+      h: NODE_H,
+      kind,
+      contexts: v.data.contexts || [],
+      typeIri
+    };
+  });
+
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
+
 
   // Links:
   //  - treeLinks: only primary-parent edges (what drove the layout)
   //  - extraLinks: every other parent->child edge (to get multi-parents)
   const treeLinks = [];
   for (const [child, parent] of primaryParent.entries()) {
-    if (pos.has(child) && pos.has(parent)) treeLinks.push({ source: pos.get(parent), target: pos.get(child) });
+    const src = nodeById.get(parent);
+    const tgt = nodeById.get(child);
+    if (src && tgt) treeLinks.push({ source: src, target: tgt });
   }
 
   const extraLinks = [];
   for (const [child, ps] of parents.entries()) {
     for (const p of ps) {
-      if (primaryParent.get(child) === p) continue; // skip primary edge (already in treeLinks)
-      if (pos.has(child) && pos.has(p)) extraLinks.push({ source: pos.get(p), target: pos.get(child) });
+      if (primaryParent.get(child) === p) continue; // primary edge already in treeLinks
+      const src = nodeById.get(p);
+      const tgt = nodeById.get(child);
+      if (src && tgt) extraLinks.push({ source: src, target: tgt });
     }
   }
+
 
   // Context nodes placed to the right on same rank
   const ctxNodes = [], ctxLinks = [];
@@ -218,7 +268,7 @@ export function visualizeSPO(rows, {
   const ctxOffsetX = 80, ctxOffsetY = 50;
   for (const n of nodes) {
     const ctxs = n.contexts ?? [];
-    const srcW = labelWidth(n.label);
+    const srcW = n.w;
     ctxs.forEach((c, i) => {
       const x = n.x + ctxOffsetX + i * ctxOffsetY;
       const y = n.y; 
@@ -238,7 +288,7 @@ export function visualizeSPO(rows, {
   const defOffsetX = 80, defOffsetY = 50;
   for (const n of nodes) {
     const defs = defeat.get(n.id) ? [...defeat.get(n.id)] : [];
-    const tgtW = labelWidth(n.label);
+    const tgtW = n.w;
     defs.forEach((dft, i) => {
       const x = n.x - defOffsetX - i * defOffsetY; // to the LEFT
       const y = n.y;
@@ -300,17 +350,16 @@ export function visualizeSPO(rows, {
   const linkV = d3.linkVertical().x(d => d.x).y(d => d.y);
   const linkH = d3.linkHorizontal().x(d => d.x).y(d => d.y);
 
-  const NODE_H = 26;
+  //const NODE_H = 26;
   g.selectAll("path.gsn-link")
     .data(treeLinks)
     .join("path")
       .attr("class", "gsn-link")
-      .attr("d", d => linkV({ 
-        //source: d.source, target: d.target 
-        source: { x: d.source.x, 
-                  y: d.source.y + NODE_H/2 },
-        target: { x: d.target.x, 
-                  y: d.target.y - NODE_H/2 }
+      .attr("d", d => linkV({
+        source: { x: d.source.x,
+                  y: d.source.y + d.source.h / 2 },
+        target: { x: d.target.x,
+                  y: d.target.y - d.target.h / 2 }
       }))
       .attr("marker-end", `url(#${idArrow})`)
     .append("title").text("supported by");
@@ -319,12 +368,11 @@ export function visualizeSPO(rows, {
     .data(extraLinks)
     .join("path")
       .attr("class", "gsn-link extra")
-      .attr("d", d => linkV({ 
-        //source: d.source, target: d.target 
-        source: { x: d.source.x, 
-                  y: d.source.y + NODE_H/2 },
-        target: { x: d.target.x, 
-                  y: d.target.y - NODE_H/2 }
+      .attr("d", d => linkV({
+        source: { x: d.source.x,
+                  y: d.source.y + d.source.h / 2 },
+        target: { x: d.target.x,
+                  y: d.target.y - d.target.h / 2 }
       }))
       .attr("marker-end", `url(#${idArrow})`)
     .append("title").text("supported by");
@@ -360,8 +408,9 @@ export function visualizeSPO(rows, {
   const nodeG = g.selectAll("g.gsn-node")
     .data(nodes)
     .join("g")
-      .attr("class", "gsn-node")
+      .attr("class", d => `gsn-node ${d.kind}`)
       .attr("transform", d => `translate(${d.x},${d.y})`);
+
 
   const defG = g.selectAll("g.gsn-node.def")
     .data(defNodes)
@@ -390,28 +439,94 @@ export function visualizeSPO(rows, {
     .text(d => d.label)
     .append("title").text(d => `${d.id} (challenges ${d.challenges})`);
 
-  function clearAll(){ nodeG.attr("class", "gsn-node"); 
-                       ctxG.attr( "class", "gsn-node ctx");
-                       defG.attr( "class", "gsn-node def");}
+  function clearAll() {
+    nodeG.attr("class", d => `gsn-node ${d.kind}`);
+    ctxG.attr("class", "gsn-node ctx");
+    defG.attr("class", "gsn-node def");
+    d3.select(rootEl)
+      .select("svg.gsn-svg")
+      .selectAll("path.undev-diamond")
+      .remove();
+  }
+
   
-  function highlightByIds(ids, klass){ const S = new Set(ids.map(String));
-                                       nodeG.classed(klass, d => S.has(d.id));
-                                       ctxG.classed( klass, d => S.has(String(d.id)));
-                                       defG.classed( klass, d => S.has(String(d.id)));}
+  function highlightByIds(ids, klass){ 
+    const S = new Set(ids.map(String));
+
+    nodeG.classed(klass, d => S.has(d.id));
+    ctxG.classed( klass, d => S.has(String(d.id)));
+    defG.classed( klass, d => S.has(String(d.id)));
+
+    if (klass === "undev") {
+      updateUndevDiamonds(rootEl);
+    }
+  }
 
   window.graphCtl = { clearAll, highlightByIds, fit, reset };
 
-  nodeG.append("rect")
-    .attr("width" , d => labelWidth(d.label))
-    .attr("height", 26)
-    .attr("x"     , d => -labelWidth(d.label)/2)
-    .attr("y"     , -13);
+  // --- Core node shapes per GSN element kind -----------------------------
+  const shapeG = nodeG.append("g")
+    .attr("class", "gsn-node-shape");
 
+  shapeG.each(function (d) {
+    const gShape = d3.select(this);
+    const w = d.w;
+    const h = d.h;
+    const x = -w / 2;
+    const y = -h / 2;
+
+    if (d.kind === "solution") {
+      // Circle for solutions
+      const r = Math.max(w, h) / 2;
+      gShape.append("circle")
+        .attr("cx", 0)
+        .attr("cy", 0)
+        .attr("r", r);
+    } else if (d.kind === "strategy") {
+      // Parallelogram for strategies
+      const slant = Math.min(20, w / 5);
+      const points = [
+        [x + slant,     y],
+        [x + w + slant, y],
+        [x + w - slant, y + h],
+        [x - slant,     y + h]
+      ].map(p => p.join(",")).join(" ");
+      gShape.append("polygon")
+        .attr("points", points);
+    } else if (d.kind === "assumption" || d.kind === "justification") {
+      // Oval for assumption / justification
+      const rx = w / 2;
+      const ry = h / 2;
+      gShape.append("ellipse")
+        .attr("cx", 0)
+        .attr("cy", 0)
+        .attr("rx", rx)
+        .attr("ry", ry);
+    } else {
+      // Plain rectangle for goals (default)
+      gShape.append("rect")
+        .attr("width",  w)
+        .attr("height", h)
+        .attr("x", x)
+        .attr("y", y);
+    }
+  });
+
+  // Centered node label (e.g. "G1", "S1", "Sn1")
   nodeG.append("text")
     .attr("text-anchor", "middle")
     .attr("dy", "0.35em")
     .text(d => d.label)
     .append("title").text(d => d.id);
+
+  // "A" / "J" marker near bottom-right for assumptions / justifications
+  const ajNodes = nodeG.filter(d => d.kind === "assumption" || d.kind === "justification");
+  ajNodes.append("text")
+    .attr("class", "gsn-node-tag")
+    .attr("text-anchor", "start")
+    .attr("x", d => d.w / 2 - 6)
+    .attr("y", d => d.h / 2 + 8)  // slightly outside the oval
+    .text(d => d.kind === "assumption" ? "A" : "J");
 
   const ctxG = g.selectAll("g.gsn-node.ctx")
     .data(ctxNodes)
@@ -562,6 +677,42 @@ export function visualizeSPO(rows, {
     }
 
     collectionsDrawn = true;
+  }
+
+  function updateUndevDiamonds(rootEl) {
+    const svg = d3.select(rootEl).select("svg.gsn-svg");
+
+    // Remove any existing diamonds so we don't duplicate them
+    svg.selectAll("path.undev-diamond").remove();
+
+    // For each undeveloped node, add a diamond under its rect
+    svg.selectAll("g.gsn-node.undev").each(function () {
+      const g = d3.select(this);
+      const shape = g.select("rect, circle, ellipse, polygon");
+      if (!shape.node()) return;
+
+      const box = shape.node().getBBox();
+
+      // Size of the diamond (half the “width” of the diamond)
+      const size = 6;
+
+      // Center X under the node, Y just below the rect
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height + size + 1; // +2px gap under the box
+
+      g.append("path")
+        .attr("class", "undev-diamond")
+        .attr(
+          "d",
+          `
+          M ${cx} ${cy - size}
+          L ${cx + size} ${cy}
+          L ${cx} ${cy + size}
+          L ${cx - size} ${cy}
+          Z
+        `
+        );
+    });
   }
 
   rootEl.querySelector('[data-act = "fit"]')?.addEventListener("click", fit);
