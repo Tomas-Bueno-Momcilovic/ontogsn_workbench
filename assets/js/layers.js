@@ -97,7 +97,7 @@ function bindingsToRows(iter) {
 }
 
 export function visualizeLayers(rows, {
-  mount  = "#graph",
+  mount  = ".gsn-host",
   width  = null,
   height = 520,
   label  = shorten,
@@ -531,8 +531,12 @@ export async function renderLayeredView(opts = {}) {
   const rows = bindingsToRows(res);
 
   // Create layered controller and *hand it to the app* so overlays continue to work
+  const host = opts.mount
+    || document.getElementById("rightPane")
+    || document.querySelector(".gsn-host");
+
   const ctl = visualizeLayers(rows, {
-    mount: "#graph",
+    mount: host,
     height: 520,
     label: shorten,
     // (Optional) customize layer labels here:

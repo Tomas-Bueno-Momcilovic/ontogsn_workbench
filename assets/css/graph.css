@@ -76,13 +76,22 @@
 }
 
 /* === Layout & UI ======================================================== */
-#graph, .gsn-host { height: 520px; min-width: 0; }
+.gsn-host {
+  height: 520px;
+  min-width: 0;
+}
 
-#graph.hide-ctx .gsn-node.ctx,
-#graph.hide-ctx .gsn-link.ctx { display: none; }
+/* Hide context / defeaters based on classes on the host */
+.gsn-host.hide-ctx .gsn-node.ctx,
+.gsn-host.hide-ctx .gsn-link.ctx {
+  display: none;
+}
 
-#graph.hide-def .gsn-node.def,
-#graph.hide-def .gsn-link.def { display: none; }
+.gsn-host.hide-def .gsn-node.def,
+.gsn-host.hide-def .gsn-link.def {
+  display: none;
+}
+
 
 .gsn-legend {
   display: flex;

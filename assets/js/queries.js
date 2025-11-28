@@ -6,7 +6,7 @@ import { visualizeSPO } from "./graph.js";
 // ---------- DOM handles ----------
 const outEl     = document.getElementById("out");
 const resultsEl = document.getElementById("results");
-const graphEl   = document.getElementById("graph");
+const graphEl   = document.getElementById("rightPane");
 
 const show = x => { if (outEl) outEl.textContent = (typeof x === "string" ? x : JSON.stringify(x, null, 2)); };
 

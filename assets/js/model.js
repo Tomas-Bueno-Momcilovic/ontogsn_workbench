@@ -987,13 +987,16 @@ async function ensureCarConfig() {
   return carConfig;
 }
 
-// Public entry point: render the car into the right-hand #graph block
 export async function renderModelView({
-  mount  = "#graph",
+  mount  = null,
   height = 520
 } = {}) {
-  const rootEl = typeof mount === "string" ? document.querySelector(mount) : mount;
-  if (!rootEl) throw new Error(`Model view: mount "${mount}" not found`);
+  const host = mount
+    || document.getElementById("rightPane")
+    || document.querySelector(".gsn-host");
+
+  const rootEl = typeof host === "string" ? document.querySelector(host) : host;
+  if (!rootEl) throw new Error(`Model view: mount host not found`);
 
   // Clean previous GSN graph / layered SVG if present
   if (app?.graphCtl && typeof app.graphCtl.destroy === "function") {

@@ -56,17 +56,20 @@ table.sparql thead th {
        white-space:pre-wrap; 
 }
 
-.split{
-       display:flex;
-       gap:12px;
-       align-items:stretch
+.split {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
 }
 
+/* Two fixed halves in the main split */
 #leftPane,
-#graph {
-       flex:1 1 0;
-       min-width:0;
+#rightPane {
+  flex: 0 0 50%;      /* take 50% each, don't grow/shrink based on content */
+  max-width: 50%;
+  min-width: 0;        /* allow inner content to overflow/scroll instead of stretching the flex item */
 }
+
 
 #results{
        max-height:520px;
@@ -177,4 +180,35 @@ body[aria-busy="true"] [data-query] {
 #leftPane {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  height: 520px;
+}
+
+#rightPane {
+  min-height: 0;
+  height: 520px;
+}
+
+#results,
+#editor-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#results table.sparql {
+  width: 100%;
+  table-layout: fixed;    /* columns share width, don't auto-grow */
+}
+
+#results table.sparql th,
+#results table.sparql td {
+  overflow: hidden;
+  text-overflow: ellipsis;  /* cut off very long IRIs nicely */
+  word-wrap: break-word;    /* or use: overflow-wrap: anywhere; */
+}
+
+#results {
+  max-height: 520px;
 }

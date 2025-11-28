@@ -1,7 +1,7 @@
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 
 export function visualizeSPO(rows, {
-  mount      = "#graph",
+  mount      = ".gsn-host",
   width      = null,
   height     = 520,
   supportedBy = ["supported by",
