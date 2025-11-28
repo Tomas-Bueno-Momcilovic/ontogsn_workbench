@@ -149,7 +149,7 @@ body[aria-busy="true"] [data-query] {
 }
 .right { 
        min-width: 0; 
-} /* allow graph to shrink */
+}
 
 .tabs { 
        display:flex; 

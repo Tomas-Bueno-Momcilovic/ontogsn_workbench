@@ -1,12 +1,13 @@
 import init, { Store } from "https://cdn.jsdelivr.net/npm/oxigraph@0.5.2/web.js";
 import { visualizeSPO } from "./graph.js";
+import panes from "./panes.js";
 
 /** @typedef {{s:string,p:string,o:string}} SPORow */
 
 // ---------- DOM handles ----------
 const outEl     = document.getElementById("out");
 const resultsEl = document.getElementById("results");
-const graphEl   = document.getElementById("rightPane");
+const graphEl   = panes.getRightPane();
 
 const show = x => { if (outEl) outEl.textContent = (typeof x === "string" ? x : JSON.stringify(x, null, 2)); };
 
@@ -36,17 +37,28 @@ const PATHS = {
 
 // One global-ish app instance to keep state tidy
 class QueryApp {
-  /** @type {Store|null} */                     store = null;
-  /** @type {ReturnType<visualizeSPO>|null} */  graphCtl = null;
-  /** @type {(e:Event)=>void} */                _onResize = () => {};
-  /** @type {Map<string, Set<string>>} */       overlays = new Map();
+  constructor() {
+    /** @type {Store|null} */
+    this.store = null;
+    this._initPromise = null;
+    /** @type {ReturnType<visualizeSPO>|null} */
+    this.graphCtl = null;
+    /** @type {(e:Event)=>void} */
+    this._onResize = () => {};
+    /** @type {Map<string, Set<string>>} */
+    this.overlays = new Map();
+  }
 
   async init() {
-    await init();
-    this.store = new Store();
-    await this._loadTTL();
-    this._attachUI();
-    await this._buildModulesBar();
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = (async () => {
+      await init();
+      this.store = new Store();
+      await this._loadTTL();
+      this._attachUI();
+      await this._buildModulesBar();
+    })();
+    return this._initPromise;
   }
 
   async run(queryPath, overlayClass = null, { noTable = false } = {}) {
@@ -84,13 +96,10 @@ class QueryApp {
           this._setStatus?.('Collections overlay not available. Draw the graph first.');
           return;
         }
-        this.graphCtl.addCollections(rows, { dx: 90, dy: 26 }); // tweak spacing if you like
+        this.graphCtl.addCollections(rows, { dx: 90, dy: 26 });
         this._setStatus?.(`Added ${rows.length} collection link${rows.length===1?"":"s"}.`);
 
-        // keep your resize handler + window.graphCtl lines (same as other branches)
-        window.removeEventListener("resize", this._onResize);
-        this._onResize = () => this.graphCtl && this.graphCtl.fit();
-        window.addEventListener("resize", this._onResize);
+        this.graphCtl?.fit?.();
         window.graphCtl = this.graphCtl;
         return;
       }
@@ -99,15 +108,25 @@ class QueryApp {
       if (hasS && hasP && hasO) {
         console.debug("[graph/run] rows:", rows.length, rows.slice(0, 5));
 
-        if (this.graphCtl && typeof this.graphCtl.destroy === "function") {
-          this.graphCtl.destroy();
-          this.graphCtl = null;
-        } else {
-          this._setStatus?.("No triples found in results (expecting ?s ?p ?o).");
+        const host =
+          panes.getRightPane() ||
+          document.getElementById("rightPane") ||
+          document.querySelector(".gsn-host");
+
+        if (!host) {
+          console.error("[graph/run] No right-pane host element found");
+          this._setStatus?.("Cannot render graph: right pane host not found.");
+          return;
+        }
+
+        if (typeof panes.clearRightPane === "function") {
+          panes.clearRightPane();
+        } else if (host instanceof Element) {
+          host.innerHTML = "";
         }
 
         // Pass FULL rows (s,p,o,type,...) to graph.js
-        this.graphCtl = visualizeSPO(rows, {
+        const newCtl = visualizeSPO(rows, {
           mount: graphEl,
           height: 520,
           label: shorten,
@@ -131,18 +150,15 @@ class QueryApp {
           ],
           theme: "light",
         });
-      
+
+        panes.setRightController("graph", newCtl);
+        this.graphCtl = newCtl;
         if (this.graphCtl?.fit) this.graphCtl.fit();
         this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
         this._applyVisibility();
-
-        window.removeEventListener("resize", this._onResize);
-        this._onResize = () => this.graphCtl && this.graphCtl.fit();
-        window.addEventListener("resize", this._onResize);
-
-        // expose for console/tests
-        window.graphCtl = this.graphCtl;
         this._reapplyOverlays();
+        window.graphCtl = this.graphCtl;
+
         return;
 
       }
@@ -162,9 +178,6 @@ class QueryApp {
         this._reapplyOverlays();
         this._setStatus?.(`Highlighted ${ids.length} ${cls} node${ids.length === 1 ? "" : "s"}.`);
 
-        window.removeEventListener("resize", this._onResize);
-        this._onResize = () => this.graphCtl && this.graphCtl.fit();
-        window.addEventListener("resize", this._onResize);
         window.graphCtl = this.graphCtl;
         return;        
       }
@@ -179,12 +192,6 @@ class QueryApp {
       }
 
       this._setStatus?.("Query returned an unsupported shape. Expect either ?s ?p ?o (graph) or single ?s (overlay).");
-
-      // Keep resize listener idempotent
-      window.removeEventListener("resize", this._onResize);
-      this._onResize = () => this.graphCtl && this.graphCtl.fit();
-      window.addEventListener("resize", this._onResize);
-      // You can keep a global for compatibility if other scripts poke it
       window.graphCtl = this.graphCtl;
     } catch (e) {
       outEl.textContent =
@@ -228,6 +235,23 @@ class QueryApp {
       if (hasS && hasP && hasO) {
         console.debug("[graph/inline] rows:", rows.length, rows.slice(0, 5));
 
+        const host =
+          panes.getRightPane() ||
+          document.getElementById("rightPane") ||
+          document.querySelector(".gsn-host");
+
+        if (!host) {
+          console.error("[graph/run] No right-pane host element found");
+          this._setStatus?.("Cannot render graph: right pane host not found.");
+          return;
+        }
+
+        if (typeof panes.clearRightPane === "function") {
+          panes.clearRightPane();
+        } else if (host instanceof Element) {
+          host.innerHTML = "";
+        }
+
         if (this.graphCtl?.destroy) { 
           this.graphCtl.destroy(); 
           this.graphCtl = null; 
@@ -235,33 +259,39 @@ class QueryApp {
           this._setStatus?.("No triples found in results (expecting ?s ?p ?o).");
         }
 
-        this.graphCtl = visualizeSPO(rows, {
+        const newCtl = visualizeSPO(rows, {
           mount: graphEl,
           height: 520,
           label: shorten,
           supportedBy: [
-            "supported by","gsn:supportedBy",
-            "https://w3id.org/OntoGSN/ontology#supportedBy","http://w3id.org/gsn#supportedBy",
+            "supported by",
+            "gsn:supportedBy",
+            "https://w3id.org/OntoGSN/ontology#supportedBy",
+            "http://w3id.org/gsn#supportedBy",
           ],
           contextOf: [
-            "in context of","gsn:inContextOf",
-            "https://w3id.org/OntoGSN/ontology#inContextOf","http://w3id.org/gsn#inContextOf",
+            "in context of",
+            "gsn:inContextOf",
+            "https://w3id.org/OntoGSN/ontology#inContextOf",
+            "http://w3id.org/gsn#inContextOf",
           ],
           challenges: [
-            "challenges","gsn:challenges",
-            "https://w3id.org/OntoGSN/ontology#challenges","http://w3id.org/gsn#challenges",
+            "challenges",
+            "gsn:challenges",
+            "https://w3id.org/OntoGSN/ontology#challenges",
+            "http://w3id.org/gsn#challenges",
           ],
           theme: "light",
         });
-
+      
+        panes.setRightController("graph", newCtl);
+        this.graphCtl = newCtl;
         this.graphCtl?.fit?.();
+        this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
         this._applyVisibility();
-
-        window.removeEventListener("resize", this._onResize);
-        this._onResize = () => this.graphCtl && this.graphCtl.fit();
-        window.addEventListener("resize", this._onResize);
-        window.graphCtl = this.graphCtl;
         this._reapplyOverlays();
+        window.graphCtl = this.graphCtl;
+
         return;
       }
 
@@ -338,7 +368,7 @@ class QueryApp {
 
 
   _applyVisibility() {
-    const root = graphEl; // already defined at top of queries.js
+    const root = panes.getRightPane(); // already defined at top of queries.js
     const ctx = document.getElementById("toggle-context");
     const df  = document.getElementById("toggle-defeat");
     if (!root) return;

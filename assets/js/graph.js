@@ -147,8 +147,18 @@ export function visualizeSPO(rows, {
   `;
 
   const svgNode = rootEl.querySelector(".gsn-svg");
+  if (!svgNode) throw new Error("visualizeSPO: internal error – svg root not found");
+
+  const rect       = rootEl.getBoundingClientRect();
+  const pixelWidth = width ?? Math.max(300, rect.width || 800);
+
+  svgNode.setAttribute("width",  String(pixelWidth));
+  svgNode.setAttribute("height", String(height));
+
+  /*
   if (width != null) svgNode.setAttribute("width", String(width));
   svgNode.setAttribute("height", String(height));
+  */
 
   const svg              = d3.select(svgNode);
   const g                = svg.select(".gsn-viewport");
@@ -560,8 +570,9 @@ export function visualizeSPO(rows, {
 
   function clearAll() {
     nodeG.attr("class", d => `gsn-node ${d.kind}`);
-    ctxG.attr("class", "gsn-node ctx");
+    ctxG.attr("class", d => `gsn-node ctx ${d.kind}`);
     defG.attr("class", "gsn-node def");
+
     d3.select(rootEl)
       .select("svg.gsn-svg")
       .selectAll("path.undev-diamond")
@@ -580,8 +591,6 @@ export function visualizeSPO(rows, {
       updateUndevDiamonds(rootEl);
     }
   }
-
-  window.graphCtl = { clearAll, highlightByIds, fit, reset };
 
   // --- Core node shapes per GSN element kind -----------------------------
   const shapeG = nodeG.append("g")
@@ -703,7 +712,13 @@ export function visualizeSPO(rows, {
 
   function fit(pad = 40) {
     svg.interrupt();
+
+    const gNode = g.node();
+    if (!gNode) return;
+
     const bbox = g.node().getBBox();
+    if (!bbox.width || !bbox.height) return;
+    
     const vw   = svgNode.clientWidth || svgNode.viewBox.baseVal.width || 800;
     const vh   = svgNode.clientHeight || svgNode.viewBox.baseVal.height || height;
     const sx   = (vw - pad * 2) / bbox.width;
@@ -736,13 +751,13 @@ export function visualizeSPO(rows, {
 
   function addCollections(rows, opts = {}) {
     // rows: [{ctx, clt, item}]
-    const dxHub     = opts.dxHub     ?? 90;  // hub distance to the right of the anchor
-    const dyHub     = opts.dyHub     ?? 40;
-    const dyStride  = opts.dyStride  ?? 30;  // vertical spacing between multiple hubs per same ctx
-    const rHub      = opts.rHub      ?? 5;   // hub (collection) radius
-    const rItem     = opts.rItem     ?? 4;   // item dot radius
-    const armLen    = opts.armLen    ?? 50;  // hub→item spoke length
-    const maxPerRow = opts.maxPerRow ?? 6;   // number of items to arrange around hub before next ring
+    const dxHub     = opts.dxHub     ?? opts.dx     ?? 90;
+    const dyHub     = opts.dyHub     ?? opts.dy     ?? 40;
+    const dyStride  = opts.dyStride  ?? 30;
+    const rHub      = opts.rHub      ?? 5;
+    const rItem     = opts.rItem     ?? 4;
+    const armLen    = opts.armLen    ?? 50;
+    const maxPerRow = opts.maxPerRow ?? 6;
 
     const groups = new Map(); // key: `${ctx}||${clt}` → { ctx, clt, items: Set<item> }
     for (const r of rows) {
