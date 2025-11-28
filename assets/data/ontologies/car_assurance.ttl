@@ -15,8 +15,6 @@ ex:AC_CarStaticLoadSafety
                  ex:car_J1, ex:car_Sn1,
                  ex:car_Sn2, ex:car_Sn3.
 
-
-
 ex:car_G1
     a gsn:Goal ;
     schema:identifier "G1" ;

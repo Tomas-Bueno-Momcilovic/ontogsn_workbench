@@ -20,17 +20,17 @@ const BASE_CAR  = "https://example.org/car-demo#";
 
 // Centralize paths in one place for readability
 const PATHS = {
-  onto    : "/assets/data/ontogsn_lite.ttl",
-  example : "/assets/data/example_ac.ttl",
-  car     : "/assets/data/car.ttl",
+  onto    : "/assets/data/ontologies/ontogsn_lite.ttl",
+  example : "/assets/data/ontologies/example_ac.ttl",
+  car     : "/assets/data/ontologies/car.ttl",
   q       : {
-    nodes     : "/assets/data/read_all_nodes.sparql",
-    rels      : "/assets/data/read_all_relations.sparql",
-    visualize : "/assets/data/visualize_graph.sparql",
-    propCtx   : "/assets/data/propagate_context.sparql",
-    propDef   : "/assets/data/propagate_defeater.sparql",
-    listModules     : "/assets/data/list_modules.sparql",
-    visualizeByMod  : "/assets/data/visualize_graph_by_module.sparql"
+    nodes     : "/assets/data/queries/read_all_nodes.sparql",
+    rels      : "/assets/data/queries/read_all_relations.sparql",
+    visualize : "/assets/data/queries/visualize_graph.sparql",
+    propCtx   : "/assets/data/queries/propagate_context.sparql",
+    propDef   : "/assets/data/queries/propagate_defeater.sparql",
+    listModules     : "/assets/data/queries/list_modules.sparql",
+    visualizeByMod  : "/assets/data/queries/visualize_graph_by_module.sparql"
   }
 };
 
@@ -95,10 +95,9 @@ class QueryApp {
         return;
       }
       
-      // The graph expects ?s ?p ?o
-      const graphRows = toTriples(rows);
-      if (graphRows.length) {
-        console.debug("[graph/run] triples:", graphRows.length, graphRows.slice(0, 5));
+      // GRAPH CASE: ?s ?p ?o (plus optional ?type etc.)
+      if (hasS && hasP && hasO) {
+        console.debug("[graph/run] rows:", rows.length, rows.slice(0, 5));
 
         if (this.graphCtl && typeof this.graphCtl.destroy === "function") {
           this.graphCtl.destroy();
@@ -107,7 +106,8 @@ class QueryApp {
           this._setStatus?.("No triples found in results (expecting ?s ?p ?o).");
         }
 
-        this.graphCtl = visualizeSPO(graphRows, {
+        // Pass FULL rows (s,p,o,type,...) to graph.js
+        this.graphCtl = visualizeSPO(rows, {
           mount: graphEl,
           height: 520,
           label: shorten,
@@ -133,7 +133,7 @@ class QueryApp {
         });
       
         if (this.graphCtl?.fit) this.graphCtl.fit();
-        this._setStatus?.(`Rendered graph from ${graphRows.length} triples.`);
+        this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
         this._applyVisibility();
 
         window.removeEventListener("resize", this._onResize);
@@ -224,11 +224,9 @@ class QueryApp {
       const hasP = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "p");
       const hasO = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "o");
 
-      // Graph case
-      const graphRows = toTriples(rows);
-
-      if (graphRows.length) {
-        console.debug("[graph/inline] triples:", graphRows.length, graphRows.slice(0, 5));
+      // Graph case: full rows (s,p,o,type,...)
+      if (hasS && hasP && hasO) {
+        console.debug("[graph/inline] rows:", rows.length, rows.slice(0, 5));
 
         if (this.graphCtl?.destroy) { 
           this.graphCtl.destroy(); 
@@ -237,7 +235,7 @@ class QueryApp {
           this._setStatus?.("No triples found in results (expecting ?s ?p ?o).");
         }
 
-        this.graphCtl = visualizeSPO(graphRows, {
+        this.graphCtl = visualizeSPO(rows, {
           mount: graphEl,
           height: 520,
           label: shorten,

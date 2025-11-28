@@ -383,13 +383,6 @@ ex:car1
   ex:luggageHeight  "0.4"^^xsd:float ;
   ex:luggageCenterY "0.23"^^xsd:float .
 
-ex:car1 ex:hasPart ex:luggage .
-ex:car1
-  ex:luggageWidth   "0.8"^^xsd:float ;
-  ex:luggageDepth   "0.3"^^xsd:float ;
-  ex:luggageHeight  "0.4"^^xsd:float ;
-  ex:luggageCenterY "0.23"^^xsd:float .
-
 # Positioning
 ex:car1 ex:onTopOf ex:rearLeftWheel, ex:rearRightWheel,
                    ex:frontLeftWheel, ex:frontRightWheel .
