@@ -18,23 +18,6 @@
 
   <div class="split">
     <div id="leftButtons" class="btns">
-      <button id="reset-cache">Reset cache</button>
-        <script type="module">
-        document.getElementById('reset-cache').addEventListener('click', async () => {
-          try {
-            if ('caches' in window) for (const n of await caches.keys()) await caches.delete(n);
-            localStorage.clear(); sessionStorage.clear();
-            if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
-            if (window.indexedDB && indexedDB.databases) {
-              for (const db of await indexedDB.databases()) {
-                if (!db.name) continue;
-                await new Promise(res => { const req = indexedDB.deleteDatabase(db.name); req.onblocked=req.onerror=req.onsuccess=()=>res(); });
-              }
-            }
-            location.reload();
-          } catch (e) { console.error(e); alert('Reset error: '+e.message); }
-        });
-        </script>
       <button data-query="/assets/data/queries/read_all_nodes.sparql">See Node Info</button>
       <button data-query="/assets/data/queries/read_all_relations.sparql">See Relations</button>
       <button id="tab-table"  class="tab active">Table</button>
