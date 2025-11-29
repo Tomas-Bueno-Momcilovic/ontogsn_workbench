@@ -15,15 +15,22 @@ const show = x => { if (outEl) outEl.textContent = (typeof x === "string" ? x : 
 const BASE_URL  = new URL("../../", import.meta.url);
 const BASE_PATH = (BASE_URL.protocol.startsWith("http") ? BASE_URL.href : BASE_URL.pathname).replace(/\/$/, "");
 const MIME_TTL = "text/turtle";
+
+// Ontology prefixes
+// --OntoGSN prefix
 const BASE_ONTO = "https://w3id.org/OntoGSN/ontology#";
+// --Assurance case prefix
 const BASE_CASE = "https://w3id.org/OntoGSN/cases/ACT-FAST-robust-llm#";
+// --Domain ontology prefix
 const BASE_CAR  = "https://example.org/car-demo#";
 
-// Centralize paths in one place for readability
+// Paths to data files
 const PATHS = {
+  // --Paths to the ontologies
   onto    : "/assets/data/ontologies/ontogsn_lite.ttl",
   example : "/assets/data/ontologies/example_ac.ttl",
   car     : "/assets/data/ontologies/car.ttl",
+  // --Paths to base queries
   q       : {
     nodes     : "/assets/data/queries/read_all_nodes.sparql",
     rels      : "/assets/data/queries/read_all_relations.sparql",
@@ -390,7 +397,6 @@ class QueryApp {
   }
 
   async _loadTTL() {
-    // Always load from BASE_PATH, used in both TEST and PROD
     const ontoURL    = `${BASE_PATH}${PATHS.onto}`;
     const exampleURL = `${BASE_PATH}${PATHS.example}`;
     const carURL     = `${BASE_PATH}${PATHS.car}`;
