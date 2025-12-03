@@ -6,7 +6,7 @@ This directory contains the data assets for the OntoGSN frontend application. It
 
 ```
 /assets/data/
-├── actFast.md
+├── report.md
 ├── ontologies/
 │   ├── car_assurance.ttl
 │   ├── car.ttl

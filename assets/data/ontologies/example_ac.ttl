@@ -27,8 +27,8 @@ case:AC_ACT_FASTRobustLLM
 case:AC_ACT_FASTRobustLLM ex:summarizedIn case:ACT_FAST_Document .
 
 case:ACT_FAST_Document a ex:Document ;
-                       #schema:contentUrl "https://fortiss.github.io/OntoGSN/assets/data/actFast.md" .
-                       schema:contentUrl "http://localhost:8000/assets/data/actFast.md" .
+                       #schema:contentUrl "https://fortiss.github.io/OntoGSN/assets/data/report.md" .
+                       schema:contentUrl "http://localhost:8000/assets/data/report.md" .
 
 case:ARG_Robustness
     a gsn:Argument ;

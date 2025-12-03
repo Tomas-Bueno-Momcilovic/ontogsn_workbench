@@ -2,19 +2,19 @@
 
 ## 1. System overview
 
-The system under consideration is the **OntoGSN Demo Hatchback**, a small late-1970s style Yugoslav 3-door hatchback used as a demonstration vehicle in knowledge-augmented assurance case visualizations. It is inspired by the Zastava 101 and manufactured in the former Yugoslavia.
+The system under consideration is the **OntoGSN Demo Hatchback**, a small 3-door hatchback used as a demonstration vehicle in knowledge-augmented assurance case visualizations. It is inspired by the Zastava 101, which was manufactured in the late-1970s in former Yugoslavia.
 
 The car is front-wheel-drive with a 4-speed manual transmission and seating for up to **five occupants**. The assurance case focuses on **static structural loads**, particularly those acting on the **cabin** and the vehicle structure during planned demonstration drives.
 
 ### 1.1 Key static-load properties
 
-| Property                          | Value     | Unit | Interpretation                                                  |
-|-----------------------------------|-----------|------|-----------------------------------------------------------------|
-| **Payload rating**                | 400       | kg   | Maximum allowed combined mass of occupants + in-cabin cargo     |
-| **Roof-load rating**              | 50        | kg   | Maximum allowed static load on the roof (e.g., luggage, box)    |
-| **Total permitted mass**          | 1220      | kg   | Maximum allowed overall vehicle mass (curb + payload)           |
-| **Seating capacity**              | 5         | –    | Maximum number of occupants                                     |
-| **Cargo volume (cabin/luggage)**  | 320       | L    | Approximate usable cargo space                                  |
+| Property                          | Value     | Unit | Interpretation                                                     |
+|-----------------------------------|-----------|------|--------------------------------------------------------------------|
+| **Payload rating**                | 400       | kg   | Maximum allowed combined mass of occupants + in-cabin cargo        |
+| **Roof-load rating**              | 50        | kg   | Maximum allowed static load on the [roof rack]($roofRack)          |
+| **Total permitted mass**          | 1220      | kg   | Maximum allowed overall vehicle mass (curb + payload)              |
+| **Seating capacity**              | 5         | –    | Maximum number of occupants                                        |
+| **Cargo volume (cabin/luggage)**  | 320       | L    | Approximate usable cargo space                                     |
 
 These parameters form the basis for the static load assurance arguments in this document.
 

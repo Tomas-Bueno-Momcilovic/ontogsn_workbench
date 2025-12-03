@@ -1,13 +1,13 @@
 # OntoGSN Web-Based Interface
 
 
-![Screenshot showing two interface views: a Markdown document view on the left detailing an assurance case, and a 3D interactive car model view on the right highlighting vehicle parts and displaying roof load status.](assets\images\interface_docVSmodel.PNG "Interface, document view (left pane) and model view (right pane).")
+![Screenshot showing two interface views: a Markdown document view on the left detailing an assurance case, and a 3D interactive car model view on the right highlighting vehicle parts and displaying roof load status.](assets/images/interface_docVSmodel.PNG "Interface, document view (left pane) and model view (right pane).")
 
-![Screenshot showing two interface views: a scrollable table displaying GSN node details (ID, type, statement) on the left, and a graph visualization of an OntoGSN assurance case with interconnected nodes and edges on the right.](assets\images\interface_tableVSgraph.PNG "Interface, table view (left pane) and graph view (right pane).")
+![Screenshot showing two interface views: a scrollable table displaying GSN node details (ID, type, statement) on the left, and a graph visualization of an OntoGSN assurance case with interconnected nodes and edges on the right.](assets/images/interface_tableVSgraph.PNG "Interface, table view (left pane) and graph view (right pane).")
 
-This codebase implements a web-based interface for visualizing and interacting with Goal Structuring Notation (GSN, v3) assurance cases that are modeled and extensible using OWL/RDF web ontologies. The interface has two facets:
-1. a **prototypical app** for users to explore complex arguments, view underlying data in different ways, and dynamically interact and extend the argument graph with domain ontologies;
-2. an **open sandbox** for developers to test and extend what is possible to do with assurance cases, and everything they need to be connected with (e.g., models, documents, code, etc.).
+This codebase implements a web-based interface for visualizing and interacting with Goal Structuring Notation (GSN v3) assurance cases that are modeled and extended using OWL/RDF web ontologies. The interface has two facets:
+1. a **prototypical app** for users to explore complex arguments, view underlying data in different ways, and dynamically integrate domain ontologies;
+2. an **open sandbox** for developers to test and extend what is possible with assurance cases and related artifacts (e.g., models, documents, code, etc.).
 
 The interface leverages an in-browser RDF triple store via Oxigraph to load and query ontologies, visualizing them as interactive 2D graphs (using D3.js) and 3D models (using Three.js).
 
@@ -39,7 +39,7 @@ For more advanced use cases, follow the instructions below.
 
 #### >> Note for less technical users
 
-The current version of the interface is **not** easy to deploy or extend by users who are not comfortable with coding. 
+The current version of the interface is **not yet** easy to deploy or extend for users who are not comfortable with coding. 
 
 However, we may change this in the future, and will be happy to support less technical users (e.g., *assurance engineers*) who would nonetheless like to contribute in the meantime. If you fit that description, please reach out to me via `momcilovic [at] fortiss [dot] org`.
 
@@ -74,7 +74,7 @@ python -m http.server 8000
 To use the web app with your data [³](#footnote-id), follow the steps below:
 1. Create your GSN assurance case as an ontology.
 2. Create (or reuse) your domain ontologies, and add hooks to your assurance case.
-3. Save the ontologies as `.ttl` (Turtle) files and place them in `.assets/data/ontologies/`.
+3. Save the ontologies as `.ttl` (Turtle) files and place them in `./assets/data/ontologies/`.
 4. Open `queries.js` and add your ontology prefixes and paths following the syntax below.
 ```js
 // PREFIXES
@@ -171,7 +171,7 @@ The main entry point of the application. It defines the UI layout, including but
 
 -   **`panes.js`**: A simple UI manager that controls the content of the left and right panes. It handles the lifecycle (creation, destruction) of the controllers for the different views (graph, model, layers).
 -   **`editor.js`**: Provides a simple form-based editor to create new GSN elements. It uses a SPARQL `INSERT` template (`create_gsn_element.sparql`) and populates it with user-provided data to add new nodes to the graph.
--   **`document.js`**: Manages the "Document" view. It fetches and renders Markdown files (e.g., `actFast.md`). A key feature is its ability to parse special links within the Markdown (e.g., `$roof-rack`) and turn them into interactive elements that query the ontology to display tooltips with details about the referenced entity.
+-   **`document.js`**: Manages the "Document" view. It fetches and renders Markdown files (e.g., `report.md`). A key feature is its ability to parse special links within the Markdown (e.g., `$roof-rack`) and turn them into interactive elements that query the ontology to display tooltips with details about the referenced entity.
 
 ## Data Interaction Flow
 
@@ -196,4 +196,4 @@ The interaction between the JavaScript files and the data assets is central to t
 4.  **Content Integration**:
     -   A user clicks the "Document" tab.
     -   `document.js` executes `read_document.sparql` to find the path to the relevant Markdown file.
-    -   It then fetches and renders `actFast.md`, creating a bridge between the formal GSN graph and its narrative description.
+    -   It then fetches and renders `report.md`, creating a bridge between the formal GSN graph and its narrative description.
