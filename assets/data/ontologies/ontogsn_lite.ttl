@@ -13,7 +13,7 @@
 @prefix swrla: <http://swrl.stanford.edu/ontologies/3.3/swrla.owl#> .
 @prefix swrlb: <http://www.w3.org/2003/11/swrlb#> .
 @prefix terms: <http://purl.org/dc/terms/> .
-@prefix schema: <http://schema.org/> .
+@prefix schema: <https://schema.org/> .
 @base <https://w3id.org/OntoGSN/ontology#> .
 
 <https://w3id.org/OntoGSN/ontology> rdf:type owl:Ontology ;
