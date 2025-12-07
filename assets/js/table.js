@@ -1,8 +1,6 @@
-// assets/js/table.js
-import app from "./queries.js";
+import app   from "./queries.js";
 import panes from "./panes.js";
 
-// Mirror BASE_PATH logic from document.js
 const BASE_URL  = new URL("../../", import.meta.url);
 const BASE_PATH = (BASE_URL.protocol.startsWith("http")
   ? BASE_URL.href
@@ -76,11 +74,11 @@ async function fetchQueryText(queryPath) {
   return (await r.text()).replace(/^\uFEFF/, "");
 }
 
-function renderTableInto(rootEl, rows) {
-  if (!rootEl) return;
+function renderTableInto(tableEl, rows) {
+  if (!tableEl) return;
 
   if (!rows.length) {
-    rootEl.innerHTML = "<p>No results.</p>";
+    tableEl.innerHTML = "<p>No results.</p>";
     return;
   }
 
@@ -97,17 +95,18 @@ function renderTableInto(rootEl, rows) {
   }
   html += "</tbody></table>";
 
-  rootEl.innerHTML = html;
+  tableEl.innerHTML = html;
 }
 
-async function runTableQueryInto(rootEl, queryPath) {
+async function runTableQueryInto(tableEl, queryPath) {
+  if (!tableEl) return;
   await app.init();
 
   const queryText     = await fetchQueryText(queryPath);
   const bindingRows   = await app.selectBindings(queryText);
   const displayRows   = bindingsToDisplayRows(bindingRows);
 
-  renderTableInto(rootEl, displayRows);
+  renderTableInto(tableEl, displayRows);
 }
 
 // --- boot ---------------------------------------------------------------
@@ -118,13 +117,31 @@ function initTableView() {
 
   // Initial placeholder
   root.innerHTML = `
-    <div class="table-placeholder">
-      <p>Run a SPARQL SELECT query (e.g., “See Node Info”) to see results here.</p>
-    </div>`;
+    <div class="table-pane">
+      <div class="table-controls">
+        <button type="button"
+                data-table-query="/assets/data/queries/read_all_nodes.sparql">
+          Nodes
+        </button>
+        <button type="button"
+                data-table-query="/assets/data/queries/read_all_relations.sparql">
+          Relations
+        </button>
+      </div>
+      <div id="table-content" class="table-content">
+        <div class="table-placeholder">
+          <p>Run a SPARQL SELECT query (e.g., “Node Info”) to see results here.</p>
+        </div>
+      </div>
+    </div>
+  `;
 
-  panes.activateLeftTab("tab-table");
+  const contentEl = root.querySelector("#table-content");
+  if (!contentEl) return;
 
-  runTableQueryInto(root, DEFAULT_TABLE_QUERY).catch(err => {
+  panes.activateLeftTab?.("tab-table");
+
+  runTableQueryInto(contentEl, DEFAULT_TABLE_QUERY).catch(err => {
     console.error("[TableView] error running default table query", err);
     root.innerHTML =
       `<p class="table-error">Error running default query: ${esc(err?.message || String(err))}</p>`;
@@ -143,9 +160,9 @@ function initTableView() {
     if (!queryPath) return;
 
     // Make sure the Table tab / pane is active
-    panes.activateLeftTab("tab-table");
+    panes.activateLeftTab?.("tab-table");
 
-    runTableQueryInto(root, queryPath).catch(err => {
+    runTableQueryInto(contentEl, queryPath).catch(err => {
       console.error("[TableView] error running table query", err);
       root.innerHTML =
         `<p class="table-error">Error running query: ${esc(err?.message || String(err))}</p>`;

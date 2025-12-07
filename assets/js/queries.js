@@ -1,6 +1,6 @@
-import init, { Store } from "https://cdn.jsdelivr.net/npm/oxigraph@0.5.2/web.js";
+import init, { Store }  from "https://cdn.jsdelivr.net/npm/oxigraph@0.5.2/web.js";
 import { visualizeSPO } from "./graph.js";
-import panes from "./panes.js";
+import panes            from "./panes.js";
 
 /** @typedef {{s:string,p:string,o:string}} SPORow */
 
@@ -340,10 +340,10 @@ class QueryApp {
         continue; 
       }
 
-      const label = r.label || shorten(iri);
-      const b = document.createElement("button");
+      const label   = r.label || shorten(iri);
+      const b       = document.createElement("button");
       b.textContent = label;
-      b.title = iri;
+      b.title       = iri;
       b.addEventListener("click", async (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -351,8 +351,8 @@ class QueryApp {
 
         const tmpl  = await fetchText(PATHS.q.visualizeByMod);
         let query   = tmpl;
-        query = query.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
-        query = query.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
+        query       = query.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
+        query       = query.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
         console.debug("[modules] query preview:", query.slice(0, 400));
         await this.runInline(query, null);
       });
@@ -362,20 +362,18 @@ class QueryApp {
 
 
   _applyVisibility() {
-    const root = panes.getRightPane(); // already defined at top of queries.js
-    const ctx = document.getElementById("toggle-context");
-    const df  = document.getElementById("toggle-defeat");
+    const root  = panes.getRightPane();
+    const ctx   = document.getElementById("toggle-context");
+    const df    = document.getElementById("toggle-defeat");
     if (!root) return;
     root.classList.toggle("hide-ctx", !(ctx?.checked));
     root.classList.toggle("hide-def", !(df?.checked));
-    this.graphCtl?.fit?.(); // keep the view tidy
+    this.graphCtl?.fit?.();
   }
 
   _reapplyOverlays() {
     if (!this.graphCtl) return;
-    // one clean slate
     if (this.graphCtl.clearAll) this.graphCtl.clearAll();
-    // then reapply each active class
     for (const [cls, idSet] of this.overlays.entries()) {
       if (idSet && idSet.size > 0) {
         this.graphCtl.highlightByIds(Array.from(idSet), cls);
@@ -389,9 +387,10 @@ class QueryApp {
     const carURL     = `${BASE_PATH}${PATHS.car}`;
     const codeURL    = `${BASE_PATH}${PATHS.code}`;
 
-    const [ttlOnto, ttlExample, ttlCar, ttlCode] = await Promise.all([getTTL(ontoURL), getTTL(exampleURL), getTTL(carURL),getTTL(codeURL)]);
+    const [ttlOnto, ttlExample, ttlCar, ttlCode] = 
+      await Promise.all([getTTL(ontoURL), getTTL(exampleURL), getTTL(carURL),getTTL(codeURL)]);
     try {
-      this.store.load(ttlOnto, MIME_TTL, BASE_ONTO);
+      this.store.load(ttlOnto,    MIME_TTL, BASE_ONTO);
       this.store.load(ttlExample, MIME_TTL, BASE_CASE);
       this.store.load(ttlCar,     MIME_TTL, BASE_CAR);
       this.store.load(ttlCode,    MIME_TTL, BASE_CODE);
@@ -634,8 +633,6 @@ app.selectBindings = async function selectBindings(queryText) {
   }
   return rows;
 };
-
-
 
 // Also export the app for debugging in console if needed
 export default app;

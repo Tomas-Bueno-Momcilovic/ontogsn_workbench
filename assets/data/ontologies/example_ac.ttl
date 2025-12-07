@@ -479,6 +479,5 @@ case:Sn11
 case:M_SQL a gsn:Module;
            rdfs:label "M:SQL";
            schema:identifier "M:SQL";
-           gsn:contains case:G_SQLInjectionSafe,
-           case:Sn_SanitizeInputFunction .
+           gsn:contains case:G11, case:Sn11 .
 
