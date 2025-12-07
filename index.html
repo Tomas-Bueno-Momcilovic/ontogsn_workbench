@@ -3,11 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>OntoGSN Interface Test Instance</title>
-  <link rel="stylesheet" href="/assets/css/app.css" />
-  <link rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
-  />
+  <title> OntoGSN Interface Test Instance </title>
+  <link rel = "stylesheet" href = "/assets/css/app.css" />
+  <link rel = "stylesheet" href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" />
 </head>
 <body>
   <script>
@@ -21,17 +19,15 @@
 
   <div class="split">
     <div id="leftButtons" class="btns">
-      <button data-query="/assets/data/queries/read_all_nodes.sparql">See Node Info</button>
-      <button data-query="/assets/data/queries/read_all_relations.sparql">See Relations</button>
-      <button id="tab-table"  class="tab active">Table</button>
-      <button id="tab-editor" class="tab" >Editor</button> 
-      <button id="tab-doc"    class="tab" data-doc-query="/assets/data/queries/read_document.sparql" data-doc-var="doc">Document</button>
-      <button id="tab-code" class="tab">Code</button>
+      <button id = "tab-table"  class = "tab active"> Table   </button>
+      <button id = "tab-editor" class = "tab"       > Editor  </button> 
+      <button id = "tab-doc"    class = "tab" data-doc-query = "/assets/data/queries/read_document.sparql" data-doc-var = "doc"> Document </button>
+      <button id = "tab-code"   class = "tab"> Code </button>
     </div>
     <div id="rightButtons" class="btns">
-      <button data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1">Tree View</button>
-      <button id="btn-layered-view" data-no-table="1">Layer View</button>
-      <button data-query="/assets/data/queries/read_carLoadWeight.sparql" id="btn-model-view" data-no-table="1">Model View</button>
+      <button data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1"> Tree </button>
+      <button id="btn-layered-view" data-no-table="1"> Layer </button>
+      <button data-query="/assets/data/queries/read_carLoadWeight.sparql" id="btn-model-view" data-no-table="1"> Model </button>
       <label><input id="toggle-context" type="checkbox" checked data-no-table="1"> Contextual</label>
       <label><input id="toggle-defeat" type="checkbox" checked data-no-table="1"> Dialectic</label>
       <label><input type="checkbox"
@@ -49,13 +45,12 @@
     </div>    
   </div>
 
-
   <div class="split">
     <div id="leftPane" class="pane pane-left">
-      <div id="results"></div>
-      <div id="editor-root" style="display:none;"></div>
-      <div id="doc-root" style="display:none;"></div>
-      <div id="code-root" style="display:none;"></div>
+      <div id = "results"></div>
+      <div id = "editor-root" style="display:none;"></div>
+      <div id = "doc-root" style="display:none;"></div>
+      <div id = "code-root" style="display:none;"></div>
     </div>
     <div id="rightPane" class="pane pane-right gsn-host"></div>
   </div>
@@ -98,17 +93,17 @@
   </div>
 
   <!-- Important: serve this file with a local web server (e.g., `python -m http.server`) -->
-  <script type = "module" src = "/assets/js/queries.js" ></script>
-  <script type = "module" src = "/assets/js/layers.js"  ></script>
-
   <script src  = "https://unpkg.com/n3@1.17.0/browser/n3.min.js"></script>
   <script type = "importmap">{"imports": {"three": "https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+  <script src = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <script type = "module" src = "/assets/js/queries.js" ></script>
+  <script type = "module" src = "/assets/js/layers.js"  ></script>
   <script type = "module" src = "/assets/js/model.js"   ></script>
   <script type = "module" src = "/assets/js/editor.js"  ></script>
+  <script type = "module" src = "/assets/js/table.js"   ></script>
   <script type = "module" src = "/assets/js/document.js"></script>
-
-  <script src = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <script type = "module" src = "/assets/js/code.js"></script>
+  <script type = "module" src = "/assets/js/code.js"    ></script>
 
 </body>
 </html>
