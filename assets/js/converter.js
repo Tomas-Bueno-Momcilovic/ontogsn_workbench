@@ -7,7 +7,24 @@
 // - Does *not* embed any ontology TBoxes; output is instance data only.
 
 // --- small helpers ---------------------------------------------------
+// /assets/js/converter.js
+//
+// AXML → ASCE-shaped Turtle ABox converter.
+// - Reads kettle.axml / ASCE XML.
+// - Emits individuals typed as asce:Node / asce:Link, using properties
+//   consistent with asce.ttl + asce_ontogsn_mapping.ttl.
+// - Does *not* embed any ontology TBoxes; output is instance data only.
 
+// --- small helpers ---------------------------------------------------
+
+function fileToText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload  = () => resolve(String(reader.result || ""));
+    reader.readAsText(file);
+  });
+}
 function fileToText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -43,10 +60,40 @@ function escapeMultilineLiteral(str) {
 }
 
 // --- XML → ASCE instance Turtle -------------------------------------
+function downloadText(filename, text) {
+  const blob = new Blob([text], { type: "text/turtle;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// --- Turtle literal helpers -----------------------------------------
+
+function escapeLiteral(str) {
+  return String(str)
+    .replace(/(["\\])/g, "\\$1")
+    .replace(/\n/g, "\\n");
+}
+
+function escapeMultilineLiteral(str) {
+  // For """...""" literals: escape """ inside
+  return String(str).replace(/"""/g, '\\"""');
+}
+
+// --- XML → ASCE instance Turtle -------------------------------------
 
 function xmlToAsceTurtle(xmlText, options = {}) {
   const baseIri = options.baseIri || "https://example.org/kettle#";
+function xmlToAsceTurtle(xmlText, options = {}) {
+  const baseIri = options.baseIri || "https://example.org/kettle#";
 
+  const parser = new DOMParser();
+  const xmlDoc = parser.parseFromString(xmlText, "application/xml");
   const parser = new DOMParser();
   const xmlDoc = parser.parseFromString(xmlText, "application/xml");
 
@@ -55,7 +102,14 @@ function xmlToAsceTurtle(xmlText, options = {}) {
   if (parserError) {
     throw new Error("XML parsing error: " + parserError.textContent);
   }
+  // Quick error check
+  const parserError = xmlDoc.getElementsByTagName("parsererror")[0];
+  if (parserError) {
+    throw new Error("XML parsing error: " + parserError.textContent);
+  }
 
+  const nodeSelector = "Node, node";
+  const linkSelector = "Link, link";
   const nodeSelector = "Node, node";
   const linkSelector = "Link, link";
 
@@ -68,9 +122,55 @@ function xmlToAsceTurtle(xmlText, options = {}) {
     "@prefix gsn:  <https://w3id.org/OntoGSN/ontology#> .",
     ""
   ].join("\n");
+  const header = [
+    "@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .",
+    "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+    "@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .",
+    "@prefix asce: <https://fortiss.github.io/OntoGSN/ontology/asce#> .",
+    "@prefix asce_m: <https://fortiss.github.io/OntoGSN/ontology/asce_mappings#> .",
+    "@prefix gsn:  <https://w3id.org/OntoGSN/ontology#> .",
+    ""
+  ].join("\n");
 
   let body = "";
+  let body = "";
 
+  // Helper to get trimmed text of a child element if present
+  const getChildText = (el, tag) => {
+    const child = el.querySelector(tag);
+    return child ? child.textContent.trim() : null;
+  };
+
+  // --- Map nodes ----------------------------------------------------
+  const nodeElements = Array.from(xmlDoc.querySelectorAll(nodeSelector));
+  nodeElements.forEach((el) => {
+    // Try several ways to get a stable node identifier
+    const id =
+      el.getAttribute("id") ||
+      el.getAttribute("reference") ||
+      getChildText(el, "reference");
+
+    if (!id) return; // skip nodes we can't identify
+
+    const typeStr =
+      el.getAttribute("type") ||
+      getChildText(el, "type");
+
+    const userId =
+      el.getAttribute("user-id") ||
+      getChildText(el, "user-id");
+
+    const rawUserTitle =
+      el.getAttribute("user-title") ||
+      getChildText(el, "user-title");
+
+    let statement = null;
+
+    // Prefer an explicit user-title if it has content
+    if (rawUserTitle && rawUserTitle.trim() !== "") {
+      statement = rawUserTitle.trim();
+    } else {
+      const attrStatement =
   // Helper to get trimmed text of a child element if present
   const getChildText = (el, tag) => {
     const child = el.querySelector(tag);
@@ -120,7 +220,35 @@ function xmlToAsceTurtle(xmlText, options = {}) {
     
     const nodeIri = `<${baseIri}node/${encodeURIComponent(id)}>`;
     const lines = [];
+        el.getAttribute("description");
 
+      if (attrStatement && attrStatement.trim() !== "") {
+        statement = attrStatement.trim();
+      } else {
+        // No meaningful title → leave statement null
+        statement = null;
+      }
+    }
+    
+    const nodeIri = `<${baseIri}node/${encodeURIComponent(id)}>`;
+    const lines = [];
+
+    // Class
+    lines.push(`${nodeIri} a asce:Node`);
+
+    // Optional: userId
+    if (userId) {
+      lines.push(`  ; asce:userId "${escapeLiteral(userId)}"`);
+    }
+
+    // Node type as asce:type (aligned with asce.ttl)
+    if (typeStr != null && typeStr !== "") {
+      const n = Number(typeStr);
+      if (Number.isInteger(n) && n >= 0) {
+        lines.push(`  ; asce:type "${n}"^^xsd:nonNegativeInteger`);
+      } else {
+        // fallback if the XML has non-numeric type values
+        lines.push(`  ; asce:type "${escapeLiteral(typeStr)}"`);
     // Class
     lines.push(`${nodeIri} a asce:Node`);
 
@@ -146,12 +274,22 @@ function xmlToAsceTurtle(xmlText, options = {}) {
         `  ; asce:userTitle """${escapeMultilineLiteral(statement)}"""`
       );
     }
+    }
+
+    // Node label / statement as asce:userTitle (subproperty of gsn:statement)
+    if (statement) {
+      lines.push(
+        `  ; asce:userTitle """${escapeMultilineLiteral(statement)}"""`
+      );
+    }
 
     lines.push("  .");
     body += lines.join("\n") + "\n\n";
   });
+    lines.push("  .");
+    body += lines.join("\n") + "\n\n";
+  });
 
-  // --- Map links ----------------------------------------------------
   // --- Map links ----------------------------------------------------
   const linkElements = Array.from(xmlDoc.querySelectorAll(linkSelector));
   linkElements.forEach((el) => {
@@ -164,6 +302,7 @@ function xmlToAsceTurtle(xmlText, options = {}) {
       el.getAttribute("target") ||
       getChildText(el, "destination-reference");
 
+    if (!source || !target) return;
     if (!source || !target) return;
 
     const typeStr =
@@ -220,7 +359,49 @@ function xmlToAsceTurtle(xmlText, options = {}) {
 
   return header + body;
 }
+  return header + body;
+}
 
+// --- high-level conversion for a single XML file -------------------
+
+async function convertXmlFile(file, { baseIri } = {}) {
+  const xmlText = await fileToText(file);
+  return xmlToAsceTurtle(xmlText, { baseIri });
+}
+
+// --- Converter panel wiring ----------------------------------------
+
+let lastConvertedTtl = null;
+
+function setupConverterPanel() {
+  const root = document.getElementById("converter-root");
+  if (!root) return;
+
+  root.innerHTML = `
+    <h2>AXML → Turtle converter</h2>
+    <p>Select an ASCE <code>.axml</code> file and convert it to a Turtle ABox file (instance data only).</p>
+    <div class="converter-row">
+      <input type="file" id="kettle-axml-input" accept=".axml,.xml" />
+      <button id="kettle-convert-btn">Convert</button>
+      <button id="kettle-download-btn" disabled>Download TTL</button>
+    </div>
+    <pre id="kettle-log" class="converter-log"></pre>
+  `;
+
+  const fileInput   = root.querySelector("#kettle-axml-input");
+  const convertBtn  = root.querySelector("#kettle-convert-btn");
+  const downloadBtn = root.querySelector("#kettle-download-btn");
+  const logEl       = root.querySelector("#kettle-log");
+
+  const log = (msg) => {
+    if (logEl) logEl.textContent = msg;
+  };
+
+  convertBtn.addEventListener("click", async () => {
+    const file = fileInput?.files?.[0];
+    if (!file) {
+      log("Please select an .axml/.xml file first.");
+      return;
 // --- high-level conversion for a single XML file -------------------
 
 async function convertXmlFile(file, { baseIri } = {}) {
@@ -263,6 +444,73 @@ function setupConverterPanel() {
       return;
     }
 
+    convertBtn.disabled  = true;
+    downloadBtn.disabled = true;
+    log("Converting…");
+
+    try {
+      lastConvertedTtl = await convertXmlFile(file, {
+        baseIri: "https://example.org/kettle#" // adjust if you want
+      });
+      log(
+        `Conversion succeeded. TTL size: ${lastConvertedTtl.length.toLocaleString()} characters.`
+      );
+      downloadBtn.disabled = false;
+    } catch (err) {
+      console.error("[converter] Conversion failed:", err);
+      log("Conversion failed: " + (err.message || err));
+    } finally {
+      convertBtn.disabled = false;
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!lastConvertedTtl) return;
+    const originalName = fileInput?.files?.[0]?.name || "kettle.axml";
+    const ttlName = originalName.replace(/\.[^.]+$/, "") + ".ttl";
+    downloadText(ttlName, lastConvertedTtl);
+  });
+}
+
+// --- Simple tab switching for 4 left panes -------------------------
+
+function setupTabs() {
+  const tabToPaneId = {
+    "tab-table":     "results",
+    "tab-editor":    "editor-root",
+    "tab-doc":       "doc-root",
+    "tab-converter": "converter-root"
+  };
+
+  const tabs = Array.from(document.querySelectorAll("button.tab"));
+  const paneIds = Object.values(tabToPaneId);
+
+  const showPaneFor = (tabId) => {
+    paneIds.forEach((pid) => {
+      const el = document.getElementById(pid);
+      if (!el) return;
+      el.style.display = (tabToPaneId[tabId] === pid ? "" : "none");
+    });
+  };
+
+  tabs.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      tabs.forEach((b) => b.classList.toggle("active", b === btn));
+      const paneId = tabToPaneId[btn.id];
+      if (paneId) {
+        showPaneFor(btn.id);
+      }
+    });
+  });
+
+  // Initial state: table visible, others hidden
+  showPaneFor("tab-table");
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  setupTabs();           // handles Table / Editor / Document / Converter
+  setupConverterPanel(); // builds the converter UI into #converter-root
+});
     convertBtn.disabled  = true;
     downloadBtn.disabled = true;
     log("Converting…");
