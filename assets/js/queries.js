@@ -6,7 +6,6 @@ import panes from "./panes.js";
 
 // ---------- DOM handles ----------
 const outEl     = document.getElementById("out");
-const resultsEl = document.getElementById("results");
 const graphEl   = panes.getRightPane();
 
 const show = x => { if (outEl) outEl.textContent = (typeof x === "string" ? x : JSON.stringify(x, null, 2)); };
@@ -14,7 +13,7 @@ const show = x => { if (outEl) outEl.textContent = (typeof x === "string" ? x : 
 // Compute repository root (two levels up from /assets/js/*.js)
 const BASE_URL  = new URL("../../", import.meta.url);
 const BASE_PATH = (BASE_URL.protocol.startsWith("http") ? BASE_URL.href : BASE_URL.pathname).replace(/\/$/, "");
-const MIME_TTL = "text/turtle";
+const MIME_TTL  = "text/turtle";
 
 // Ontology prefixes
 // --OntoGSN prefix
@@ -71,29 +70,19 @@ class QueryApp {
     return this._initPromise;
   }
 
-  async run(queryPath, overlayClass = null, { noTable = false } = {}) {
+  async run(queryPath, overlayClass = null, _opts = {}) {
     try {
       this._setBusy(true);
       const query = await fetchText(queryPath);
 
-      // Detect INSERT DATA and treat as SPARQL UPDATE
-      const trimmed = query.trim().toUpperCase();
       if (isUpdateQuery(query)) {
-        await this.store.update(query);  // await is nice, since run(...) is async
-
-        if (!noTable && resultsEl) {
-          resultsEl.innerHTML = "<p>SPARQL UPDATE executed.</p>";
-        }
+        await this.store.update(query);
         this._setStatus?.("SPARQL UPDATE executed.");
-        return; // don’t fall through to store.query(...)
+        return;
       }
 
       const res   = this.store.query(query);
       const rows  = bindingsToRows(res);
-
-      if (!noTable) {
-        renderTable(resultsEl, rows);
-      }
 
       const hasS = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "s");
       const hasP = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "p");
@@ -218,24 +207,19 @@ class QueryApp {
   }
 
   // --- private helpers ---
-  async runInline(queryText, overlayClass = null, { noTable = false } = {}) {
+  async runInline(queryText, overlayClass = null, _opts = {}) {
     try {
       this._setBusy(true);
 
       // Detect INSERT DATA and treat as SPARQL UPDATE
       if (isUpdateQuery(queryText)) {
         await this.store.update(queryText);
-        if (!noTable && resultsEl) {
-          resultsEl.innerHTML = "<p>SPARQL UPDATE executed.</p>";
-        }
         this._setStatus?.("SPARQL UPDATE executed.");
         return;
       }
 
       const res   = this.store.query(queryText);
       const rows  = bindingsToRows(res);
-
-      if (!noTable) renderTable(resultsEl, rows);
 
       const hasS = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "s");
       const hasP = rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "p");
@@ -370,7 +354,7 @@ class QueryApp {
         query = query.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
         query = query.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
         console.debug("[modules] query preview:", query.slice(0, 400));
-        await this.runInline(query, null, { noTable: false });
+        await this.runInline(query, null);
       });
       bar.appendChild(b);
     }
@@ -444,14 +428,12 @@ class QueryApp {
   }
 
   _attachUI() {
-    // Single event delegation for all buttons tagged with [data-query]
     document.addEventListener("click", (e) => {
       const btn = e.target instanceof Element ? e.target.closest("[data-query]:not(input)") : null;
       if (!btn) return;
       const path = btn.getAttribute("data-query");
-      const noTable = btn.dataset.noTable === "1" || btn.dataset.noTable === "true";
       if (!path) return;
-      this.run(path, null, { noTable });
+      this.run(path);
     });
 
     document.addEventListener("change", (e) => {
@@ -460,7 +442,6 @@ class QueryApp {
       if (!el) return;
 
       const cls  = el.getAttribute("data-class") || "overlay";
-      const noTable = el.dataset.noTable === "1" || el.dataset.noTable === "true";
 
       const raw = el.getAttribute("data-queries") ?? el.getAttribute("data-query");
       if (!raw) return;
@@ -482,7 +463,7 @@ class QueryApp {
       if (el.checked) {
         (async () => {
           for (const path of paths) {
-            await this.run(path, cls, { noTable });
+            await this.run(path, cls);
           }
           if (isOverloadRule) {
             window.dispatchEvent(
@@ -498,7 +479,7 @@ class QueryApp {
       } else {
         (async () => {
           if (deletePath) {
-            await this.run(deletePath, cls, { noTable: true });
+            await this.run(deletePath, cls);
           }
 
           // turn off this class overlay
@@ -616,18 +597,6 @@ function bindingsToRows(iter) {
   }
   return rows;
 }
-
-function renderTable(el, rows) {
-  if (!el) return;
-  if (!rows.length) { el.innerHTML = "<p>No results.</p>"; return; }
-  const headers = [...new Set(rows.flatMap(r => Object.keys(r)))];
-  let html = '<table class="sparql"><thead><tr>' + headers.map(h => `<th>${esc(h)}</th>`).join("") + '</tr></thead><tbody>';
-  for (const r of rows) html += '<tr>' + headers.map(h => `<td>${esc(r[h] ?? "")}</td>`).join("") + '</tr>';
-  html += '</tbody></table>';
-  el.innerHTML = html;
-}
-
-function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function shorten(iriOrLabel) {
   try {

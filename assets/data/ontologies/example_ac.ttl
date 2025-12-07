@@ -466,17 +466,19 @@ ex:M_Car
 
 case:G11
   a gsn:Goal ;
-  gsn:identifier "G11" ;
+  schema:identifier "G11" ;
   gsn:supportedBy case:Sn11;
   gsn:statement "Database inputs to the users table are sanitized against SQL injection." .
 
 case:Sn11
   a gsn:Solution ;
-  gsn:identifier "Sn11" ;
+  schema:identifier "Sn11" ;
   gsn:statement "Python sanitize_input(..) function uses parameterized SQL queries." ;
   py:implementedIn py:SqlSanitizer_v1 .
 
 case:M_SQL a gsn:Module;
+           rdfs:label "M:SQL";
+           schema:identifier "M:SQL";
            gsn:contains case:G_SQLInjectionSafe,
            case:Sn_SanitizeInputFunction .
 
