@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>OntoGSN Interface Test Instance</title>
   <link rel="stylesheet" href="/assets/css/app.css" />
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css"
+  />
 </head>
 <body>
   <script>
@@ -23,6 +26,7 @@
       <button id="tab-table"  class="tab active">Table</button>
       <button id="tab-editor" class="tab" >Editor</button> 
       <button id="tab-doc"    class="tab" data-doc-query="/assets/data/queries/read_document.sparql" data-doc-var="doc">Document</button>
+      <button id="tab-code" class="tab">Code</button>
     </div>
     <div id="rightButtons" class="btns">
       <button data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1">Tree View</button>
@@ -51,6 +55,7 @@
       <div id="results"></div>
       <div id="editor-root" style="display:none;"></div>
       <div id="doc-root" style="display:none;"></div>
+      <div id="code-root" style="display:none;"></div>
     </div>
     <div id="rightPane" class="pane pane-right gsn-host"></div>
   </div>
@@ -101,6 +106,9 @@
   <script type = "module" src = "/assets/js/model.js"   ></script>
   <script type = "module" src = "/assets/js/editor.js"  ></script>
   <script type = "module" src = "/assets/js/document.js"></script>
+
+  <script src = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script type = "module" src = "/assets/js/code.js"></script>
 
 </body>
 </html>

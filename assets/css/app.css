@@ -182,6 +182,7 @@ body[aria-busy="true"] [data-query] {
   flex-direction: column;
   min-height: 0;
   height: 520px;
+  overflow-x: hidden;
 }
 
 #rightPane {
@@ -250,4 +251,27 @@ body[aria-busy="true"] [data-query] {
   font-size: 0.75rem;
   opacity: 0.8;
   word-break: break-all;
+}
+
+.code-panel pre {
+  background: #f7f7f7;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+               "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9rem;
+  line-height: 1.4;
+
+  /* Prevent it from pushing the layout sideways/too far down */
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 22rem;
+}
+
+/* Allow long IRIs etc. to break nicely */
+.code-panel p,
+.code-panel a,
+.code-panel code {
+  overflow-wrap: anywhere;
 }

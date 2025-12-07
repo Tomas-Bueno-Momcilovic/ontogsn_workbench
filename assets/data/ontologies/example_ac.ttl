@@ -462,3 +462,26 @@ ex:M_Car
                  ex:car_A3 , ex:car_Sn1 , 
                  ex:car_Sn2 , ex:car_Sn3,
                  ex:car_G2 .
+
+case:G11
+  a gsn:Goal ;
+  gsn:identifier "G11" ;
+  gsn:statement "Database inputs to the users table are sanitized against SQL injection." .
+
+case:Sn11
+  a gsn:Solution ;
+  gsn:identifier "Sn11" ;
+  gsn:statement "Python sanitize_input(..) function uses parameterized SQL queries." ;
+  gsn:supportedBy case:G_SQLInjectionSafe ;
+  ex:implementedByCode ex:SqlSanitizer_v1 .
+
+ex:SqlSanitizer_v1
+  a ex:CodeArtefact ;
+  rdfs:label "sanitize_input in db_utils.py" ;
+  ex:language "Python" ;
+  ex:filePath "code/db_utils.py#sanitize_input" .
+
+case:M_SQL a gsn:Module;
+           gsn:contains case:G_SQLInjectionSafe,
+           case:Sn_SanitizeInputFunction .
+
