@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset = "utf-8" />
+  <meta name    = "viewport" content = "width = device-width, initial-scale = 1" />
   <title> OntoGSN Interface Test Instance </title>
   <link rel = "stylesheet" href = "/assets/css/app.css" />
   <link rel = "stylesheet" href = "/assets/vendor/github.min.css" />
@@ -24,6 +24,7 @@
       <button id = "tab-doc"    class = "tab" data-doc-query = "/assets/data/queries/read_document.sparql" data-doc-var = "doc"> Document </button>
       <button id = "tab-code"   class = "tab"> Code </button>
       <button id="tab-converter" class="tab">Converter</button>
+      <button id="tab-chat"      class="tab">Chat</button>
     </div>
     <div id="rightButtons" class="btns" data-tab-group="right-main">
       <button data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1" class = "tab active"> Tree </button>
@@ -53,6 +54,7 @@
       <div id = "doc-root"       style = "display: none;"></div>
       <div id = "converter-root" style = "display: none;"></div>
       <div id = "code-root"      style = "display: none;"></div>
+      <div id = "chat-root"      style = "display: none;"></div>
     </div>
     <div id="rightPane" class="pane pane-right gsn-host"></div>
   </div>
@@ -107,6 +109,7 @@
   <script type = "module" src = "/assets/js/document.js"></script>
   <script type = "module" src = "/assets/js/converter.js"></script>
   <script type = "module" src = "/assets/js/code.js"    ></script>
+  <script type = "module" src = "/assets/js/chat.js"    ></script>
 
 </body>
 </html>

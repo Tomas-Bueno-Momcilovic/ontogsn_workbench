@@ -21,11 +21,12 @@ class PaneManager {
     this._leftPanes = [];
     /** @type {Record<string,string>} tab-id → pane-id */
     this._tabToPane = {
-      "tab-table":    "results",
-      "tab-editor":   "editor-root",
-      "tab-doc":      "doc-root",
-      "tab-code":     "code-root",       // optional; ignored if not present
-      "tab-converter":"converter-root"   // optional; ignored if not present
+      "tab-table":      "results",
+      "tab-editor":     "editor-root",
+      "tab-doc":        "doc-root",
+      "tab-code":       "code-root",
+      "tab-converter":  "converter-root",
+      "tab-chat":       "chat-root"
     };
   }
 
