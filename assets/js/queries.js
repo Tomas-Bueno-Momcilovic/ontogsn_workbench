@@ -126,7 +126,7 @@ class QueryApp {
 
         // Pass FULL rows (s,p,o,type,...) to graph.js
         const newCtl = visualizeSPO(rows, {
-          mount: graphEl,
+          mount: host,
           height: 520,
           label: shorten,
           supportedBy: [
@@ -254,7 +254,7 @@ class QueryApp {
         }
 
         const newCtl = visualizeSPO(rows, {
-          mount: graphEl,
+          mount: host,
           height: 520,
           label: shorten,
           supportedBy: [
@@ -329,7 +329,7 @@ class QueryApp {
     // 3) An “All” button to restore the global view
     const btnAll = document.createElement("button");
     btnAll.classList.add('tab');
-    if (isDefault) btn.classList.add('active');
+    if (isDefault) btnAll.classList.add('active');
     btnAll.textContent = "All";
     btnAll.addEventListener("click", () => this.run(PATHS.q.visualize));
     bar.appendChild(btnAll);
@@ -368,8 +368,10 @@ class QueryApp {
     const ctx   = document.getElementById("toggle-context");
     const df    = document.getElementById("toggle-defeat");
     if (!root) return;
-    root.classList.toggle("hide-ctx", !(ctx?.checked));
-    root.classList.toggle("hide-def", !(df?.checked));
+    const showCtx = ctx ? ctx.checked : true;
+    const showDef = df  ? df.checked  : true;
+    root.classList.toggle("hide-ctx", !showCtx);
+    root.classList.toggle("hide-def", !showDef);
     this.graphCtl?.fit?.();
   }
 

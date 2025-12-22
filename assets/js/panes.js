@@ -1,5 +1,3 @@
-// /assets/js/panes.js
-
 class PaneManager {
   constructor() {
     /** @type {HTMLElement|null} */
@@ -69,64 +67,56 @@ class PaneManager {
     if (this._leftTabsInit) return;
     this._leftTabsInit = true;
 
-    // All tab buttons (top-left bar). We intentionally don't rely on #leftButtons,
-    // because there is a second "Rules" block later.
-    const leftButtons = document.getElementById("leftButtons");
+    // Use the tab group (avoids duplicate IDs entirely)
+    const leftButtons = document.querySelector('[data-tab-group="left-main"]');
+
     const tabs = leftButtons
-      ? Array.from(leftButtons.querySelectorAll(".tab"))
+      ? Array.from(leftButtons.querySelectorAll('button.tab[data-pane]'))
       : [];
+
     if (!tabs.length) {
-      console.warn("[PaneManager] No .tab buttons found for left panes.");
+      console.warn("[PaneManager] No left tab buttons found.");
       return;
     }
+
     this._leftTabs = tabs;
 
-    // Collect pane elements that actually exist in the DOM
-    const paneIds = Object.values(this._tabToPane);
-    this._leftPanes = paneIds
+    // Build mapping from data-pane
+    this._tabToPane = Object.fromEntries(
+      tabs.map(btn => [btn.id, btn.dataset.pane])
+    );
+
+    // Collect panes that exist
+    this._leftPanes = Object.values(this._tabToPane)
       .map(id => document.getElementById(id))
       .filter(Boolean);
 
     const activate = (tabId) => {
-      if (!tabId) tabId = "tab-table";
+      const fallback = tabs[0]?.id;        // first tab becomes fallback
+      if (!tabId || !this._tabToPane[tabId]) tabId = fallback;
 
-      // Toggle active class on tab buttons
       this._leftTabs.forEach(btn => {
         btn.classList.toggle("active", btn.id === tabId);
       });
 
       const targetPaneId = this._tabToPane[tabId];
-
-      // Show only the pane mapped from tabId; hide others
       this._leftPanes.forEach(p => {
-        if (!p) return;
         p.style.display = (p.id === targetPaneId ? "" : "none");
       });
     };
 
-    // Store activator for external callers (document.js, etc.)
     this._activateLeftTab = activate;
 
-    // Wire click handlers for all tab buttons
     this._leftTabs.forEach(btn => {
-      btn.addEventListener("click", () => {
-        const id = btn.id;
-        if (!this._tabToPane[id]) {
-          // Not one of the managed tabs; ignore
-          return;
-        }
-        this.activateLeftTab(id);
-      });
+      btn.addEventListener("click", () => this.activateLeftTab(btn.id));
     });
 
-    // Initial active tab: whichever already has .active, or fallback to Table
     const initiallyActive =
-      tabs.find(b => b.classList.contains("active"))?.id ||
-      "tab-table";
-    if (this._tabToPane[initiallyActive]) {
-      activate(initiallyActive);
-    }
+      tabs.find(b => b.classList.contains("active"))?.id || tabs[0]?.id;
+
+    activate(initiallyActive);
   }
+
 
   /**
    * Public helper for other modules: activate a given left tab
@@ -214,8 +204,10 @@ function wireTabGroups() {
   });
 }
 
-window.addEventListener('DOMContentLoaded', wireTabGroups);
-
+window.addEventListener("DOMContentLoaded", () => {
+  wireTabGroups();
+  panes.initLeftTabs();
+});
 
 export const panes = new PaneManager();
 export default panes;

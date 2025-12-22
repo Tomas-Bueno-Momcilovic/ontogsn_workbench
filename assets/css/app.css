@@ -87,14 +87,16 @@ table.sparql thead th {
   text-decoration: underline;
 }
 
-#leftButtons,#rightButtons{
+#leftButtons,#rightButtons,
+#leftRules,#rightModules{
        display:flex; 
        gap:.5rem; 
        flex-wrap:wrap;
        flex:0 0 auto;
 }
 
-#rightButtons{ 
+#rightButtons, 
+#rightModules{ 
        margin-left:auto; 
 }
 

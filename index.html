@@ -19,16 +19,16 @@
 
   <div class="split">
     <div id="leftButtons" class="btns" data-tab-group="left-main">
-      <button id = "tab-welcome"  class = "tab active" data-doc-query = "/assets/data/queries/read_welcomeDoc.sparql" data-doc-var = "doc"> Welcome   </button>
-      <button id = "tab-table"  class = "tab"> Table   </button>
-      <button id = "tab-editor" class = "tab"       > Editor  </button> 
-      <button id = "tab-doc"    class = "tab" data-doc-query = "/assets/data/queries/read_document.sparql" data-doc-var = "doc"> Document </button>
-      <button id = "tab-code"   class = "tab"> Code </button>
-      <button id="tab-converter" class="tab">Converter</button>
-      <button id="tab-chat"      class="tab">Chat</button>
+      <button class = "tab active" id = "tab-welcome" data-pane="welcome-root" data-doc-query = "/assets/data/queries/read_welcomeDoc.sparql" data-doc-var = "doc"> Welcome </button>
+      <button class = "tab" id = "tab-table"     data-pane = "results" > Table </button>
+      <button class = "tab" id = "tab-editor"    data-pane = "editor-root" > Editor </button> 
+      <button class = "tab" id = "tab-doc"       data-pane = "doc-root" data-doc-query = "/assets/data/queries/read_document.sparql" data-doc-var = "doc"> Document </button>
+      <button class = "tab" id = "tab-code"      data-pane = "code-root" > Code </button>
+      <button class = "tab" id = "tab-converter" data-pane = "converter-root" > Converter </button>
+      <button class = "tab" id = "tab-chat"      data-pane = "chat-root" > Chat </button>
     </div>
-    <div id="rightButtons" class="btns" data-tab-group="right-main">
-      <button data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1" class = "tab active"> Tree </button>
+    <div id = "rightButtons" class = "btns" data-tab-group = "right-main">
+      <button data-query = "/assets/data/queries/visualize_graph.sparql" data-no-table = "1" class = "tab active"> Tree </button>
       <button id="btn-layered-view" data-no-table="1" class = "tab"> Layer </button>
       <button data-query="/assets/data/queries/read_carLoadWeight.sparql" id="btn-model-view" data-no-table="1" class = "tab"> Model </button>
       <label><input id="toggle-context" type="checkbox" checked data-no-table="1"> Contextual</label>
@@ -65,7 +65,7 @@
   <pre id="out"></pre>
 
   <div class="split">
-    <div id="leftButtons" class="btns">
+    <div id="leftRules" class="btns">
       Rules:
       <label><input type="checkbox"
         data-query="/assets/data/queries/rule_assumptionInvalidation.sparql"
@@ -92,7 +92,7 @@
         Overloaded car
       </label>
     </div>
-    <div id="rightButtons" class="btns">
+    <div id="rightModules" class="btns">
       <span class="gsn-hint">scroll: zoom • drag: pan</span>
       Modules: 
       <div id="modulesBar" class="modules-bar" data-tab-group="modules"></div>
