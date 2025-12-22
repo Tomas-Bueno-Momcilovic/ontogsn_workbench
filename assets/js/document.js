@@ -157,7 +157,8 @@ function initDocView() {
     </div>`;
 
   // Any element with data-doc-query will trigger loading a Markdown doc
-  document.addEventListener("click", (ev) => {
+  const leftTabs = document.querySelector('[data-tab-group="left-main"]');
+  leftTabs?.addEventListener("click", (ev) => {
     const el = ev.target instanceof Element
       ? ev.target.closest("[data-doc-query]")
       : null;
@@ -338,9 +339,7 @@ LIMIT 20
   showDocEntityTooltip(targetEl, tag, rows);
 
   // Still notify the rest of the app if needed
-  window.dispatchEvent(new CustomEvent("ontogsndoc:entityClick", {
-    detail: { tag, rows }
-  }));
+  app.bus.emit("ontogsndoc:entityClick", { tag, rows });
 }
 
 window.addEventListener("DOMContentLoaded", initDocView);

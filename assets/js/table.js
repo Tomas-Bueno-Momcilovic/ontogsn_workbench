@@ -148,7 +148,7 @@ function initTableView() {
   });
 
   // Any element with data-table-query drives the table pane
-  document.addEventListener("click", (ev) => {
+  root.addEventListener("click", (ev) => {
     const el = ev.target instanceof Element
       ? ev.target.closest("[data-table-query]")
       : null;

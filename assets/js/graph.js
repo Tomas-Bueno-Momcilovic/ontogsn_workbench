@@ -17,12 +17,22 @@ export function visualizeSPO(rows, {
                  "https://w3id.org/OntoGSN/ontology#challenges",
                  "http://w3id.org/gsn#challenges"],
   label = d => d,
+  bus = null,
 } = {}) {
   // --- Resolve mount
   const rootEl = typeof mount === "string" ? document.querySelector(mount) : mount;
   if (!rootEl) throw new Error(`visualizeSPO: mount "${mount}" not found`);
 
   ensureGraphCss(); // Ensure minimal styles once per page
+
+  const emit = (type, detail) => {
+    if (bus && typeof bus.emit === "function") {
+      bus.emit(type, detail);
+    } else {
+      // optional fallback if visualizeSPO is used standalone somewhere
+      window.dispatchEvent(new CustomEvent(type, { detail }));
+    }
+  };
 
   // --- Reset mount content (idempotent)
   rootEl.innerHTML = `
@@ -557,10 +567,7 @@ export function visualizeSPO(rows, {
       .attr("transform", d => `translate(${d.x},${d.y})`);
   
   defG.on("click", (ev, d) => {
-    window.dispatchEvent(new CustomEvent("gsn:defeaterClick", {
-      detail: { id: d.id, 
-                label: d.label }   // prefer IRI id
-    }));
+    emit("gsn:defeaterClick", { id: d.id, label: d.label });
   });
 
   g.selectAll("g.gsn-node.def").raise();
@@ -672,9 +679,7 @@ export function visualizeSPO(rows, {
       .attr("transform", d => `translate(${d.x},${d.y})`);
 
   ctxG.on("click", (ev, d) => {
-    window.dispatchEvent(new CustomEvent("gsn:contextClick", {
-      detail: { id: d.id, label: d.label } // id: IRI, label: "C1"/"A1"/"J1"
-    }));
+    emit("gsn:contextClick", { id: d.id, label: d.label });
   });
 
   // Shape: rect for normal context, ellipse for assumption/justification

@@ -1,6 +1,7 @@
 import init, { Store }  from "https://cdn.jsdelivr.net/npm/oxigraph@0.5.2/web.js";
 import { visualizeSPO } from "./graph.js";
 import panes            from "./panes.js";
+import { createEventBus } from "./events.js";
 
 /** @typedef {{s:string,p:string,o:string}} SPORow */
 
@@ -46,15 +47,14 @@ const PATHS = {
 
 // One global-ish app instance to keep state tidy
 class QueryApp {
-  constructor() {
-    /** @type {Store|null} */
+  constructor({ bus } = {}) {
+    this.bus = bus ?? createEventBus();
+    this._unsubs = [];
+
     this.store = null;
     this._initPromise = null;
-    /** @type {ReturnType<visualizeSPO>|null} */
     this.graphCtl = null;
-    /** @type {(e:Event)=>void} */
     this._onResize = () => {};
-    /** @type {Map<string, Set<string>>} */
     this.overlays = new Map();
   }
 
@@ -99,7 +99,8 @@ class QueryApp {
         this._setStatus?.(`Added ${rows.length} collection link${rows.length===1?"":"s"}.`);
 
         this.graphCtl?.fit?.();
-        window.graphCtl = this.graphCtl;
+        maybeExposeGraphCtl(this.graphCtl);
+
         return;
       }
       
@@ -129,6 +130,7 @@ class QueryApp {
           mount: host,
           height: 520,
           label: shorten,
+          bus: this.bus,
           supportedBy: [
             "supported by",
             "gsn:supportedBy",
@@ -156,7 +158,7 @@ class QueryApp {
         this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
         this._applyVisibility();
         this._reapplyOverlays();
-        window.graphCtl = this.graphCtl;
+        maybeExposeGraphCtl(this.graphCtl);
 
         return;
 
@@ -177,7 +179,8 @@ class QueryApp {
         this._reapplyOverlays();
         this._setStatus?.(`Highlighted ${ids.length} ${cls} node${ids.length === 1 ? "" : "s"}.`);
 
-        window.graphCtl = this.graphCtl;
+        maybeExposeGraphCtl(this.graphCtl);
+
         return;        
       }
 
@@ -191,7 +194,8 @@ class QueryApp {
       }
 
       this._setStatus?.("Query returned an unsupported shape. Expect either ?s ?p ?o (graph) or single ?s (overlay).");
-      window.graphCtl = this.graphCtl;
+      maybeExposeGraphCtl(this.graphCtl);
+
     } catch (e) {
       outEl.textContent =
         `Error running ${queryPath}:
@@ -250,13 +254,14 @@ class QueryApp {
           this.graphCtl.destroy(); 
           this.graphCtl = null; 
         } else {
-          this._setStatus?.("No triples found in results (expecting ?s ?p ?o).");
+          this.graphCtl = null;
         }
 
         const newCtl = visualizeSPO(rows, {
           mount: host,
           height: 520,
           label: shorten,
+          bus: this.bus,
           supportedBy: [
             "supported by",
             "gsn:supportedBy",
@@ -284,7 +289,7 @@ class QueryApp {
         this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
         this._applyVisibility();
         this._reapplyOverlays();
-        window.graphCtl = this.graphCtl;
+        maybeExposeGraphCtl(this.graphCtl);
 
         return;
       }
@@ -309,6 +314,11 @@ class QueryApp {
     } finally {
       this._setBusy(false);
     }
+  }
+
+  destroy() {
+    this._unsubs.forEach(off => off());
+    this._unsubs = [];
   }
 
   async _buildModulesBar(isDefault=false) {
@@ -404,30 +414,41 @@ class QueryApp {
       throw e;
     }
 
-    // Wire graph interactions (context/defeater propagation) once
-    window.addEventListener("gsn:contextClick", async (ev) => {
-      const iri = ev?.detail?.id;
-      if (!iri) return;
-      const tmpl = await fetchText(PATHS.q.propCtx);
-      const q    = tmpl.replaceAll("{{CTX_IRI}}", `<${iri}>`);
-      const res  = this.store.query(q);
-      const rows = bindingsToRows(res);
-      const ids  = rows.map(r => r.nodeIRI).filter(Boolean);
-      this.graphCtl?.clearAll();
-      this.graphCtl?.highlightByIds(ids, "in-context");
-    });
+    if (!this._wiredGraphBus) {
+      this._wiredGraphBus = true;
 
-    window.addEventListener("gsn:defeaterClick", async (ev) => {
-      const iri = ev?.detail?.id;
-      if (!iri) return;
-      const tmpl = await fetchText(PATHS.q.propDef);
-      const q    = tmpl.replaceAll("{{DFT_IRI}}", `<${iri}>`);
-      const res  = this.store.query(q);
-      const rows = bindingsToRows(res);
-      const ids  = rows.map(r => r.hitIRI).filter(Boolean);
-      this.graphCtl?.clearAll();
-      this.graphCtl?.highlightByIds(ids, "def-prop");
-    });
+      this._unsubs.push(
+        this.bus.on("gsn:contextClick", async (ev) => {
+          const iri = ev?.detail?.id;
+          if (!iri) return;
+
+          const tmpl = await fetchText(PATHS.q.propCtx);
+          const q    = tmpl.replaceAll("{{CTX_IRI}}", `<${iri}>`);
+
+          const rows = bindingsToRows(this.store.query(q));
+          const ids  = rows.map(r => r.nodeIRI).filter(Boolean);
+
+          this.graphCtl?.clearAll();
+          this.graphCtl?.highlightByIds(ids, "in-context");
+        })
+      );
+
+      this._unsubs.push(
+        this.bus.on("gsn:defeaterClick", async (ev) => {
+          const iri = ev?.detail?.id;
+          if (!iri) return;
+
+          const tmpl = await fetchText(PATHS.q.propDef);
+          const q    = tmpl.replaceAll("{{DFT_IRI}}", `<${iri}>`);
+
+          const rows = bindingsToRows(this.store.query(q));
+          const ids  = rows.map(r => r.hitIRI).filter(Boolean);
+
+          this.graphCtl?.clearAll();
+          this.graphCtl?.highlightByIds(ids, "def-prop");
+        })
+      );
+    }
   }
 
   _attachUI() {
@@ -469,14 +490,10 @@ class QueryApp {
             await this.run(path, cls);
           }
           if (isOverloadRule) {
-            window.dispatchEvent(
-              new CustomEvent("car:overloadChanged", {
-                detail: { active: true }
-              })
-            );
+            this.bus?.emit?.("car:overloadChanged", { active: true });
           }
           if (eventName) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { active: true } }));
+            this.bus?.emit?.(eventName, { active: true });
           }
         })();
       } else {
@@ -497,14 +514,10 @@ class QueryApp {
 
           // Notify the car model that overload propagation is cleared
           if (isOverloadRule) {
-            window.dispatchEvent(
-              new CustomEvent("car:overloadChanged", {
-                detail: { active: false }
-              })
-            );
+            this.bus?.emit?.("car:overloadChanged", { active: false });
           }
           if (eventName) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { active: false } }));
+            this.bus?.emit?.(eventName, { active: false });
           }
         })();
       }
@@ -523,6 +536,11 @@ class QueryApp {
 }
 
 // ---------- generic helpers ----------
+
+function maybeExposeGraphCtl(ctl) {
+  const debug = new URLSearchParams(location.search).has("debug");
+  if (debug) window.graphCtl = ctl;
+}
 
 function toTriples(rows) {
   const get = (r, keys) => keys.find(k => r[k] !== undefined);

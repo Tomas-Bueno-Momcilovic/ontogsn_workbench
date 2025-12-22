@@ -561,7 +561,6 @@ export async function renderLayeredView(opts = {}) {
     }
   }
   app.graphCtl   = null;
-  window.graphCtl = null;
 
   // 🔹 Clear whatever was in the right pane before
   if (typeof panes.clearRightPane === "function") {
@@ -585,7 +584,6 @@ export async function renderLayeredView(opts = {}) {
   if (typeof panes.setRightController === "function") {
     panes.setRightController("layers", ctl);
   }
-  window.graphCtl = ctl;
 }
 
 // Wire the “Layered View” button if present
