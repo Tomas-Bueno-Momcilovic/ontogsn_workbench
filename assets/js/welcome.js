@@ -343,9 +343,7 @@ LIMIT 20
   showDocEntityTooltip(targetEl, tag, rows);
 
   // Still notify the rest of the app if needed
-  window.dispatchEvent(new CustomEvent("ontogsndoc:entityClick", {
-    detail: { tag, rows }
-  }));
+  app.bus?.emit?.("ontogsndoc:entityClick", { tag, rows });
 }
 
 window.addEventListener("DOMContentLoaded", initDocView);

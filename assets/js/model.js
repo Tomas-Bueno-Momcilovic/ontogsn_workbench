@@ -25,6 +25,8 @@ const BOX_OFF_QUERY     = "/assets/data/queries/update_box_off.sparql";
 const LUGGAGE_ON_QUERY  = "/assets/data/queries/update_luggage_on.sparql";
 const LUGGAGE_OFF_QUERY = "/assets/data/queries/update_luggage_off.sparql";
 
+let offOverload = null;
+
 async function setLoadActive(name, active) {
   if (!app?.store) return;        // safety guard
 
@@ -1000,7 +1002,6 @@ export async function renderModelView({
     app.graphCtl.destroy();
     app.graphCtl = null;
   }
-  window.graphCtl = null;
 
   // Inject the car viewer UI into the right-hand block
   rootEl.innerHTML = `
@@ -1092,10 +1093,15 @@ export async function renderModelView({
 
   // Register the model controller with PaneManager & app
   app.graphCtl = sceneCtl;
-  panes.setRightController("model", sceneCtl);
-  window.graphCtl = sceneCtl;
+  const _destroy = sceneCtl.destroy?.bind(sceneCtl);
+  sceneCtl.destroy = () => {
+    offOverload?.();
+    offOverload = null;
+    _destroy?.();
+  };
 
-  // Wire up box / luggage toggles
+  panes.setRightController("model", sceneCtl);
+
   // Wire up box / luggage toggles + overloaded rule checkbox
   const boxToggle     = document.getElementById("toggle-roof-box");
   const luggageToggle = document.getElementById("toggle-roof-luggage");
@@ -1139,10 +1145,6 @@ export async function renderModelView({
   }
 
   // --- Overload propagation → color car parts + sync UI ------------------
-  if (overloadEventListener) {
-    window.removeEventListener("car:overloadChanged", overloadEventListener);
-  }
-
   function updateLoadInfo(current, max) {
     if (!loadCurrentEl || !loadMaxEl) return;
     // show “–” when unknown
@@ -1234,7 +1236,8 @@ export async function renderModelView({
     await refreshLoadInfo();
   };
 
-  window.addEventListener("car:overloadChanged", overloadEventListener);
+  offOverload?.();
+  offOverload = app.bus?.on?.("car:overloadChanged", overloadEventListener) ?? null;
 
   // Initial sync: if rule is already on when Model View opens, apply it
   if (overloadCheckbox && overloadCheckbox.checked) {

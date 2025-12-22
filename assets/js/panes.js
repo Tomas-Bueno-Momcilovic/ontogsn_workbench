@@ -11,6 +11,9 @@ class PaneManager {
     /** @type {((ev:UIEvent)=>void)|null} */
     this._resizeHandler = null;
 
+    /** @type {{ on:Function, emit:Function } | null} */
+    this.bus = null;
+
     // --- left-side tabs/panes --------------------------------------------
     this._leftTabsInit = false;
     /** @type {HTMLButtonElement[]} */
@@ -55,6 +58,14 @@ class PaneManager {
       console.warn("[PaneManager] #rightPane / .gsn-host not found");
     }
     return this.rightPane;
+  }
+
+  setBus(bus) {
+    this.bus = bus || null;
+  }
+
+  getRightController() {
+    return this.currentRight?.controller ?? null;
   }
 
   // --- Left pane: tabs + content ----------------------------------------
@@ -138,11 +149,9 @@ class PaneManager {
 
     this.currentRight = { id, controller };
 
-    // Expose for console debugging, if you like
-    if (controller) {
-      window.graphCtl = controller;
-    } else {
-      window.graphCtl = null;
+    this.bus?.emit?.("right:controllerChanged", { id, controller });
+    if (id === "graph" || id === "gsn-graph") {
+      this.bus?.emit?.("graph:ready", { controller });
     }
 
     // Wire up auto-resize if the controller supports it
@@ -166,6 +175,8 @@ class PaneManager {
     const current = this.currentRight;
     this.currentRight = null;
 
+    this.bus?.emit?.("right:controllerChanged", { id: null, controller: null });
+
     if (this._resizeHandler) {
       window.removeEventListener("resize", this._resizeHandler);
       this._resizeHandler = null;
@@ -178,34 +189,10 @@ class PaneManager {
         console.warn("[PaneManager] controller.destroy() failed:", e);
       }
     }
-
-    if (window.graphCtl) {
-      window.graphCtl = null;
-    }
   }
 }
 
-function wireTabGroups() {
-  document.querySelectorAll('[data-tab-group]').forEach(group => {
-    group.addEventListener('click', (event) => {
-      const button = event.target.closest('button.tab');
-      if (!button || !group.contains(button)) return;
-
-      // Optional: ignore disabled buttons
-      if (button.disabled) return;
-
-      // Remove .active from all tabs in THIS group…
-      group.querySelectorAll('button.tab.active')
-           .forEach(b => b.classList.remove('active'));
-
-      // …and add it to the clicked one
-      button.classList.add('active');
-    });
-  });
-}
-
 window.addEventListener("DOMContentLoaded", () => {
-  wireTabGroups();
   panes.initLeftTabs();
 });
 

@@ -490,14 +490,10 @@ class QueryApp {
             await this.run(path, cls);
           }
           if (isOverloadRule) {
-            window.dispatchEvent(
-              new CustomEvent("car:overloadChanged", {
-                detail: { active: true }
-              })
-            );
+            this.bus?.emit?.("car:overloadChanged", { active: true });
           }
           if (eventName) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { active: true } }));
+            this.bus?.emit?.(eventName, { active: true });
           }
         })();
       } else {
@@ -518,14 +514,10 @@ class QueryApp {
 
           // Notify the car model that overload propagation is cleared
           if (isOverloadRule) {
-            window.dispatchEvent(
-              new CustomEvent("car:overloadChanged", {
-                detail: { active: false }
-              })
-            );
+            this.bus?.emit?.("car:overloadChanged", { active: false });
           }
           if (eventName) {
-            window.dispatchEvent(new CustomEvent(eventName, { detail: { active: false } }));
+            this.bus?.emit?.(eventName, { active: false });
           }
         })();
       }
