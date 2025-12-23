@@ -1,7 +1,7 @@
 import init, { Store }  from "https://cdn.jsdelivr.net/npm/oxigraph@0.5.2/web.js";
 import { visualizeSPO } from "./graph.js";
 import panes            from "./panes.js";
-import { createEventBus } from "./events.js";
+import { bus }          from "./events.js";
 
 /** @typedef {{s:string,p:string,o:string}} SPORow */
 
@@ -47,8 +47,8 @@ const PATHS = {
 
 // One global-ish app instance to keep state tidy
 class QueryApp {
-  constructor({ bus } = {}) {
-    this.bus = bus ?? createEventBus();
+  constructor({ bus: eventBus } = {}) {
+    this.bus = eventBus ?? bus;
     this._unsubs = [];
 
     this.store = null;
@@ -490,10 +490,10 @@ class QueryApp {
             await this.run(path, cls);
           }
           if (isOverloadRule) {
-            this.bus?.emit?.("car:overloadChanged", { active: true });
+            emitCompat(this.bus, "car:overloadChanged", { active: true });
           }
           if (eventName) {
-            this.bus?.emit?.(eventName, { active: true });
+            emitCompat(this.bus, eventName, { active: true });
           }
         })();
       } else {
@@ -514,10 +514,10 @@ class QueryApp {
 
           // Notify the car model that overload propagation is cleared
           if (isOverloadRule) {
-            this.bus?.emit?.("car:overloadChanged", { active: false });
+            emitCompat(this.bus, "car:overloadChanged", { active: false });
           }
           if (eventName) {
-            this.bus?.emit?.(eventName, { active: false });
+            emitCompat(this.bus, eventName, { active: false });
           }
         })();
       }
@@ -540,6 +540,11 @@ class QueryApp {
 function maybeExposeGraphCtl(ctl) {
   const debug = new URLSearchParams(location.search).has("debug");
   if (debug) window.graphCtl = ctl;
+}
+
+function emitCompat(bus, type, detail) {
+  bus?.emit?.(type, detail);
+  window.dispatchEvent(new CustomEvent(type, { detail }));
 }
 
 function toTriples(rows) {
@@ -631,7 +636,7 @@ function shorten(iriOrLabel) {
 }
 
 // ---------- boot ----------
-const app = new QueryApp();
+const app = new QueryApp({ bus });
 //app.init();
 window.addEventListener("DOMContentLoaded", async () => {
   await app.init();                     // loads TTLs + wires UI

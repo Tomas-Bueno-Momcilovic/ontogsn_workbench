@@ -1,3 +1,5 @@
+import { bus } from "./events.js";
+
 class PaneManager {
   constructor() {
     /** @type {HTMLElement|null} */
@@ -197,4 +199,5 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 export const panes = new PaneManager();
+panes.setBus(bus);
 export default panes;

@@ -20,3 +20,5 @@ export function createEventBus() {
 
   return { on, once, emit, _target: target };
 }
+
+export const bus = createEventBus();
