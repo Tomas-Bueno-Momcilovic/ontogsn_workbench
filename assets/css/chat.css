@@ -1,0 +1,12 @@
+.chat-panel { max-width: 640px; width: 100%; }
+
+.chat-log {
+  border: 1px solid #ddd;
+  border-radius: .5rem;
+  padding: .5rem;
+  height: 220px;
+  overflow: auto;
+  margin: .5rem 0;
+}
+
+.chat-form { display: grid; gap: .5rem; }

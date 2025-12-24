@@ -1,60 +1,39 @@
 import app from "./queries.js";
+import { mountTemplate } from "./utils.js";
+
+// module-relative URLs (works on localhost + GH Pages)
+const HTML = new URL("../html/chat.html", import.meta.url);
+const CSS  = new URL("../css/chat.css",  import.meta.url);
 
 // --- tiny helpers -----------------------------------------------------------
-const $ = sel => document.querySelector(sel);
+const $ = (sel, root = document) => root.querySelector(sel);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-// Grab or persist the key/model locally
 // Grab or persist the key/model locally
 const KEY_K = "openrouter_api_key";
 const MODEL_K = "openrouter_model";
 
-/**
- * Build the chat UI inside #chat-root once.
- */
-function buildChatUI() {
+async function buildChatUI() {
   const root = document.getElementById("chat-root");
   if (!root || root.dataset.initialised === "1") return;
   root.dataset.initialised = "1";
 
-  root.innerHTML = `
-    <div id="chat-panel" style="max-width:640px;width:100%;">
-      <details open>
-        <summary><strong>Chat with OntoGSN (OpenRouter)</strong></summary>
+  await mountTemplate(root, {
+    templateUrl: HTML,
+    cssUrl: CSS,
+    cache: "no-store", bust: true // for dev while iterating
+  });
 
-        <div id="chat-log"
-             style="border:1px solid #ddd;border-radius:.5rem;
-                    padding:.5rem;height:220px;overflow:auto;margin:.5rem 0;"></div>
-
-        <form id="chat-form" style="display:grid;gap:.5rem;">
-          <input id="chat-key" type="password"
-                 placeholder="OpenRouter API key (stored locally)"
-                 autocomplete="off">
-          <input id="chat-model" type="text"
-                 value="openai/gpt-4o-mini"
-                 title="Any OpenRouter model id">
-          <textarea id="chat-input" rows="2"
-                    placeholder="Ask about goals, contexts, solutions…"></textarea>
-          <button id="chat-send" type="submit">Send</button>
-        </form>
-
-        <small>Tip: your key is kept in <code>localStorage</code> on this device only.</small>
-      </details>
-    </div>
-  `;
-
-  const keyEl   = /** @type {HTMLInputElement|null} */ (document.querySelector("#chat-key"));
-  const modelEl = /** @type {HTMLInputElement|null} */ (document.querySelector("#chat-model"));
+  const keyEl   = root.querySelector("#chat-key");
+  const modelEl = root.querySelector("#chat-model");
 
   if (keyEl)   keyEl.value   = localStorage.getItem(KEY_K)   || "";
   if (modelEl) modelEl.value = localStorage.getItem(MODEL_K) || modelEl.value;
 
-  const formEl = document.querySelector("#chat-form");
-  if (formEl) {
-    formEl.addEventListener("submit", onChatSubmit);
-  }
-}
+  const formEl = root.querySelector("#chat-form");
+  if (formEl) formEl.addEventListener("submit", onChatSubmit);
 
+}
 
 
 // Make sure Oxigraph is ready
@@ -193,12 +172,15 @@ async function askOpenRouter({ apiKey, model, messages }) {
 
 // --- UI wiring --------------------------------------------------------------
 function appendMsg(role, html) {
+  const log = $("#chat-log");
+  if (!log) return; // or throw; your choice
+
   const el = document.createElement("div");
   el.className = role === "user" ? "msg user" : "msg bot";
   el.style.cssText = "margin:.25rem 0;padding:.35rem .5rem;border-radius:.5rem;background:#f7f7f7;";
   el.innerHTML = html;
-  $("#chat-log").appendChild(el);
-  $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
 }
 
 async function onChatSubmit(ev) {

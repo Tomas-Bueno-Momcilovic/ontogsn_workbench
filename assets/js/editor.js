@@ -1,6 +1,11 @@
 // /assets/js/editor.js
 import app from "./queries.js";
 import panes from "./panes.js";
+import { mountTemplate } from "./utils.js";
+
+// module-relative URLs (works on localhost + GH Pages)
+const HTML = new URL("../html/editor.html", import.meta.url);
+const CSS  = new URL("../css/editor.css",  import.meta.url);
 
 // Reproduce BASE_PATH + fetchText so paths to .sparql files behave like in queries.js
 const BASE_URL  = new URL("../../", import.meta.url);
@@ -54,31 +59,7 @@ async function initEditorUI() {
 
   await app.init();
 
-  // Basic structure
-  root.innerHTML = `
-    <div class="editor">
-      <label>
-        Action:
-        <select id="editor-action"></select>
-      </label>
-
-      <label style="display:block; margin-top:0.5rem;">
-        GSN element type:
-        <select id="editor-type"></select>
-      </label>
-
-      <div id="editor-fields" style="margin-top:0.5rem;"></div>
-
-      <button id="editor-run" style="margin-top:0.5rem;">
-        Run SPARQL UPDATE
-      </button>
-
-      <details style="margin-top:0.5rem;">
-        <summary>Preview query</summary>
-        <pre id="editor-preview" style="white-space:pre-wrap;"></pre>
-      </details>
-    </div>
-  `;
+  await mountTemplate(root, { templateUrl: HTML, cssUrl: CSS });
 
   const actionSelect    = root.querySelector("#editor-action");
   const typeSelect      = root.querySelector("#editor-type");
@@ -98,14 +79,14 @@ async function initEditorUI() {
     fieldsContainer.innerHTML = "";
     for (const f of action.fields) {
       const wrapper = document.createElement("div");
-      wrapper.style.marginBottom = "0.5rem";
+      wrapper.className = "editor-field";
+
       wrapper.innerHTML = `
-        <label style="display:block;">
+        <label>
           ${f.label}<br/>
           <input name="${f.name}"
-                 type="text"
-                 placeholder="${f.placeholder ?? ""}"
-                 style="width:100%;">
+                type="text"
+                placeholder="${f.placeholder ?? ""}">
         </label>
       `;
       fieldsContainer.appendChild(wrapper);

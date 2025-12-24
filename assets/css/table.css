@@ -1,0 +1,14 @@
+.table-controls {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-bottom: .75rem;
+}
+
+.table-placeholder {
+  border: 1px solid #eee;
+  border-radius: .5rem;
+  padding: .75rem;
+}
+
+.table-error { color: #b00020; }

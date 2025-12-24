@@ -1,6 +1,9 @@
 import panes from "./panes.js";
+import { mountTemplate } from "./utils.js";
 
-// --- File handling --------------------------------------------------
+// module-relative URLs (works on localhost + GH Pages)
+const HTML = new URL("../html/converter.html", import.meta.url);
+const CSS  = new URL("../css/converter.css",  import.meta.url);
 
 function fileToText(file) {
   return new Promise((resolve, reject) => {
@@ -220,48 +223,30 @@ async function convertXmlFile(file, { baseIri } = {}) {
 
 let lastConvertedTtl = null;
 
-function setupConverterPanel() {
+async function setupConverterPanel() {
   const root = document.getElementById("converter-root");
   if (!root) return;
 
-  root.innerHTML = `
-    <h2>AXML → Turtle converter</h2>
-    <p>Select an ASCE <code>.axml</code> file and convert it to a Turtle ABox file (instance data only).</p>
-    <div class="converter-row">
-      <input type="file" id="kettle-axml-input" accept=".axml,.xml" />
-      <button id="kettle-convert-btn">Convert</button>
-      <button id="kettle-download-btn" disabled>Download TTL</button>
-    </div>
-    <pre id="kettle-log" class="converter-log"></pre>
-  `;
+  await mountTemplate(root, { templateUrl: HTML, cssUrl: CSS });
 
   const fileInput   = root.querySelector("#kettle-axml-input");
   const convertBtn  = root.querySelector("#kettle-convert-btn");
   const downloadBtn = root.querySelector("#kettle-download-btn");
   const logEl       = root.querySelector("#kettle-log");
 
-  const log = (msg) => {
-    if (logEl) logEl.textContent = msg;
-  };
+  const log = (msg) => { if (logEl) logEl.textContent = msg; };
 
-  convertBtn.addEventListener("click", async () => {
+  convertBtn?.addEventListener("click", async () => {
     const file = fileInput?.files?.[0];
-    if (!file) {
-      log("Please select an .axml/.xml file first.");
-      return;
-    }
+    if (!file) { log("Please select an .axml/.xml file first."); return; }
 
     convertBtn.disabled  = true;
     downloadBtn.disabled = true;
     log("Converting…");
 
     try {
-      lastConvertedTtl = await convertXmlFile(file, {
-        baseIri: "https://example.org/kettle#" // adjust if you want
-      });
-      log(
-        `Conversion succeeded. TTL size: ${lastConvertedTtl.length.toLocaleString()} characters.`
-      );
+      lastConvertedTtl = await convertXmlFile(file, { baseIri: "https://example.org/kettle#" });
+      log(`Conversion succeeded. TTL size: ${lastConvertedTtl.length.toLocaleString()} characters.` );
       downloadBtn.disabled = false;
     } catch (err) {
       console.error("[converter] Conversion failed:", err);

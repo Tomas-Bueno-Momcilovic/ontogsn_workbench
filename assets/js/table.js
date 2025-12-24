@@ -1,5 +1,9 @@
 import app   from "./queries.js";
 import panes from "./panes.js";
+import { mountTemplate } from "./utils.js";
+
+const HTML = new URL("../html/table.html", import.meta.url);
+const CSS  = new URL("../css/table.css",  import.meta.url);
 
 const BASE_URL  = new URL("../../", import.meta.url);
 const BASE_PATH = (BASE_URL.protocol.startsWith("http")
@@ -10,7 +14,6 @@ const BASE_PATH = (BASE_URL.protocol.startsWith("http")
 const DEFAULT_TABLE_QUERY = "/assets/data/queries/read_graph.sparql";
 
 // --- helpers -------------------------------------------------------------
-
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     "&": "&amp;",
@@ -111,30 +114,11 @@ async function runTableQueryInto(tableEl, queryPath) {
 
 // --- boot ---------------------------------------------------------------
 
-function initTableView() {
+async function initTableView() {
   const root = document.getElementById("results");
   if (!root) return;
 
-  // Initial placeholder
-  root.innerHTML = `
-    <div class="table-pane">
-      <div class="table-controls">
-        <button type="button"
-                data-table-query="/assets/data/queries/read_all_nodes.sparql">
-          Nodes
-        </button>
-        <button type="button"
-                data-table-query="/assets/data/queries/read_all_relations.sparql">
-          Relations
-        </button>
-      </div>
-      <div id="table-content" class="table-content">
-        <div class="table-placeholder">
-          <p>Run a SPARQL SELECT query (e.g., “Node Info”) to see results here.</p>
-        </div>
-      </div>
-    </div>
-  `;
+  await mountTemplate(root, { templateUrl: HTML, cssUrl: CSS });
 
   const contentEl = root.querySelector("#table-content");
   if (!contentEl) return;
@@ -159,7 +143,6 @@ function initTableView() {
     const queryPath = el.getAttribute("data-table-query");
     if (!queryPath) return;
 
-    // Make sure the Table tab / pane is active
     panes.activateLeftTab?.("tab-table");
 
     runTableQueryInto(contentEl, queryPath).catch(err => {

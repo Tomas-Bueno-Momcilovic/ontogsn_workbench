@@ -2,6 +2,10 @@ import * as THREE from "../vendor/three.module.js";
 import { OrbitControls } from "../vendor/OrbitControls.js";
 import app from "./queries.js";
 import panes from "./panes.js";
+import { mountTemplate } from "./utils.js";
+
+const HTML = new URL("../html/model.html", import.meta.url);
+const CSS  = new URL("../css/model.css",  import.meta.url);
 
 // RDF / Turtle handling via N3 (global from index.html)
 const { Parser, Store, DataFactory, Writer } = N3;
@@ -20,10 +24,10 @@ const clickable = [];
 let overloadEventListener = null;
 let currentSceneCtl = null;
 
-const BOX_ON_QUERY      = "/assets/data/queries/update_box_on.sparql";
-const BOX_OFF_QUERY     = "/assets/data/queries/update_box_off.sparql";
-const LUGGAGE_ON_QUERY  = "/assets/data/queries/update_luggage_on.sparql";
-const LUGGAGE_OFF_QUERY = "/assets/data/queries/update_luggage_off.sparql";
+const BOX_ON_QUERY      = new URL("../data/queries/update_box_on.sparql", import.meta.url);
+const BOX_OFF_QUERY     = new URL("../data/queries/update_box_off.sparql", import.meta.url);
+const LUGGAGE_ON_QUERY  = new URL("../data/queries/update_luggage_on.sparql", import.meta.url);
+const LUGGAGE_OFF_QUERY = new URL("../data/queries/update_luggage_off.sparql", import.meta.url);
 
 let offOverload = null;
 
@@ -39,7 +43,7 @@ async function setLoadActive(name, active) {
   if (!path) return;
 
   // Reuse QueryApp.run so it handles UPDATE vs SELECT automatically
-  await app.run(path, null, { noTable: true });
+  await app.run(String(path), null, { noTable: true });
 }
 
 // --- TTL → JS: load & parse car.ttl --------------------------------------
@@ -262,11 +266,8 @@ function createCarScene(config) {
 
   // ---------- DOM / RENDERER / CAMERA ----------
 
-  const container = document.getElementById("scene-container");
+  const container = document.querySelector("#scene-container");
   if (!container) throw new Error("Model view: #scene-container not found");
-
-  //await ensureCarConfig();
-  //const sceneCtl = await createCarScene(carConfig, container);
 
   const renderer = new THREE.WebGLRenderer({
     antialias: !/Mobile|Android/.test(navigator.userAgent)
@@ -304,7 +305,7 @@ function createCarScene(config) {
   const mouse = new THREE.Vector2();
   let selectedMesh = null;
   const selectedOriginalColor = new THREE.Color();
-  const infoEl = document.getElementById("part-label");
+  const infoEl = document.querySelector("#part-label");
 
   // ---------- LIGHTS ----------
 
@@ -796,7 +797,7 @@ function createCarScene(config) {
     renderer.domElement.removeEventListener("pointerdown", onPointerDown);
     controls.removeEventListener("change", render);
     controls.dispose();
-    infoEl.textContent = "None";
+    if (infoEl) infoEl.textContent = "None";
 
     // Dispose WebGL resources
     renderer.dispose();
@@ -976,7 +977,7 @@ async function ensureCarConfig() {
   if (carConfig) return carConfig;
 
   try {
-    carConfig = await loadCarConfigFromTTL("/assets/data/ontologies/car.ttl");
+    carConfig = await loadCarConfigFromTTL(new URL("../data/ontologies/car.ttl", import.meta.url));
     console.log("Loaded car config from TTL:", carConfig);
   } catch (err) {
     console.error("Failed to load car config from TTL:", err);
@@ -1003,79 +1004,16 @@ export async function renderModelView({
     app.graphCtl = null;
   }
 
-  // Inject the car viewer UI into the right-hand block
-  rootEl.innerHTML = `
-    <style>
-      .car-ui { 
-        position: absolute; 
-        left: 0; right: 0; bottom: 0; 
-        box-sizing: border-box; 
-        padding: 0.4rem 0.7rem; 
-        display: flex; 
-        flex-direction: column; 
-        gap: 0.25rem; 
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: blur(4px); 
-        font-size: 0.85rem;
-        }
+  await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
 
-      /* 🔴 red warning bar, hidden by default */
-      .car-warning {
-        padding: 0.25rem 0.5rem;
-        background: #c62828;
-        color: #ffffff;
-        font-weight: bold;
-        border-radius: 4px;
-        display: none;
-      }
+  // set dynamic height (used to be in the inline style)
+  const wrapper = rootEl.querySelector("#scene-wrapper");
+  if (wrapper) wrapper.style.height = `${height}px`;
 
-      /* bottom-right load info */
-      .car-load-info {
-        align-self: flex-end;
-        text-align: right;
-        font-size: 0.8rem;
-        opacity: 0.85;
-      }
-      .car-load-info .value {
-        font-weight: bold;
-      }
-    </style>
-    <div id="scene-wrapper" style="position: relative; width:100%; height:${height}px;">
-      <div id="scene-container" style="width:100%; height:100%;"></div>
+  const overloadWarningEl = rootEl.querySelector("#overload-warning");
+  const loadCurrentEl     = rootEl.querySelector("#load-current");
+  const loadMaxEl         = rootEl.querySelector("#load-max");
 
-      <div id="ui" class="car-ui">
-        <!-- 🔴 warning text -->
-        <div id="overload-warning" class="car-warning">
-          Warning: Car roof is overloaded!
-        </div>
-        <div>
-          Selected part:
-          <span id="part-label">None</span>
-        </div>
-        <div style="margin-top: 0.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
-          <div id="load-info" class="car-load-info">
-                Roof load (<span id="load-current" class="value">–</span> /
-                <span id="load-max" class="value">–</span> kg):
-          </div>
-          <label style="display: inline-flex; align-items: center; gap: 0.25rem;">
-            <input id="toggle-roof-box" type="checkbox">
-            Box
-          </label>
-          <label style="display: inline-flex; align-items: center; gap: 0.25rem;">
-            <input id="toggle-roof-luggage" type="checkbox">
-            Luggage
-          </label>
-        </div>
-        <!-- <button id="download-ttl">Download TTL snapshot</button> -->
-      </div>
-    </div>
-
-    <pre id="ttl-output" class="car-ttl-output"></pre>
-  `;
-
-  const overloadWarningEl = document.getElementById("overload-warning");
-  const loadCurrentEl     = document.getElementById("load-current");
-  const loadMaxEl         = document.getElementById("load-max");
 
   // Before creating a new scene:
   if (currentSceneCtl && typeof currentSceneCtl.destroy === "function") {
@@ -1103,8 +1041,8 @@ export async function renderModelView({
   panes.setRightController("model", sceneCtl);
 
   // Wire up box / luggage toggles + overloaded rule checkbox
-  const boxToggle     = document.getElementById("toggle-roof-box");
-  const luggageToggle = document.getElementById("toggle-roof-luggage");
+  const boxToggle         = rootEl.querySelector("#toggle-roof-box");
+  const luggageToggle     = rootEl.querySelector("#toggle-roof-luggage");
   const overloadCheckbox = document.querySelector(
     'input[type="checkbox"][data-queries*="propagate_overloadedCar.sparql"]'
   );
@@ -1246,10 +1184,12 @@ export async function renderModelView({
 }
 
 const overloadedQueryTextPromise =
-  fetch("/assets/data/queries/propagate_overloadedCar.sparql").then(r => r.text());
+  fetch(new URL("../data/queries/propagate_overloadedCar.sparql", import.meta.url))
+    .then(r => r.text());
 
 const carLoadWeightQueryTextPromise =
-  fetch("/assets/data/queries/read_carLoadWeight.sparql").then(r => r.text());
+  fetch(new URL("../data/queries/read_carLoadWeight.sparql", import.meta.url))
+    .then(r => r.text());
 
 // Wire the “Model View” button
 window.addEventListener("DOMContentLoaded", () => {
