@@ -1,6 +1,10 @@
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+import { mountTemplate } from "./utils.js";
 
-export function visualizeSPO(rows, {
+const HTML = new URL("../html/graph.html", import.meta.url);
+const CSS  = new URL("../css/graph.css",  import.meta.url);
+
+export async function visualizeSPO(rows, {
   mount      = ".gsn-host",
   width      = null,
   height     = 520,
@@ -17,13 +21,16 @@ export function visualizeSPO(rows, {
                  "https://w3id.org/OntoGSN/ontology#challenges",
                  "http://w3id.org/gsn#challenges"],
   label = d => d,
-  bus = null,
+  bus = null
 } = {}) {
   // --- Resolve mount
   const rootEl = typeof mount === "string" ? document.querySelector(mount) : mount;
   if (!rootEl) throw new Error(`visualizeSPO: mount "${mount}" not found`);
 
-  ensureGraphCss(); // Ensure minimal styles once per page
+  await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
+
+  const svgNode = rootEl.querySelector(".gsn-svg");
+  if (!svgNode) throw new Error("visualizeSPO: internal error – svg root not found");
 
   const emit = (type, detail) => {
     if (bus && typeof bus.emit === "function") {
@@ -34,150 +41,11 @@ export function visualizeSPO(rows, {
     }
   };
 
-  // --- Reset mount content (idempotent)
-  rootEl.innerHTML = `
-    <div class="gsn-legend">
-      <!-- Goal -->
-      <span class="gsn-legend-item" title="Goal node">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node goal">
-            <rect x="4" y="4" width="72" height="28"></rect>
-            <text x="40" y="20" text-anchor="middle">G</text>
-          </g>
-        </svg>
-        goal
-      </span>
-
-      <!-- Strategy -->
-      <span class="gsn-legend-item" title="Strategy node">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node strategy">
-            <!-- simple “parallelogram-ish” polygon -->
-            <polygon points="8,4 76,4 68,32 0,32"></polygon>
-            <text x="40" y="20" text-anchor="middle">S</text>
-          </g>
-        </svg>
-        strategy
-      </span>
-
-      <!-- Solution -->
-      <span class="gsn-legend-item" title="Solution node (evidence)">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node solution">
-            <circle cx="40" cy="18" r="14"></circle>
-            <text x="40" y="20" text-anchor="middle">Sn</text>
-          </g>
-        </svg>
-        solution
-      </span>
-
-      <!-- Context (using your .ctx modifier) -->
-      <span class="gsn-legend-item" title="context">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node ctx">
-            <rect x="4" y="4" width="72" height="28"></rect>
-            <text x="40" y="20" text-anchor="middle">C</text>
-          </g>
-        </svg>
-        context
-      </span>
-
-      <!-- Assumption / Justification (oval) -->
-      <span class="gsn-legend-item" title="assumption / justification">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node ctx">
-            <!-- oval shape -->
-            <ellipse cx="40" cy="18" rx="34" ry="14"></ellipse>
-
-            <!-- A marker (you could change to A/J if you want) -->
-            <text x="40" y="20" text-anchor="middle">A</text>
-          </g>
-        </svg>
-        assumption / justification
-      </span>
-
-      <!-- Defeater -->
-      <span class="gsn-legend-item" title="Defeater (challenge)">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node def">
-            <rect x="4" y="4" width="72" height="28"></rect>
-            <text x="40" y="20" text-anchor="middle">D</text>
-          </g>
-        </svg>
-        defeater
-      </span>
-
-      <!-- Valid / Invalid / Undeveloped (statuses as node styles) -->
-      <span class="gsn-legend-item" title="Node marked as valid">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node valid">
-            <rect x="4" y="4" width="72" height="28"></rect>
-          </g>
-        </svg>
-        valid
-      </span>
-
-      <span class="gsn-legend-item" title="Artefacts (evidential or contextual)">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node collection item">
-            <rect x="4" y="4" width="72" height="28"></rect>
-          </g>
-        </svg>
-        artefacts
-      </span>
-
-      <span class="gsn-legend-item" title="Node marked as invalid">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node invalid">
-            <rect x="4" y="4" width="72" height="28"></rect>
-          </g>
-        </svg>
-        invalid
-      </span>
-
-      <span class="gsn-legend-item" title="Undeveloped goal">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node">
-            <rect x="4" y="4" width="72" height="28"></rect>
-            <!-- use your existing .undev-diamond styling -->
-            <path class="undev-diamond"
-                  d="M40 6 L60 18 L40 30 L20 18 Z"></path>
-          </g>
-        </svg>
-        undeveloped
-      </span>
-
-      <!-- Rule node -->
-      <span class="gsn-legend-item" title="Rule effect node">
-        <svg class="gsn-legend-node" viewBox="0 0 80 36">
-          <g class="gsn-node rule">
-            <rect x="4" y="4" width="72" height="28"></rect>
-            <text x="40" y="20" text-anchor="middle">R</text>
-          </g>
-        </svg>
-        rule effects
-      </span>
-
-      <span class="gsn-controls"></span>
-    </div>
-    <svg class="gsn-svg">
-      <g class="gsn-viewport"></g>
-    </svg>
-  `;
-
-  const svgNode = rootEl.querySelector(".gsn-svg");
-  if (!svgNode) throw new Error("visualizeSPO: internal error – svg root not found");
-
   const rect       = rootEl.getBoundingClientRect();
   const pixelWidth = width ?? Math.max(300, rect.width || 800);
 
   svgNode.setAttribute("width",  String(pixelWidth));
   svgNode.setAttribute("height", String(height));
-
-  /*
-  if (width != null) svgNode.setAttribute("width", String(width));
-  svgNode.setAttribute("height", String(height));
-  */
 
   const svg              = d3.select(svgNode);
   const g                = svg.select(".gsn-viewport");
@@ -896,12 +764,16 @@ export function visualizeSPO(rows, {
   return { fit, reset, destroy, svg: svgNode, clearAll, highlightByIds, addCollections, clearCollections };
 }
 
-let __gsnCssLinked = false;
-function ensureGraphCss(href = "/assets/css/graph.css") {
-  if (__gsnCssLinked) return;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = href;
-  document.head.appendChild(link);
-  __gsnCssLinked = true;
+let __graphTplHtml = null;
+
+async function loadGraphTemplate(url = new URL("../html/graph.html", import.meta.url)) {
+  if (__graphTplHtml == null) {
+    const res = await fetch(url, { cache: "force-cache" });
+    if (!res.ok) throw new Error(`graph template fetch failed: ${url} (${res.status})`);
+    __graphTplHtml = await res.text();
+  }
+
+  const tpl = document.createElement("template");
+  tpl.innerHTML = __graphTplHtml.trim();
+  return tpl.content.cloneNode(true); // fresh DOM each call
 }
