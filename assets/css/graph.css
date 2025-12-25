@@ -403,3 +403,28 @@
 .gsn-marker.def  { 
     color: var(--def); 
 }
+
+.gsn-graph-pane { position: relative; }
+
+.gsn-graph-hud{
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.gsn-graph-hud .modules-bar{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.gsn-graph-hud .gsn-hint{
+  opacity: .7;
+  font-size: 12px;
+  white-space: nowrap;
+}

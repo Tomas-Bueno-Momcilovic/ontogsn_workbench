@@ -59,7 +59,6 @@ class QueryApp {
       this.qs = createQueryService(this.store);
       this._wireGraphBus();
       this._attachUI();
-      await this._buildModulesBar();
     })();
     return this._initPromise;
   }
@@ -183,6 +182,8 @@ class QueryApp {
     this.graphCtl?.fit?.();
     this._applyVisibility();
     this._reapplyOverlays();
+
+    await this._buildModulesBar(true);
 
     this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
     exposeForDebug("graphCtl", this.graphCtl);

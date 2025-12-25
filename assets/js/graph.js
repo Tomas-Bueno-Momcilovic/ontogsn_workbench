@@ -30,6 +30,22 @@ export async function visualizeSPO(rows, {
 
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
 
+  rootEl.classList.add("gsn-graph-pane");
+  if (getComputedStyle(rootEl).position === "static") {
+    rootEl.style.position = "relative";
+  }
+
+  let hud = rootEl.querySelector(".gsn-graph-hud");
+  if (!hud) {
+    hud = document.createElement("div");
+    hud.className = "gsn-graph-hud";
+    hud.innerHTML = `
+      <span class="gsn-hint">scroll: zoom • drag: pan</span>
+      <div id="modulesBar" class="modules-bar" data-tab-group="modules"></div>
+    `;
+    rootEl.appendChild(hud);
+  }
+
   const svgNode = rootEl.querySelector(".gsn-svg");
   if (!svgNode) throw new Error("visualizeSPO: internal error – svg root not found");
 
