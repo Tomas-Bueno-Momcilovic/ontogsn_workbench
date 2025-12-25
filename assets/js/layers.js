@@ -1,106 +1,20 @@
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 import app from "./queries.js";
 import panes from "./panes.js";
+import { ensureCss, repoHref, fetchRepoText, resolveEl,
+         uid, bindingsToRows, shortenIri, labelWidthPx, 
+         inferGsnKind } from "./utils.js";
 
 // Minimal CSS safety: load the same stylesheet graph.js expects if not present.
-(function ensureGraphCss(href = "/assets/css/graph.css") {
-  if ([...document.styleSheets].some(s => s.href && s.href.endsWith(href))) return;
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = href;
-  document.head.appendChild(link);
-})();
-
-// Small helpers (mirror behaviour from queries.js / graph.js without importing internals)
-function shorten(iriOrLabel) {
-  try {
-    const u = new URL(iriOrLabel);
-    if (u.hash && u.hash.length > 1) return u.hash.slice(1);
-    const parts = u.pathname.split("/").filter(Boolean);
-    return parts[parts.length - 1] || iriOrLabel;
-  } catch {
-    return String(iriOrLabel).replace(/^.*[#/]/, "");
-  }
-}
-
-function esc(s) { 
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;'}[c])); 
-}
-
-function labelWidth(t, minW = 44, maxW = 180, pad = 12) {
-  return Math.min(maxW, Math.max(minW, 7.2 * String(t).length + pad));
-}
+ensureCss(repoHref("/assets/css/graph.css", { from: import.meta.url, upLevels: 2 }));
 
 const NODE_H = 26;
-
-function kindFromTypeIri(typeIri) {
-  if (!typeIri) return null;
-  const t = String(typeIri);
-
-  if (t.endsWith("#Goal")         || t.endsWith("/Goal"))         return "goal";
-  if (t.endsWith("#Strategy")     || t.endsWith("/Strategy"))     return "strategy";
-  if (t.endsWith("#Solution")     || t.endsWith("/Solution"))     return "solution";
-  if (t.endsWith("#Context")      || t.endsWith("/Context"))      return "context";
-  if (t.endsWith("#Assumption")   || t.endsWith("/Assumption"))   return "assumption";
-  if (t.endsWith("#Justification")|| t.endsWith("/Justification"))return "justification";
-
-  return null;
-}
-
-function inferNodeKind(id, labelText, typeIri) {
-  const fromType = kindFromTypeIri(typeIri);
-  if (fromType) return fromType;
-
-  const txt = String(labelText || id);
-  const p2  = txt.slice(0, 2).toUpperCase();
-  const p1  = txt.charAt(0).toUpperCase();
-
-  if (p2 === "SN") return "solution";
-  if (p1 === "S")  return "strategy";
-  if (p1 === "C")  return "context";
-  if (p1 === "A")  return "assumption";
-  if (p1 === "J")  return "justification";
-
-  return "goal";
-}
-
-
-
-function termToDisplay(t) {
-  if (!t) return "";
-  switch (t.termType) {
-    case "NamedNode": return t.value;
-    case "BlankNode": return "_:" + t.value;
-    case "Literal": {
-      const dt = t.datatype?.value, lg = t.language;
-      if (lg) return `"${t.value}"@${lg}`;
-      if (dt && dt !== "http://www.w3.org/2001/XMLSchema#string") return `"${t.value}"^^${dt}`;
-      return t.value;
-    }
-    default: return t.value ?? String(t);
-  }
-}
-
-function bindingsToRows(iter) {
-  const rows = [];
-  for (const b of iter) {
-    const obj = {};
-    for (const [k, v] of b) obj[k] = termToDisplay(v);
-    rows.push(obj);
-  }
-  return rows;
-}
 
 export function visualizeLayers(rows, {
   mount  = ".gsn-host",
   width  = null,
   height = 520,
-  label  = shorten,
+  label  = shortenIri,
   laneLabels = null,
   laneCount = null,
   assignLayer = null,
@@ -147,8 +61,7 @@ export function visualizeLayers(rows, {
       .attr("class", "gsn-marker norm");
     m.append("path").attr("d","M0,0 L10,5 L0,10 Z").attr("fill", "currentColor");
   }
-  const uid     = Math.random().toString(36).slice(2);
-  const idArrow = `arrow-${uid}`;
+  const idArrow = uid("arrow-");
   marker(idArrow);
 
   const nodeType = new Map();
@@ -170,8 +83,8 @@ export function visualizeLayers(rows, {
     const S = norm(r.s), P = norm(r.p), O = norm(r.o);
 
     // 👇 NEW: accept ?typeS / ?typeO (and fall back to old ?type)
-    const tS = r.typeS || r.type;  // subject type
-    const tO = r.typeO;            // object type
+    const tS = r.typeS?.value ?? r.type?.value ?? r.typeS ?? r.type;
+    const tO = r.typeO?.value ?? r.typeO;
 
     if (tS) {
       const T = norm(tS);
@@ -307,8 +220,8 @@ export function visualizeLayers(rows, {
     .join("path")
       .attr("class","gsn-link")
       .attr("d", d => linkH({
-        source: { x: d.source.x + labelWidth(d.source.label)/2, y: d.source.y },
-        target: { x: d.target.x - labelWidth(d.target.label)/2, y: d.target.y }
+        source: { x: d.source.x + labelWidthPx(d.source.label)/2, y: d.source.y },
+        target: { x: d.target.x - labelWidthPx(d.target.label)/2, y: d.target.y }
       }))
       .attr("marker-end", `url(#${idArrow})`)
     .append("title").text("supported by");
@@ -322,9 +235,9 @@ export function visualizeLayers(rows, {
       label: lbl,
       x: v.x,
       y: v.y,
-      w: labelWidth(lbl),
+      w: labelWidthPx(lbl),
       h: NODE_H,
-      kind: inferNodeKind(id, lbl, typeIri),
+      kind: inferGsnKind(id, lbl, typeIri),
       typeIri
     };
   });
@@ -512,7 +425,7 @@ export function visualizeLayers(rows, {
         gOverlay.append("path").attr("class","gsn-link collection").attr("d", `M${hubX},${hubY} L${ix},${iy}`);
 
         const lab = String(itemId);
-        const w = Math.max(42, Math.min(180, labelWidth(lab))), h = 18;
+        const w = Math.max(42, Math.min(180, labelWidthPx(lab))), h = 18;
         const gi = gOverlay.append("g").attr("class","gsn-node collection item").attr("transform", `translate(${ix},${iy})`);
         gi.append("rect").attr("width", w).attr("height", h).attr("x", -w/2).attr("y", -h/2);
         gi.append("text").attr("text-anchor","middle").attr("dy","0.35em").text(lab).append("title").text(lab);
@@ -533,19 +446,19 @@ export async function renderLayeredView(opts = {}) {
   if (!app.store) await app.init();
 
   // Reuse the same SPARQL that “Visualize Graph” uses in index.html
-  const qURL = "/assets/data/queries/visualize_graph.sparql";
-  const r = await fetch(`${qURL}?v=${performance.timeOrigin}`, { cache: "no-store" });
-  if (!r.ok) throw new Error(`Fetch failed ${r.status} for ${qURL}`);
-  const query = (await r.text()).replace(/^\uFEFF/, "");
+  const query = await fetchRepoText("/assets/data/queries/visualize_graph.sparql", {
+    from: import.meta.url,
+    upLevels: 2,
+    cache: "no-store",
+    bust: true
+  });
 
   const res  = app.store.query(query);
   const rows = bindingsToRows(res);
 
   // 🔹 Resolve the right-hand host just like model.js does
   const host   = opts.mount || panes.getRightPane() || "#rightPane";
-  const rootEl = (typeof host === "string")
-    ? document.querySelector(host)
-    : host;
+  const rootEl = resolveEl(host, { required: false, name: "Layered view mount" });
 
   if (!rootEl) {
     console.error("[layers] mount host not found:", host);
@@ -573,7 +486,7 @@ export async function renderLayeredView(opts = {}) {
   const ctl = visualizeLayers(rows, {
     mount: rootEl,           // pass the actual element
     height: 520,
-    label: shorten,
+    label: shortenIri,
     laneLabels: ["Upstream","Input","Model","Output","Downstream","Learn","xyz"],
     laneCount: 7,
     ...opts

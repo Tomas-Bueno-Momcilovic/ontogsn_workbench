@@ -1,30 +1,12 @@
 import app from "./queries.js";
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
 import panes from "./panes.js";
+import { escapeHtml, fetchText, fetchRepoText, repoHref, resolveEl } from "./utils.js";
 
 marked.setOptions({
   gfm: true,     // GitHub-style markdown (tables, etc.)
   breaks: false, // keep normal line-break behavior
 });
-
-// Mirror BASE_PATH logic from queries.js / editor.js
-const BASE_URL  = new URL("../../", import.meta.url);
-const BASE_PATH = (BASE_URL.protocol.startsWith("http")
-  ? BASE_URL.href
-  : BASE_URL.pathname
-).replace(/\/$/, "");
-
-// --- helpers -------------------------------------------------------------
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  }[c]));
-}
 
 // Base renderer so we can fall back to normal link behavior
 const baseRenderer = new marked.Renderer();
@@ -34,13 +16,10 @@ marked.use({
   renderer: {
     link(href, title, text) {
       if (href && href.startsWith("$")) {
-        // strip the leading "$"
-        const tag = href.slice(1); // e.g. "roof-rack"
-
+        const tag = href.slice(1);
         const safeTag   = escapeHtml(tag);
         const safeTitle = title ? ` title="${escapeHtml(title)}"` : "";
 
-        // Render as a span/button with a data attribute, not as a real <a href=...>
         return `
           <button
             type="button"
@@ -56,61 +35,39 @@ marked.use({
   },
 });
 
-function resolveUrl(relOrAbs) {
+function resolveDocUrl(relOrAbs) {
   if (!relOrAbs) return null;
-
-  // Absolute URL
-  if (/^https?:\/\//i.test(relOrAbs)) {
-    return relOrAbs;
-  }
+  const s = String(relOrAbs).trim();
+  if (!s) return null;
 
   // Protocol-relative: //example.org/...
-  if (/^\/\//.test(relOrAbs)) {
-    return `${window.location.protocol}${relOrAbs}`;
-  }
+  if (s.startsWith("//")) return `${location.protocol}${s}`;
 
-  // Root-relative: /assets/...
-  if (relOrAbs.startsWith("/")) {
-    return `${BASE_PATH}${relOrAbs}`;
-  }
-
-  // Relative to repo root
-  return `${BASE_PATH}/${relOrAbs}`;
+  // Absolute http(s)/data/blob/etc are handled by repoHref as “already absolute”
+  return repoHref(s, { from: import.meta.url, upLevels: 2 });
 }
 
 async function fetchDoc(pathLiteral) {
-  const url = resolveUrl(pathLiteral);
+  const url = resolveDocUrl(pathLiteral);
   if (!url) throw new Error("Empty document path from query.");
-
-  const r = await fetch(`${url}?v=${performance.timeOrigin}`, {
-    cache: "no-store",
-  });
-  if (!r.ok) {
-    throw new Error(`Fetch failed ${r.status} for ${url}`);
-  }
-  return await r.text();
+  return fetchText(url, { cache: "no-store", bust: true });
 }
 
-// Very small, safe-ish Markdown → HTML renderer (headings, lists, code, paragraphs)
+// Markdown → HTML renderer
 function renderMarkdown(mdText) {
     return marked.parse(mdText);
-  };
+  }
 
 async function runDocQueryInto(rootEl, queryPath, varHint) {
   await app.init();
 
   // Load query text (same pattern as fetchText in queries.js/editor.js)
-  const url = (queryPath.startsWith("http")
-    ? queryPath
-    : `${BASE_PATH}${queryPath.startsWith("/") ? "" : "/"}${queryPath}`);
-
-  const r = await fetch(`${url}?v=${performance.timeOrigin}`, {
+  const queryText = await fetchRepoText(queryPath, {
+    from: import.meta.url,
+    upLevels: 2,
     cache: "no-store",
+    bust: true,
   });
-  if (!r.ok) {
-    throw new Error(`Fetch failed ${r.status} for ${url}`);
-  }
-  const queryText = (await r.text()).replace(/^\uFEFF/, "");
 
   const rows = await app.selectBindings(queryText);
   if (!rows.length) {
@@ -147,7 +104,7 @@ async function runDocQueryInto(rootEl, queryPath, varHint) {
 // --- boot ---------------------------------------------------------------
 
 function initDocView() {
-  const root = document.getElementById("doc-root");
+  const root = resolveEl("#doc-root", { required: false, name: "Doc view: #doc-root" });
   if (!root) return;
 
   root.innerHTML = `
@@ -316,19 +273,19 @@ PREFIX schema: <https://schema.org/>
 PREFIX ex: <https://example.org/car-demo#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 
-SELECT ?s ?p ?o
+SELECT ?entity ?s ?p ?o
 WHERE {
   ?entity schema:identifier ?id .
-  FILTER CONTAINS(?id, ${JSON.stringify(tag)})
+  FILTER(CONTAINS(STR(?id), ${JSON.stringify(tag)}))
   {
-        ?entity ?p ?o .
-        BIND(?entity AS ?s)
-    }
+    ?entity ?p ?o .
+    BIND(?entity AS ?s)
+  }
   UNION
   {
-        ?s ?p ?entity .
-        BIND(?entity AS ?o)
-    }
+    ?s ?p ?entity .
+    BIND(?entity AS ?o)
+  }
 }
 LIMIT 20
   `;
@@ -339,7 +296,7 @@ LIMIT 20
   showDocEntityTooltip(targetEl, tag, rows);
 
   // Still notify the rest of the app if needed
-  app.bus.emit("ontogsndoc:entityClick", { tag, rows });
+  app.bus?.emit?.("ontogsndoc:entityClick", { tag, rows });
 }
 
 window.addEventListener("DOMContentLoaded", initDocView);

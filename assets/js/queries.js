@@ -1,18 +1,16 @@
 import init, { Store } from "https://cdn.jsdelivr.net/npm/oxigraph@0.5.2/web.js";
 import { visualizeSPO } from "./graph.js";
 import panes from "./panes.js";
-import { bus } from "./events.js";
+import { bus, emitCompat } from "./events.js";
+import { resolveEl, exposeForDebug, splitTokens, fetchRepoText } from "./utils.js";
 
 /** @typedef {{s:string,p:string,o:string}} SPORow */
 
 // ---------- DOM handles ----------
-const outEl = document.getElementById("out");
+const outEl = resolveEl("#out", { required: false, name: "#out" });
 
 const show = x => { if (outEl) outEl.textContent = (typeof x === "string" ? x : JSON.stringify(x, null, 2)); };
 
-// Compute repository root (two levels up from /assets/js/*.js)
-const BASE_URL = new URL("../../", import.meta.url);
-const BASE_PATH = (BASE_URL.protocol.startsWith("http") ? BASE_URL.href : BASE_URL.pathname).replace(/\/$/, "");
 const MIME_TTL = "text/turtle";
 
 // Ontology prefixes
@@ -96,7 +94,7 @@ class QueryApp {
   async run(queryPath, overlayClass = null, _opts = {}) {
     try {
       this._setBusy(true);
-      const query = await fetchText(queryPath);
+      const query = await fetchRepoText(queryPath, { cache: "no-store", bust: true });
       await this._execute(query, overlayClass, { source: queryPath });
     } catch (e) {
       show(`Error running ${queryPath}: ${e?.message || e}`);
@@ -151,7 +149,7 @@ class QueryApp {
       this.graphCtl.addCollections(rows, { dx: 90, dy: 26 });
       this.graphCtl?.fit?.();
       this._setStatus?.(`Added ${rows.length} collection link${rows.length === 1 ? "" : "s"}.`);
-      maybeExposeGraphCtl(this.graphCtl);
+      exposeForDebug("graphCtl", this.graphCtl);
       return;
     }
 
@@ -175,7 +173,7 @@ class QueryApp {
       this._reapplyOverlays();
       this._setStatus?.(`Highlighted ${ids.length} ${cls} node${ids.length === 1 ? "" : "s"}.`);
 
-      maybeExposeGraphCtl(this.graphCtl);
+      exposeForDebug("graphCtl", this.graphCtl);
       return;
     }
 
@@ -184,9 +182,9 @@ class QueryApp {
 
   async _renderGraph(rows) {
     const host =
-      panes.getRightPane() ||
-      document.getElementById("rightPane") ||
-      document.querySelector(".gsn-host");
+      panes.getRightPane()
+      ?? resolveEl("#rightPane", { required: false })
+      ?? resolveEl(".gsn-host", { required: false });
 
     if (!host) {
       this._setStatus?.("Cannot render graph: right pane host not found.");
@@ -203,7 +201,7 @@ class QueryApp {
       this.graphCtl = null;
     }
 
-    const newCtl = visualizeSPO(rows, {
+    const newCtl = await visualizeSPO(rows, {
       mount: host,
       bus: this.bus,
       ...GRAPH_RENDER_OPTS,
@@ -217,7 +215,7 @@ class QueryApp {
     this._reapplyOverlays();
 
     this._setStatus?.(`Rendered graph from ${rows.length} triples.`);
-    maybeExposeGraphCtl(this.graphCtl);
+    exposeForDebug("graphCtl", this.graphCtl);
   }
 
   destroy() {
@@ -236,11 +234,11 @@ class QueryApp {
 
   async _buildModulesBar(isDefault = false) {
     // 1) Query modules
-    const listQ = await fetchText(PATHS.q.listModules);
+    const listQ = await fetchRepoText(PATHS.q.listModules, { cache: "no-store", bust: true });
     const rows = bindingsToRows(this.store.query(listQ));
 
     // 2) Find/create the container at the bottom
-    let bar = document.getElementById("modulesBar");
+    let bar = resolveEl("#modulesBar", { required: false, name: "#modulesBar" });
     if (!bar) {
       bar = document.createElement("div");
       bar.id = "modulesBar";
@@ -274,7 +272,7 @@ class QueryApp {
         ev.stopPropagation();
         ev.stopImmediatePropagation();
 
-        const tmpl = await fetchText(PATHS.q.visualizeByMod);
+        const tmpl = await fetchRepoText(PATHS.q.visualizeByMod, { cache: "no-store", bust: true });
         let query = tmpl;
         query = query.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
         query = query.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
@@ -309,13 +307,14 @@ class QueryApp {
   }
 
   async _loadTTL() {
-    const ontoURL = `${BASE_PATH}${PATHS.onto}`;
-    const exampleURL = `${BASE_PATH}${PATHS.example}`;
-    const carURL = `${BASE_PATH}${PATHS.car}`;
-    const codeURL = `${BASE_PATH}${PATHS.code}`;
-
     const [ttlOnto, ttlExample, ttlCar, ttlCode] =
-      await Promise.all([getTTL(ontoURL), getTTL(exampleURL), getTTL(carURL), getTTL(codeURL)]);
+      await Promise.all([
+        getTTL(PATHS.onto),
+        getTTL(PATHS.example),
+        getTTL(PATHS.car),
+        getTTL(PATHS.code),
+      ]);
+
     try {
       this.store.load(ttlOnto, MIME_TTL, BASE_ONTO);
       this.store.load(ttlExample, MIME_TTL, BASE_CASE);
@@ -383,7 +382,7 @@ class QueryApp {
       const raw = el.getAttribute("data-queries") ?? el.getAttribute("data-query");
       if (!raw) return;
 
-      const paths = raw.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+      const paths = splitTokens(raw);
       if (!paths.length) return;
 
       const deletePath = el.getAttribute("data-delete-query");
@@ -434,16 +433,6 @@ class QueryApp {
 
 // ---------- generic helpers ----------
 
-function maybeExposeGraphCtl(ctl) {
-  const debug = new URLSearchParams(location.search).has("debug");
-  if (debug) window.graphCtl = ctl;
-}
-
-function emitCompat(bus, type, detail) {
-  bus?.emit?.(type, detail);
-  window.dispatchEvent(new CustomEvent(type, { detail }));
-}
-
 function toTriples(rows) {
   const get = (r, keys) => keys.find(k => r[k] !== undefined);
   const triples = [];
@@ -457,15 +446,6 @@ function toTriples(rows) {
     if (s && p && o) triples.push({ s, p, o });
   }
   return triples;
-}
-
-async function fetchText(relPath) {
-  const url = (relPath.startsWith("http") ? relPath :
-    `${BASE_PATH}${relPath.startsWith("/") ? "" : "/"}${relPath}`);
-  const r = await fetch(`${url}?v=${performance.timeOrigin}`, { cache: "no-store" });
-  if (!r.ok) throw new Error(`Fetch failed ${r.status} for ${url}`);
-  const txt = await r.text();
-  return txt.replace(/^\uFEFF/, ""); // strip BOM
 }
 
 function getFirstKeyword(queryText) {
@@ -486,12 +466,11 @@ function isUpdateQuery(queryText) {
   return ["INSERT", "DELETE", "LOAD", "CREATE", "DROP", "CLEAR", "COPY", "MOVE", "ADD"].includes(kw);
 }
 
-async function getTTL(url) {
-  const r = await fetch(`${url}?v=${performance.timeOrigin}`, { cache: "no-store" });
-  if (!r.ok) throw new Error(`Fetch failed ${r.status} for ${url}`);
-  const txt = await r.text();
+async function getTTL(pathOrUrl) {
+  const txt = await fetchRepoText(pathOrUrl, { cache: "no-store", bust: true });
+
   const first = txt.split(/\r?\n/).find(l => l.trim().length) || "";
-  if (first.startsWith("<!")) throw new Error(`Got HTML instead of Turtle from ${url}. Check the path.`);
+  if (first.startsWith("<!")) throw new Error(`Got HTML instead of Turtle from ${pathOrUrl}. Check the path.`);
   return txt;
 }
 

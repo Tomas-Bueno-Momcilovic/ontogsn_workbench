@@ -1,5 +1,6 @@
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
-import { mountTemplate } from "./utils.js";
+import { mountTemplate, resolveEl, addToSetMap, uid } from "./utils.js";
+import { emitCompat } from "./events.js";
 
 const HTML = new URL("../html/graph.html", import.meta.url);
 const CSS  = new URL("../css/graph.css",  import.meta.url);
@@ -24,22 +25,13 @@ export async function visualizeSPO(rows, {
   bus = null
 } = {}) {
   // --- Resolve mount
-  const rootEl = typeof mount === "string" ? document.querySelector(mount) : mount;
+  const rootEl = resolveEl(mount, { name: "visualizeSPO: mount" });
   if (!rootEl) throw new Error(`visualizeSPO: mount "${mount}" not found`);
 
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
 
   const svgNode = rootEl.querySelector(".gsn-svg");
   if (!svgNode) throw new Error("visualizeSPO: internal error – svg root not found");
-
-  const emit = (type, detail) => {
-    if (bus && typeof bus.emit === "function") {
-      bus.emit(type, detail);
-    } else {
-      // optional fallback if visualizeSPO is used standalone somewhere
-      window.dispatchEvent(new CustomEvent(type, { detail }));
-    }
-  };
 
   const rect       = rootEl.getBoundingClientRect();
   const pixelWidth = width ?? Math.max(300, rect.width || 800);
@@ -62,10 +54,9 @@ export async function visualizeSPO(rows, {
     m.append("path").attr("d","M0,0 L10,5 L0,10 Z").attr("fill", "currentColor");
   }
 
-  const uid        = Math.random().toString(36).slice(2);
-  const idArrow    = `arrow-${uid}`;
-  const idArrowCtx = `arrow-ctx-${uid}`;
-  const idArrowDef = `arrow-def-${uid}`;
+  const idArrow    = uid("arrow-");
+  const idArrowCtx = uid("arrow-ctx-");
+  const idArrowDef = uid("arrow-def-");
 
   marker(idArrow    , "norm");
   marker(idArrowCtx , "ctx");
@@ -130,8 +121,6 @@ export async function visualizeSPO(rows, {
   const allNodes = new Set();
   const defeat   = new Map();
 
-  const add = (map, k, v) => { if (!map.has(k)) map.set(k, new Set()); map.get(k).add(v); };
-
   for (const r of rows) {
     if (!r || !r.s || !r.p || !r.o) continue;
     const S = norm(r.s), P = norm(r.p), O = norm(r.o);
@@ -151,11 +140,12 @@ export async function visualizeSPO(rows, {
 
     if (supSet.has(P)) {
       allNodes.add(S); allNodes.add(O);
-      add(children, S, O); add(parents, O, S);
+      addToSetMap(children, S, O);
+      addToSetMap(parents,  O, S);
     } else if (ctxSet.has(P)) {
-      add(context, S, O);
+      addToSetMap(context, S, O);
     } else if (chalSet.has(P)) {
-      add(defeat, O, S);
+      addToSetMap(defeat, O, S);
     }
   }
 
@@ -178,7 +168,6 @@ export async function visualizeSPO(rows, {
 
   // Build adjacency for the layout tree using the primary parent only.
   const layoutChildren = new Map();
-  const addLC = (k, v) => { if (!layoutChildren.has(k)) layoutChildren.set(k, new Set()); layoutChildren.get(k).add(v); };
 
   // traverse starting from each root to collect the spanning tree
   const visited = new Set();
@@ -188,7 +177,7 @@ export async function visualizeSPO(rows, {
     const kids = children.get(id) ? [...children.get(id)] : [];
     for (const c of kids) {
       if (primaryParent.get(c) === id) {
-        addLC(id, c);
+        addToSetMap(layoutChildren, id, c);
         walkTree(c);
       }
     }
@@ -435,7 +424,7 @@ export async function visualizeSPO(rows, {
       .attr("transform", d => `translate(${d.x},${d.y})`);
   
   defG.on("click", (ev, d) => {
-    emit("gsn:defeaterClick", { id: d.id, label: d.label });
+    emitCompat(bus, "gsn:defeaterClick", { id: d.id, label: d.label });
   });
 
   g.selectAll("g.gsn-node.def").raise();
@@ -547,7 +536,7 @@ export async function visualizeSPO(rows, {
       .attr("transform", d => `translate(${d.x},${d.y})`);
 
   ctxG.on("click", (ev, d) => {
-    emit("gsn:contextClick", { id: d.id, label: d.label });
+    emitCompat(bus, "gsn:contextClick", { id: d.id, label: d.label });
   });
 
   // Shape: rect for normal context, ellipse for assumption/justification
@@ -762,18 +751,4 @@ export async function visualizeSPO(rows, {
   fit();
 
   return { fit, reset, destroy, svg: svgNode, clearAll, highlightByIds, addCollections, clearCollections };
-}
-
-let __graphTplHtml = null;
-
-async function loadGraphTemplate(url = new URL("../html/graph.html", import.meta.url)) {
-  if (__graphTplHtml == null) {
-    const res = await fetch(url, { cache: "force-cache" });
-    if (!res.ok) throw new Error(`graph template fetch failed: ${url} (${res.status})`);
-    __graphTplHtml = await res.text();
-  }
-
-  const tpl = document.createElement("template");
-  tpl.innerHTML = __graphTplHtml.trim();
-  return tpl.content.cloneNode(true); // fresh DOM each call
 }

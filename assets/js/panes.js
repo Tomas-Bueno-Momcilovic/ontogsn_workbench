@@ -1,4 +1,5 @@
 import { bus } from "./events.js";
+import { firstEl, resolveEl, safeInvoke } from "./utils.js";
 
 class PaneManager {
   constructor() {
@@ -36,29 +37,18 @@ class PaneManager {
 
   // --- DOM helpers -------------------------------------------------------
   getLeftPane() {
-    if (this.leftPane && document.body.contains(this.leftPane)) {
-      return this.leftPane;
-    }
-    this.leftPane = document.getElementById("leftPane");
-    if (!this.leftPane) {
-      console.warn("[PaneManager] #leftPane not found");
-    }
+    if (this.leftPane && document.body.contains(this.leftPane)) return this.leftPane;
+
+    this.leftPane = resolveEl("#leftPane", { required: false, name: "PaneManager leftPane" });
+    if (!this.leftPane) console.warn("[PaneManager] #leftPane not found");
     return this.leftPane;
   }
 
   getRightPane() {
-    if (this.rightPane && document.body.contains(this.rightPane)) {
-      return this.rightPane;
-    }
-    this.rightPane =
-      document.getElementById("rightPane") ||
-      // fallback for older markup
-      document.getElementById("graph") ||
-      document.querySelector(".gsn-host");
+    if (this.rightPane && document.body.contains(this.rightPane)) return this.rightPane;
 
-    if (!this.rightPane) {
-      console.warn("[PaneManager] #rightPane / .gsn-host not found");
-    }
+    this.rightPane = firstEl(["#rightPane", "#graph", ".gsn-host"]);
+    if (!this.rightPane) console.warn("[PaneManager] #rightPane / .gsn-host not found");
     return this.rightPane;
   }
 
@@ -96,7 +86,9 @@ class PaneManager {
 
     // Build mapping from data-pane
     this._tabToPane = Object.fromEntries(
-      tabs.map(btn => [btn.id, btn.dataset.pane])
+      tabs
+        .map(btn => [btn.id, btn.dataset.pane])
+        .filter(([id, pane]) => id && pane)
     );
 
     // Collect panes that exist
@@ -151,20 +143,14 @@ class PaneManager {
 
     this.currentRight = { id, controller };
 
-    this.bus?.emit?.("right:controllerChanged", { id, controller });
-    if (id === "graph" || id === "gsn-graph") {
-      this.bus?.emit?.("graph:ready", { controller });
-    }
+  safeInvoke(this.bus, "emit", "right:controllerChanged", { id, controller });
+  if (id === "graph" || id === "gsn-graph") {
+    safeInvoke(this.bus, "emit", "graph:ready", { controller });
+  }
 
     // Wire up auto-resize if the controller supports it
     if (controller && typeof controller.fit === "function") {
-      this._resizeHandler = () => {
-        try {
-          controller.fit();
-        } catch (e) {
-          console.warn("[PaneManager] controller.fit() failed:", e);
-        }
-      };
+      this._resizeHandler = () => safeInvoke(controller, "fit");
       window.addEventListener("resize", this._resizeHandler);
     }
   }
@@ -177,27 +163,21 @@ class PaneManager {
     const current = this.currentRight;
     this.currentRight = null;
 
-    this.bus?.emit?.("right:controllerChanged", { id: null, controller: null });
+    safeInvoke(this.bus, "emit", "right:controllerChanged", { id: null, controller: null });
 
     if (this._resizeHandler) {
       window.removeEventListener("resize", this._resizeHandler);
       this._resizeHandler = null;
     }
 
-    if (current && current.controller && typeof current.controller.destroy === "function") {
-      try {
-        current.controller.destroy();
-      } catch (e) {
-        console.warn("[PaneManager] controller.destroy() failed:", e);
-      }
-    }
+    safeInvoke(current?.controller, "destroy");
   }
 }
-
-window.addEventListener("DOMContentLoaded", () => {
-  panes.initLeftTabs();
-});
 
 export const panes = new PaneManager();
 panes.setBus(bus);
 export default panes;
+
+window.addEventListener("DOMContentLoaded", () => {
+  panes.initLeftTabs();
+});

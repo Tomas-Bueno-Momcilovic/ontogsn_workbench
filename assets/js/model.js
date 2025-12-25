@@ -2,7 +2,7 @@ import * as THREE from "../vendor/three.module.js";
 import { OrbitControls } from "../vendor/OrbitControls.js";
 import app from "./queries.js";
 import panes from "./panes.js";
-import { mountTemplate } from "./utils.js";
+import { mountTemplate, resolveEl, fetchText, downloadText } from "./utils.js";
 
 const HTML = new URL("../html/model.html", import.meta.url);
 const CSS  = new URL("../css/model.css",  import.meta.url);
@@ -49,10 +49,7 @@ async function setLoadActive(name, active) {
 // --- TTL → JS: load & parse car.ttl --------------------------------------
 
 async function loadCarConfigFromTTL(url) {
-  const res = await fetch(url);
-  if (!res.ok) { throw new Error(`Failed to fetch TTL: ${res.status} ${res.statusText}`); }
-  
-  const ttl     = await res.text();
+  const ttl = await fetchText(url, { cache: "no-store", bust: true });
   const parser  = new Parser({ format: "text/turtle" });
   const quads   = parser.parse(ttl);
   const store   = new Store(quads);
@@ -218,7 +215,7 @@ function findPartIriByName(name) {
 
 // --- Three.js scene creation ----------------------------------------------
 
-function createCarScene(config) {
+function createCarScene(config, { root = document } = {}) {
   const {geometry: g,
          wheelParams: wp,
          licensePlateParams: lp,
@@ -266,8 +263,11 @@ function createCarScene(config) {
 
   // ---------- DOM / RENDERER / CAMERA ----------
 
-  const container = document.querySelector("#scene-container");
-  if (!container) throw new Error("Model view: #scene-container not found");
+  // createCarScene()
+  const container = resolveEl("#scene-container", {
+    root,
+    name: "Model view: #scene-container"
+  });
 
   const renderer = new THREE.WebGLRenderer({
     antialias: !/Mobile|Android/.test(navigator.userAgent)
@@ -305,7 +305,7 @@ function createCarScene(config) {
   const mouse = new THREE.Vector2();
   let selectedMesh = null;
   const selectedOriginalColor = new THREE.Color();
-  const infoEl = document.querySelector("#part-label");
+  const infoEl = resolveEl("#part-label", { root, required: false, name: "Model view: #part-label" });
 
   // ---------- LIGHTS ----------
 
@@ -721,6 +721,7 @@ function createCarScene(config) {
   }
 
   onWindowResize();
+  window.addEventListener("resize", onWindowResize);
 
   renderer.domElement.addEventListener("pointerdown", onPointerDown);
 
@@ -954,18 +955,10 @@ function setupDownloadButton() {
       if (output) output.textContent = ttl;
 
       // Download as file
-      const blob = new Blob([ttl], { type: "text/turtle" });
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href = url;
-      a.download = "car-snapshot.ttl";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadText("car-snapshot.ttl", ttl, { mime: "text/turtle" });
     } catch (err) {
       console.error("TTL export failed:", err);
-      if (output) {
-        output.textContent = "TTL export failed: " + err;
-      }
+      if (output) {output.textContent = "TTL export failed: " + err;}
     }
   });
 }
@@ -993,8 +986,8 @@ export async function renderModelView({
   height = 520
 } = {}) {
 
-  const host   = mount || panes.getRightPane() || "#rightPane";
-  const rootEl = typeof host === "string" ? document.querySelector(host) : host;
+  const host = mount ?? panes.getRightPane() ?? "#rightPane";
+  const rootEl = resolveEl(host, { name: "renderModelView: mount" });
   if (!rootEl) throw new Error(`Model view: mount host not found`);
 
   panes.clearRightPane();
@@ -1024,7 +1017,7 @@ export async function renderModelView({
   clickable.length = 0;
 
   const cfg = await ensureCarConfig();
-  const sceneCtl = createCarScene(cfg);
+  const sceneCtl = createCarScene(cfg, { root: rootEl });
   currentSceneCtl = sceneCtl;
   setupDownloadButton();
   await refreshLoadInfo();
@@ -1184,12 +1177,12 @@ export async function renderModelView({
 }
 
 const overloadedQueryTextPromise =
-  fetch(new URL("../data/queries/propagate_overloadedCar.sparql", import.meta.url))
-    .then(r => r.text());
+  fetchText(new URL("../data/queries/propagate_overloadedCar.sparql", import.meta.url),
+            { cache: "force-cache" });
 
 const carLoadWeightQueryTextPromise =
-  fetch(new URL("../data/queries/read_carLoadWeight.sparql", import.meta.url))
-    .then(r => r.text());
+  fetchText(new URL("../data/queries/read_carLoadWeight.sparql", import.meta.url),
+            { cache: "force-cache" });
 
 // Wire the “Model View” button
 window.addEventListener("DOMContentLoaded", () => {

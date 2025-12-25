@@ -1,43 +1,9 @@
 import panes from "./panes.js";
-import { mountTemplate } from "./utils.js";
+import { mountTemplate, downloadText, resolveEl, readFileText, turtleEscapeLiteral, turtleEscapeMultilineLiteral } from "./utils.js";
 
 // module-relative URLs (works on localhost + GH Pages)
 const HTML = new URL("../html/converter.html", import.meta.url);
 const CSS  = new URL("../css/converter.css",  import.meta.url);
-
-function fileToText(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error);
-    reader.onload  = () => resolve(String(reader.result || ""));
-    reader.readAsText(file);
-  });
-}
-
-function downloadText(filename, text) {
-  const blob = new Blob([text], { type: "text/turtle;charset=utf-8" });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href     = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-// --- Turtle literal helpers -----------------------------------------
-
-function escapeLiteral(str) {
-  return String(str)
-    .replace(/(["\\])/g, "\\$1")
-    .replace(/\n/g, "\\n");
-}
-
-function escapeMultilineLiteral(str) {
-  // For """...""" literals: escape """ inside
-  return String(str).replace(/"""/g, '\\"""');
-}
 
 // --- XML → ASCE instance Turtle -------------------------------------
 
@@ -118,7 +84,7 @@ function xmlToAsceTurtle(xmlText, options = {}) {
 
     // Optional: userId
     if (userId) {
-      lines.push(`  ; asce:userId "${escapeLiteral(userId)}"`);
+      lines.push(`  ; asce:userId "${turtleEscapeLiteral(userId)}"`);
     }
 
     // Node type as asce:type (aligned with asce.ttl)
@@ -128,14 +94,14 @@ function xmlToAsceTurtle(xmlText, options = {}) {
         lines.push(`  ; asce:type "${n}"^^xsd:nonNegativeInteger`);
       } else {
         // fallback if the XML has non-numeric type values
-        lines.push(`  ; asce:type "${escapeLiteral(typeStr)}"`);
+        lines.push(`  ; asce:type "${turtleEscapeLiteral(typeStr)}"`);
       }
     }
 
     // Node label / statement as asce:userTitle (subproperty of gsn:statement)
     if (statement) {
       lines.push(
-        `  ; asce:userTitle """${escapeMultilineLiteral(statement)}"""`
+        `  ; asce:userTitle """${turtleEscapeMultilineLiteral(statement)}"""`
       );
     }
 
@@ -188,7 +154,7 @@ function xmlToAsceTurtle(xmlText, options = {}) {
         typeNum = n;
         lines.push(`  ; asce:type "${n}"^^xsd:nonNegativeInteger`);
       } else {
-        lines.push(`  ; asce:type "${escapeLiteral(typeStr)}"`);
+        lines.push(`  ; asce:type "${turtleEscapeLiteral(typeStr)}"`);
       }
     }
 
@@ -215,7 +181,7 @@ function xmlToAsceTurtle(xmlText, options = {}) {
 // --- high-level conversion for a single XML file -------------------
 
 async function convertXmlFile(file, { baseIri } = {}) {
-  const xmlText = await fileToText(file);
+  const xmlText = await readFileText(file);
   return xmlToAsceTurtle(xmlText, { baseIri });
 }
 
@@ -224,7 +190,7 @@ async function convertXmlFile(file, { baseIri } = {}) {
 let lastConvertedTtl = null;
 
 async function setupConverterPanel() {
-  const root = document.getElementById("converter-root");
+  const root = resolveEl("#converter-root", { required: false });
   if (!root) return;
 
   await mountTemplate(root, { templateUrl: HTML, cssUrl: CSS });
@@ -256,11 +222,11 @@ async function setupConverterPanel() {
     }
   });
 
-  downloadBtn.addEventListener("click", () => {
+  downloadBtn?.addEventListener("click", () => {
     if (!lastConvertedTtl) return;
     const originalName = fileInput?.files?.[0]?.name || "kettle.axml";
     const ttlName = originalName.replace(/\.[^.]+$/, "") + ".ttl";
-    downloadText(ttlName, lastConvertedTtl);
+    downloadText(ttlName, lastConvertedTtl, { mime: "text/turtle;charset=utf-8" });
   });
 }
 

@@ -1,5 +1,5 @@
 import app from "./queries.js";
-import { mountTemplate } from "./utils.js";
+import { mountTemplate, resolveEl, bindingsToRows, escapeHtml } from "./utils.js";
 
 // module-relative URLs (works on localhost + GH Pages)
 const HTML = new URL("../html/chat.html", import.meta.url);
@@ -7,14 +7,13 @@ const CSS  = new URL("../css/chat.css",  import.meta.url);
 
 // --- tiny helpers -----------------------------------------------------------
 const $ = (sel, root = document) => root.querySelector(sel);
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // Grab or persist the key/model locally
 const KEY_K = "openrouter_api_key";
 const MODEL_K = "openrouter_model";
 
 async function buildChatUI() {
-  const root = document.getElementById("chat-root");
+  const root = resolveEl("#chat-root", { name: "chat.js: #chat-root", required: false });
   if (!root || root.dataset.initialised === "1") return;
   root.dataset.initialised = "1";
 
@@ -35,7 +34,6 @@ async function buildChatUI() {
 
 }
 
-
 // Make sure Oxigraph is ready
 async function ensureStore() {
   if (!app.store) await app.init?.(); // no-op if already initialized
@@ -55,7 +53,7 @@ function makeContextQuery(words) {
   // up to 5 words → disjunction of regex tests over id/label/comment + IRIs
   const re = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const RX = re.map(w =>
-    `regex(str(?s), "${w}", "i") || regex(str(?label), "${w}", "i") || regex(str(?id), "${w}", "i") || regex(str(?o), "${w}", "i")`
+    `regex(str(?s), "...") || regex(str(?label), "...") || regex(str(?id), "...") || regex(str(?statement), "...")`
   ).join(" || ");
 
   return `
@@ -85,30 +83,6 @@ WHERE {
   ?s ?p ?o .
 }
 LIMIT 200`;
-}
-
-// Turn bindings into plain JS rows (same as queries.js)
-function bindingsToRows(iter) {
-  const rows = [];
-  for (const b of iter) {
-    const obj = {};
-    for (const [k, v] of b) {
-      switch (v.termType) {
-        case "NamedNode": obj[k] = v.value; break;
-        case "BlankNode": obj[k] = "_:" + v.value; break;
-        case "Literal": {
-          const dt = v.datatype?.value, lg = v.language;
-          obj[k] = lg ? `"${v.value}"@${lg}` :
-                   (dt && dt !== "http://www.w3.org/2001/XMLSchema#string") ? `"${v.value}"^^${dt}` :
-                   v.value;
-          break;
-        }
-        default: obj[k] = v.value ?? String(v);
-      }
-    }
-    rows.push(obj);
-  }
-  return rows;
 }
 
 // Query store for context block
@@ -204,7 +178,7 @@ async function onChatSubmit(ev) {
   localStorage.setItem(KEY_K, apiKey);
   localStorage.setItem(MODEL_K, model);
 
-  appendMsg("user", esc(q));
+  appendMsg("user", escapeHtml(q));
   inputEl.value = "";
   sendBtn.disabled = true;
 
@@ -228,9 +202,9 @@ ${triples.slice(0, 120).map(t => `${t.s}  ${t.p}  ${t.o}`).join("\n")}`;
     ];
 
     const answer = await askOpenRouter({ apiKey, model, messages });
-    appendMsg("bot", esc(answer));
+    appendMsg("bot", escapeHtml(answer));
   } catch (e) {
-    appendMsg("bot", `<em>${esc(e.message)}</em>`);
+    appendMsg("bot", `<em>${escapeHtml(e.message)}</em>`);
   } finally {
     sendBtn.disabled = false;
   }

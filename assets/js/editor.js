@@ -1,28 +1,11 @@
 // /assets/js/editor.js
 import app from "./queries.js";
 import panes from "./panes.js";
-import { mountTemplate } from "./utils.js";
+import { mountTemplate, fetchRepoText, resolveEl, applyTemplate } from "./utils.js";
 
 // module-relative URLs (works on localhost + GH Pages)
 const HTML = new URL("../html/editor.html", import.meta.url);
 const CSS  = new URL("../css/editor.css",  import.meta.url);
-
-// Reproduce BASE_PATH + fetchText so paths to .sparql files behave like in queries.js
-const BASE_URL  = new URL("../../", import.meta.url);
-const BASE_PATH = (BASE_URL.protocol.startsWith("http")
-  ? BASE_URL.href
-  : BASE_URL.pathname
-).replace(/\/$/, "");
-
-async function fetchText(relPath) {
-  const url = (relPath.startsWith("http")
-    ? relPath
-    : `${BASE_PATH}${relPath.startsWith("/") ? "" : "/"}${relPath}`);
-  const r = await fetch(`${url}?v=${performance.timeOrigin}`, { cache: "no-store" });
-  if (!r.ok) throw new Error(`Fetch failed ${r.status} for ${url}`);
-  const txt = await r.text();
-  return txt.replace(/^\uFEFF/, "");
-}
 
 // ---- Config: which write actions are offered in the editor ----
 
@@ -41,33 +24,24 @@ const ACTIONS = [
   // Add more actions as needed...
 ];
 
-// Simple templating: replace {{NAME}} with value
-function applyTemplate(template, values) {
-  let result = template;
-  for (const [key, val] of Object.entries(values)) {
-    const re = new RegExp(`{{${key}}}`, "g");
-    result = result.replace(re, val);
-  }
-  return result;
-}
-
 // ---- UI wiring ----
 
 async function initEditorUI() {
-  const root = document.getElementById("editor-root");
+  const root = resolveEl("#editor-root", { required: false, name: "Editor view: #editor-root" });
   if (!root) return;
 
   await app.init();
 
   await mountTemplate(root, { templateUrl: HTML, cssUrl: CSS });
 
-  const actionSelect    = root.querySelector("#editor-action");
-  const typeSelect      = root.querySelector("#editor-type");
-  const fieldsContainer = root.querySelector("#editor-fields");
-  const runBtn          = root.querySelector("#editor-run");
-  const previewEl       = root.querySelector("#editor-preview");
+  const actionSelect    = resolveEl("#editor-action",  { root, name: "Editor view: #editor-action" });
+  const typeSelect      = resolveEl("#editor-type",    { root, name: "Editor view: #editor-type" });
+  const fieldsContainer = resolveEl("#editor-fields",  { root, name: "Editor view: #editor-fields" });
+  const runBtn          = resolveEl("#editor-run",     { root, name: "Editor view: #editor-run" });
+  const previewEl       = resolveEl("#editor-preview", { root, name: "Editor view: #editor-preview" });
 
   // Populate action dropdown
+  actionSelect.innerHTML = "";
   for (const action of ACTIONS) {
     const opt = document.createElement("option");
     opt.value = action.id;
@@ -104,23 +78,26 @@ async function initEditorUI() {
 
   function shortenGsnType(iri) {
     const base = "https://w3id.org/OntoGSN/ontology#";
-    if (iri.startsWith(base)) {
-      return "gsn:" + iri.slice(base.length); // e.g. gsn:Goal
-    }
+    if (iri.startsWith(base)) return "gsn:" + iri.slice(base.length);
     return iri;
   }
 
   async function loadGsnTypes() {
-    const q = await fetchText("/assets/data/queries/read_allowed_gsnElements.sparql");
+    const q = await fetchRepoText("/assets/data/queries/read_allowed_gsnElements.sparql", {
+      from: import.meta.url,
+      upLevels: 2,
+      cache: "no-store",
+      bust: true
+    });
 
     const rows = await app.selectBindings(q);
 
     typeSelect.innerHTML = "";
-
     for (const row of rows || []) {
-      const iri = row.type.value;
-      const short = shortenGsnType(iri);
+      const iri = row.type?.value;
+      if (!iri) continue;
 
+      const short = shortenGsnType(iri);
       const opt = document.createElement("option");
       opt.value = short;
       opt.textContent = short;
@@ -132,7 +109,6 @@ async function initEditorUI() {
     }
   }
 
-
   // Initial render + load type list
   renderFields(getCurrentAction());
   await loadGsnTypes();
@@ -142,7 +118,14 @@ async function initEditorUI() {
 
   async function getTemplate(action) {
     if (templateCache.has(action.id)) return templateCache.get(action.id);
-    const txt = await fetchText(action.templatePath);
+
+    const txt = await fetchRepoText(action.templatePath, {
+      from: import.meta.url,
+      upLevels: 2,
+      cache: "no-store",
+      bust: true
+    });
+
     templateCache.set(action.id, txt);
     return txt;
   }
