@@ -46,37 +46,7 @@ export async function visualizeSPO(rows, {
   const legend = rootEl.querySelector(".gsn-legend");
   if (legend) ui.appendChild(legend);
 
-  // 3) Show bar
-  let showBar = rootEl.querySelector(".gsn-graph-show");
-  if (!showBar) {
-    showBar = document.createElement("div");
-    showBar.className = "gsn-graph-show btns";
-    showBar.innerHTML = `
-      <span class="gsn-show-label">Show:</span>
-
-      <label><input id="toggle-context" type="checkbox" checked data-no-table="1"> Contextual</label>
-      <label><input id="toggle-defeat"  type="checkbox" checked data-no-table="1"> Dialectic</label>
-
-      <label><input type="checkbox"
-        data-query="/assets/data/queries/visualize_undev_nodes.sparql"
-        data-class="undev" data-no-table="1"> Undeveloped</label>
-
-      <label><input type="checkbox"
-        data-query="/assets/data/queries/visualize_invalid_nodes.sparql"
-        data-class="invalid" data-no-table="1"> Invalid</label>
-
-      <label><input type="checkbox"
-        data-query="/assets/data/queries/visualize_valid_nodes.sparql"
-        data-class="valid" data-no-table="1"> Valid</label>
-
-      <label><input type="checkbox"
-        data-query="/assets/data/queries/read_all_collections.sparql"
-        data-class="collection" data-no-table="1"> Artefacts</label>
-    `;
-  }
-  ui.appendChild(showBar);
-
-  // 4) Rules header
+  // 3) Rules header
   let rulesHdr = rootEl.querySelector(".gsn-graph-rules");
   if (!rulesHdr) {
     rulesHdr = document.createElement("div");
