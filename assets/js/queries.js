@@ -382,11 +382,6 @@ class QueryApp {
 
 // ---------- boot ----------
 const app = new QueryApp({ bus });
-//app.init();
-window.addEventListener("DOMContentLoaded", async () => {
-  await app.init();                     // loads TTLs + wires UI
-  await app.run(PATHS.q.visualize);
-});
 
 app.selectBindings = async function selectBindings(queryText) {
   // Ensure store is ready (reuses your init() logic and _initPromise)
