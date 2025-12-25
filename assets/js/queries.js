@@ -1,9 +1,10 @@
 import { initStore } from "./rdf/store.js";
-import { bindingsToRows, isUpdateQuery, shortenIri } from "./rdf/sparql.js";
+import { shortenIri } from "./rdf/sparql.js";
+import { createQueryService } from "./rdf/queryService.js";
 import { visualizeSPO } from "./graph.js";
 import panes from "./panes.js";
 import { bus, emitCompat } from "./events.js";
-import { resolveEl, exposeForDebug, splitTokens, fetchRepoText, fetchText } from "./utils.js";
+import { resolveEl, exposeForDebug, splitTokens } from "./utils.js";
 import { PATHS } from "./rdf/config.js";
 
 /** @typedef {{s:string,p:string,o:string}} SPORow */
@@ -45,6 +46,7 @@ class QueryApp {
     this._unsubs = [];
 
     this.store = null;
+    this.qs = null;
     this._initPromise = null;
     this.graphCtl = null;
     this.overlays = new Map();
@@ -54,6 +56,7 @@ class QueryApp {
     if (this._initPromise) return this._initPromise;
     this._initPromise = (async () => {
       this.store = await initStore();
+      this.qs = createQueryService(this.store);
       this._wireGraphBus();
       this._attachUI();
       await this._buildModulesBar();
@@ -64,8 +67,8 @@ class QueryApp {
   async run(queryPath, overlayClass = null, _opts = {}) {
     try {
       this._setBusy(true);
-      const query = await fetchRepoText(queryPath, { cache: "no-store", bust: true });
-      await this._execute(query, overlayClass, { source: queryPath });
+      const res = await this.qs.runPath(queryPath, { cache: "no-store", bust: true });
+      await this._handleQueryResult(res, overlayClass);
     } catch (e) {
       show(`Error running ${queryPath}: ${e?.message || e}`);
       console.error(e);
@@ -77,7 +80,8 @@ class QueryApp {
   async runInline(queryText, overlayClass = null, _opts = {}) {
     try {
       this._setBusy(true);
-      await this._execute(queryText, overlayClass, { source: "inline" });
+      const res = await this.qs.runText(queryText, { source: "inline" });
+      await this._handleQueryResult(res, overlayClass);
     } catch (e) {
       show(`Error (inline query): ${e?.message || e}`);
       console.error(e);
@@ -87,17 +91,13 @@ class QueryApp {
   }
 
   // --- private helpers ---
-  async _execute(queryText, overlayClass = null, meta = {}) {
-
-    if (isUpdateQuery(queryText)) {
-      await this.store.update(queryText);
+  async _handleQueryResult(result, overlayClass = null) {
+    if (result.kind === "update") {
       this._setStatus?.("SPARQL UPDATE executed.");
       return;
     }
 
-    const res = this.store.query(queryText);
-    const rows = bindingsToRows(res);
-
+    const rows = result.rows || [];
     if (!rows.length) {
       this._setStatus?.("No results.");
       return;
@@ -204,8 +204,8 @@ class QueryApp {
 
   async _buildModulesBar(isDefault = false) {
     // 1) Query modules
-    const listQ = await fetchRepoText(PATHS.q.listModules, { cache: "no-store", bust: true });
-    const rows = bindingsToRows(this.store.query(listQ));
+    const res = await this.qs.runPath(PATHS.q.listModules, { cache: "no-store", bust: true });
+    const rows = res.rows ?? [];
 
     // 2) Find/create the container at the bottom
     let bar = resolveEl("#modulesBar", { required: false, name: "#modulesBar" });
@@ -242,7 +242,7 @@ class QueryApp {
         ev.stopPropagation();
         ev.stopImmediatePropagation();
 
-        const tmpl = await fetchRepoText(PATHS.q.visualizeByMod, { cache: "no-store", bust: true });
+        const tmpl = await this.qs.fetchQueryText(PATHS.q.visualizeByMod, { cache: "no-store", bust: true });
         let query = tmpl;
         query = query.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
         query = query.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
@@ -252,7 +252,6 @@ class QueryApp {
       bar.appendChild(b);
     }
   }
-
 
   _applyVisibility() {
     const root = panes.getRightPane();
@@ -285,10 +284,10 @@ class QueryApp {
         const iri = ev?.detail?.id;
         if (!iri) return;
 
-        const tmpl = await fetchText(PATHS.q.propCtx);
+        const tmpl = await this.qs.fetchQueryText(PATHS.q.propCtx);
         const q = tmpl.replaceAll("{{CTX_IRI}}", `<${iri}>`);
 
-        const rows = bindingsToRows(this.store.query(q));
+        const { rows } = await this.qs.runText(q, { source: PATHS.q.propCtx });
         const ids = rows.map(r => r.nodeIRI).filter(Boolean);
 
         this.graphCtl?.clearAll();
@@ -301,10 +300,10 @@ class QueryApp {
         const iri = ev?.detail?.id;
         if (!iri) return;
 
-        const tmpl = await fetchText(PATHS.q.propDef);
+        const tmpl = await this.qs.fetchQueryText(PATHS.q.propDef);
         const q = tmpl.replaceAll("{{DFT_IRI}}", `<${iri}>`);
 
-        const rows = bindingsToRows(this.store.query(q));
+        const { rows } = await this.qs.runText(q, { source: PATHS.q.propDef });
         const ids = rows.map(r => r.hitIRI).filter(Boolean);
 
         this.graphCtl?.clearAll();
@@ -379,23 +378,6 @@ class QueryApp {
     const btns = document.querySelectorAll("[data-query]");
     btns.forEach(b => b.toggleAttribute("disabled", !!busy));
   }
-}
-
-// ---------- generic helpers ----------
-
-function toTriples(rows) {
-  const get = (r, keys) => keys.find(k => r[k] !== undefined);
-  const triples = [];
-  for (const r of rows) {
-    const ks = get(r, ["s", "subject", "subj", "source", "nodeIRI", "from", "g"]);
-    const kp = get(r, ["p", "predicate", "pred", "rel", "property", "edge"]);
-    const ko = get(r, ["o", "object", "obj", "target", "to", "hitIRI"]);
-    const s = ks ? r[ks] : undefined;
-    const p = kp ? r[kp] : undefined;
-    const o = ko ? r[ko] : undefined;
-    if (s && p && o) triples.push({ s, p, o });
-  }
-  return triples;
 }
 
 // ---------- boot ----------
