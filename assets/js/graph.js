@@ -1,5 +1,5 @@
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
-import { mountTemplate, resolveEl, addToSetMap, uid } from "./utils.js";
+import { mountTemplate, resolveEl, addToSetMap, uid, splitTokens, exposeForDebug } from "./utils.js";
 import { emitCompat } from "./events.js";
 
 const HTML = new URL("../html/graph.html", import.meta.url);
@@ -851,4 +851,402 @@ export async function visualizeSPO(rows, {
   fit();
 
   return { fit, reset, destroy, svg: svgNode, clearAll, highlightByIds, addCollections, clearCollections };
+}
+
+// ============================================================================
+// Graph feature controller: runs graph-related queries + manages graph UI state
+// - owns: graph rendering, overlays, modules bar, show/rules checkbox behavior,
+//         and bus wiring for context/defeater click propagation.
+// - depends on: panes (right pane host), bus (EventBus), qs (QueryService), PATHS
+// ============================================================================
+
+const DEFAULT_GRAPH_RENDER_OPTS = {
+  height: 520,
+  label: (x) => x,
+  supportedBy: [
+    "supported by",
+    "gsn:supportedBy",
+    "https://w3id.org/OntoGSN/ontology#supportedBy",
+    "http://w3id.org/gsn#supportedBy",
+  ],
+  contextOf: [
+    "in context of",
+    "gsn:inContextOf",
+    "https://w3id.org/OntoGSN/ontology#inContextOf",
+    "http://w3id.org/gsn#inContextOf",
+  ],
+  challenges: [
+    "challenges",
+    "gsn:challenges",
+    "https://w3id.org/OntoGSN/ontology#challenges",
+    "http://w3id.org/gsn#challenges",
+  ],
+  theme: "light",
+};
+
+export function createGraphApp({
+  panes,
+  bus,
+  qs = null,
+  paths,
+  labelFn = (x) => x,
+  renderOpts = {},
+} = {}) {
+  return new GraphApp({ panes, bus, qs, paths, labelFn, renderOpts });
+}
+
+class GraphApp {
+  constructor({ panes, bus, qs, paths, labelFn, renderOpts }) {
+    if (!panes) throw new Error("createGraphApp: panes is required");
+    if (!bus) throw new Error("createGraphApp: bus is required");
+    if (!paths) throw new Error("createGraphApp: paths is required");
+
+    this.panes = panes;
+    this.bus = bus;
+    this.qs = qs;
+    this.rootEl = null;
+
+    this.paths = paths;
+
+    this.graphCtl = null;
+    this.overlays = new Map();
+    this._unsubs = [];
+
+    this._wired = false;
+
+    this.renderOpts = {
+      ...DEFAULT_GRAPH_RENDER_OPTS,
+      ...renderOpts,
+      label: labelFn || DEFAULT_GRAPH_RENDER_OPTS.label,
+    };
+  }
+
+  async init({ qs } = {}) {
+    this.rootEl = this.panes.getRightPane?.() ?? resolveEl("#rightPane", { required: true, name: "GraphApp root" });
+
+    if (qs) this.qs = qs;
+    if (!this.qs) throw new Error("GraphApp.init: qs is required");
+
+    if (this._wired) return;
+    this._wired = true;
+
+    this._wireGraphBus();
+    this._attachUI();
+  }
+
+  destroy() {
+    this._unsubs.forEach(off => off());
+    this._unsubs = [];
+
+    if (this._onDocClick) {
+      this.rootEl?.removeEventListener("click", this._onDocClick);
+      this._onDocClick = null;
+    }
+    if (this._onDocChange) {
+      this.rootEl?.removeEventListener("change", this._onDocChange);
+      this._onDocChange = null;
+    }
+  }
+
+  async run(queryPath, overlayClass = null) {
+    if (!this.qs) throw new Error("GraphApp.run: call init({qs}) first");
+    try {
+      this._setBusy(true);
+      const res = await this.qs.runPath(queryPath, { cache: "no-store", bust: true });
+      await this._handleQueryResult(res, overlayClass);
+    } finally {
+      this._setBusy(false);
+    }
+  }
+
+  async runInline(queryText, overlayClass = null, { source = "inline" } = {}) {
+    if (!this.qs) throw new Error("GraphApp.runInline: call init({qs}) first");
+    try {
+      this._setBusy(true);
+      const res = await this.qs.runText(queryText, { source });
+      await this._handleQueryResult(res, overlayClass);
+    } finally {
+      this._setBusy(false);
+    }
+  }
+
+  async _handleQueryResult(result, overlayClass = null) {
+    if (!result) return;
+
+    if (result.kind === "update") {
+      // Update queries have no UI effect here (by design).
+      return;
+    }
+
+    const rows = result.rows || [];
+    if (!rows.length) return;
+
+    const r0 = rows[0];
+    const hasS = Object.prototype.hasOwnProperty.call(r0, "s");
+    const hasP = Object.prototype.hasOwnProperty.call(r0, "p");
+    const hasO = Object.prototype.hasOwnProperty.call(r0, "o");
+    const hasCollectionsShape = ("ctx" in r0) && ("clt" in r0) && ("item" in r0);
+
+    // 1) Collections overlay
+    if (hasCollectionsShape) {
+      if (!this.graphCtl?.addCollections) return;
+      this.graphCtl.addCollections(rows, { dx: 90, dy: 26 });
+      this.graphCtl?.fit?.();
+      exposeForDebug("graphCtl", this.graphCtl);
+      return;
+    }
+
+    // 2) Graph render
+    if (hasS && hasP && hasO) {
+      await this._renderGraph(rows);
+      return;
+    }
+
+    // 3) Overlay highlight (single ?s)
+    if (hasS && !hasP && !hasO) {
+      if (!this.graphCtl?.highlightByIds) return;
+
+      const ids = rows.map(r => r.s).filter(Boolean);
+      const cls = overlayClass || "overlay";
+
+      this.overlays.set(cls, new Set(ids));
+      this._reapplyOverlays();
+
+      exposeForDebug("graphCtl", this.graphCtl);
+      return;
+    }
+
+    // Otherwise: ignore unsupported shapes (intentionally graph-only controller)
+  }
+
+  async _renderGraph(rows) {
+    const host =
+      this.panes.getRightPane?.()
+      ?? resolveEl("#rightPane", { required: false })
+      ?? resolveEl(".gsn-host", { required: false });
+
+    if (!host) return;
+
+    // Clear right pane via PaneManager if available
+    if (typeof this.panes.clearRightPane === "function") {
+      this.panes.clearRightPane();
+      this.graphCtl = null;
+    } else if (host instanceof Element) {
+      host.innerHTML = "";
+      this.graphCtl?.destroy?.();
+      this.graphCtl = null;
+    }
+
+    const newCtl = await visualizeSPO(rows, {
+      mount: host,
+      bus: this.bus,
+      ...this.renderOpts,
+    });
+
+    this.panes.setRightController?.("graph", newCtl);
+    this.graphCtl = newCtl;
+
+    this.graphCtl?.fit?.();
+    this._applyVisibility();
+    this._reapplyOverlays();
+
+    await this._buildModulesBar(true);
+
+    exposeForDebug("graphCtl", this.graphCtl);
+  }
+
+  async _buildModulesBar(isDefault = false) {
+    if (!this.qs) return;
+
+    // Prefer the modules bar inside the graph pane; if it exists elsewhere, move it.
+    const rightRoot = this.rootEl ?? this.panes.getRightPane?.() ?? document;
+
+    let bar =
+      (rightRoot !== document ? rightRoot.querySelector?.("#modulesBar") : null)
+      ?? document.getElementById("modulesBar");
+
+    if (!bar) return;
+
+    // Only move if it's actually outside the right pane (not just not a direct child)
+    if (rightRoot !== document && !rightRoot.contains(bar)) {
+      const hud = rightRoot.querySelector?.(".gsn-graph-hud") ?? rightRoot;
+      hud.appendChild(bar);
+    }
+
+    const res = await this.qs.runPath(this.paths.q.listModules, { cache: "no-store", bust: true });
+    const rows = res.rows ?? [];
+
+    bar.innerHTML = "";
+
+    // “All”
+    const btnAll = document.createElement("button");
+    btnAll.classList.add("tab");
+    if (isDefault) btnAll.classList.add("active");
+    btnAll.textContent = "All";
+    btnAll.addEventListener("click", () => this.run(this.paths.q.visualize));
+    bar.appendChild(btnAll);
+
+    // Per module
+    for (const r of rows) {
+      const iri = r.module;
+      if (!iri) continue;
+
+      const label = r.label || this.renderOpts.label?.(iri) || iri;
+
+      const b = document.createElement("button");
+      b.classList.add("tab");
+      b.textContent = label;
+      b.title = iri;
+
+      b.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        ev.stopImmediatePropagation();
+
+        const tmpl = await this.qs.fetchQueryText(this.paths.q.visualizeByMod, { cache: "no-store", bust: true });
+        let q = tmpl;
+        q = q.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
+        q = q.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
+        await this.runInline(q, null, { source: this.paths.q.visualizeByMod });
+      });
+
+      bar.appendChild(b);
+    }
+  }
+
+  _applyVisibility() {
+    const root = this.panes.getRightPane?.();
+    if (!root) return;
+
+    const ctx = this.rootEl?.querySelector?.("#toggle-context");
+    const df  = this.rootEl?.querySelector?.("#toggle-defeat");
+
+    const showCtx = ctx ? ctx.checked : true;
+    const showDef = df ? df.checked : true;
+
+    root.classList.toggle("hide-ctx", !showCtx);
+    root.classList.toggle("hide-def", !showDef);
+
+    this.graphCtl?.fit?.();
+  }
+
+  _reapplyOverlays() {
+    if (!this.graphCtl) return;
+
+    if (this.graphCtl.clearAll) this.graphCtl.clearAll();
+
+    for (const [cls, idSet] of this.overlays.entries()) {
+      if (idSet && idSet.size > 0) {
+        this.graphCtl.highlightByIds(Array.from(idSet), cls);
+      }
+    }
+  }
+
+  _wireGraphBus() {
+    // emitted by visualizeSPO via emitCompat(bus, "gsn:contextClick" / "gsn:defeaterClick", ...)
+    this._unsubs.push(
+      this.bus.on("gsn:contextClick", async (ev) => {
+        const iri = ev?.detail?.id;
+        if (!iri || !this.graphCtl) return;
+
+        const tmpl = await this.qs.fetchQueryText(this.paths.q.propCtx);
+        const q = tmpl.replaceAll("{{CTX_IRI}}", `<${iri}>`);
+
+        const { rows } = await this.qs.runText(q, { source: this.paths.q.propCtx });
+        const ids = (rows ?? []).map(r => r.nodeIRI).filter(Boolean);
+
+        this.graphCtl?.clearAll?.();
+        this.graphCtl?.highlightByIds?.(ids, "in-context");
+      })
+    );
+
+    this._unsubs.push(
+      this.bus.on("gsn:defeaterClick", async (ev) => {
+        const iri = ev?.detail?.id;
+        if (!iri || !this.graphCtl) return;
+
+        const tmpl = await this.qs.fetchQueryText(this.paths.q.propDef);
+        const q = tmpl.replaceAll("{{DFT_IRI}}", `<${iri}>`);
+
+        const { rows } = await this.qs.runText(q, { source: this.paths.q.propDef });
+        const ids = (rows ?? []).map(r => r.hitIRI).filter(Boolean);
+
+        this.graphCtl?.clearAll?.();
+        this.graphCtl?.highlightByIds?.(ids, "def-prop");
+      })
+    );
+  }
+
+  _attachUI() {
+    // Click-to-run buttons (graph-related SPARQL buttons)
+    this._onDocClick = (e) => {
+      const btn = e.target instanceof Element ? e.target.closest("[data-query]:not(input)") : null;
+      if (!btn) return;
+
+      const path = btn.getAttribute("data-query");
+      if (!path) return;
+
+      this.run(path);
+    };
+
+    // Checkbox overlays / rules (graph-related)
+    this._onDocChange = (e) => {
+      const el = e.target instanceof Element
+        ? e.target.closest('input[type="checkbox"][data-class]')
+        : null;
+      if (!el) return;
+
+      const cls = el.getAttribute("data-class") || "overlay";
+      const raw = el.getAttribute("data-queries") ?? el.getAttribute("data-query");
+      if (!raw) return;
+
+      const paths = splitTokens(raw);
+      if (!paths.length) return;
+
+      const deletePath = el.getAttribute("data-delete-query");
+      const eventName  = el.getAttribute("data-event");
+
+      const isOverloadRule = paths.some(p => p.includes("propagate_overloadedCar.sparql"));
+
+      if (el.checked) {
+        (async () => {
+          for (const path of paths) await this.run(path, cls);
+          if (isOverloadRule) emitCompat(this.bus, "car:overloadChanged", { active: true });
+          if (eventName) emitCompat(this.bus, eventName, { active: true });
+        })();
+      } else {
+        (async () => {
+          if (deletePath) await this.run(deletePath, cls);
+
+          this.overlays.set(cls, new Set());
+          this._reapplyOverlays();
+
+          if (cls === "collection") {
+            this.graphCtl?.clearCollections?.();
+          }
+
+          if (isOverloadRule) emitCompat(this.bus, "car:overloadChanged", { active: false });
+          if (eventName) emitCompat(this.bus, eventName, { active: false });
+        })();
+      }
+    };
+
+    this.rootEl.addEventListener("click", this._onDocClick);
+    this.rootEl.addEventListener("change", this._onDocChange);
+
+    // Visibility checkboxes (Contextual/Dialectic)
+    const ctxBox = this.rootEl?.querySelector?.("#toggle-context");
+    const dfBox  = this.rootEl?.querySelector?.("#toggle-defeat");
+
+    ctxBox?.addEventListener("change", () => this._applyVisibility());
+    dfBox?.addEventListener("change", () => this._applyVisibility());
+  }
+
+  _setBusy(busy) {
+    document.body.toggleAttribute("aria-busy", !!busy);
+    const scope = this.rootEl ?? document;
+    const btns = scope.querySelectorAll("[data-query]");
+    btns.forEach(b => b.toggleAttribute("disabled", !!busy));
+
+  }
 }
