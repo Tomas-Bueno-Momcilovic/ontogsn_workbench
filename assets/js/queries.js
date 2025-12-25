@@ -1,8 +1,9 @@
-import init, { Store } from "https://cdn.jsdelivr.net/npm/oxigraph@0.5.2/web.js";
+import { initStore } from "./rdf/store.js";
 import { visualizeSPO } from "./graph.js";
 import panes from "./panes.js";
 import { bus, emitCompat } from "./events.js";
-import { resolveEl, exposeForDebug, splitTokens, fetchRepoText } from "./utils.js";
+import { resolveEl, exposeForDebug, splitTokens, fetchRepoText, fetchText } from "./utils.js";
+import { PATHS } from "./rdf/config.js";
 
 /** @typedef {{s:string,p:string,o:string}} SPORow */
 
@@ -10,37 +11,6 @@ import { resolveEl, exposeForDebug, splitTokens, fetchRepoText } from "./utils.j
 const outEl = resolveEl("#out", { required: false, name: "#out" });
 
 const show = x => { if (outEl) outEl.textContent = (typeof x === "string" ? x : JSON.stringify(x, null, 2)); };
-
-const MIME_TTL = "text/turtle";
-
-// Ontology prefixes
-// --OntoGSN prefix
-const BASE_ONTO = "https://w3id.org/OntoGSN/ontology#";
-// --Assurance case prefix
-const BASE_CASE = "https://w3id.org/OntoGSN/cases/ACT-FAST-robust-llm#";
-// --Domain ontology: Car
-const BASE_CAR = "https://example.org/car-demo#";
-// --Domain ontology: Code
-const BASE_CODE = "https://example.org/python-code#";
-
-// Paths to data files
-const PATHS = {
-  // --Paths to the ontologies
-  onto: "/assets/data/ontologies/ontogsn_lite.ttl",
-  example: "/assets/data/ontologies/example_ac.ttl",
-  car: "/assets/data/ontologies/car.ttl",
-  code: "/assets/data/ontologies/example_python_code.ttl",
-  // --Paths to base queries
-  q: {
-    nodes: "/assets/data/queries/read_all_nodes.sparql",
-    rels: "/assets/data/queries/read_all_relations.sparql",
-    visualize: "/assets/data/queries/visualize_graph.sparql",
-    propCtx: "/assets/data/queries/propagate_context.sparql",
-    propDef: "/assets/data/queries/propagate_defeater.sparql",
-    listModules: "/assets/data/queries/list_modules.sparql",
-    visualizeByMod: "/assets/data/queries/visualize_graph_by_module.sparql"
-  }
-};
 
 const GRAPH_RENDER_OPTS = {
   height: 520,
@@ -82,9 +52,8 @@ class QueryApp {
   async init() {
     if (this._initPromise) return this._initPromise;
     this._initPromise = (async () => {
-      await init();
-      this.store = new Store();
-      await this._loadTTL();
+      this.store = await initStore();
+      this._wireGraphBus();
       this._attachUI();
       await this._buildModulesBar();
     })();
@@ -306,61 +275,41 @@ class QueryApp {
     }
   }
 
-  async _loadTTL() {
-    const [ttlOnto, ttlExample, ttlCar, ttlCode] =
-      await Promise.all([
-        getTTL(PATHS.onto),
-        getTTL(PATHS.example),
-        getTTL(PATHS.car),
-        getTTL(PATHS.code),
-      ]);
+  _wireGraphBus() {
+    if (this._wiredGraphBus) return; 
+    this._wiredGraphBus = true;
 
-    try {
-      this.store.load(ttlOnto, MIME_TTL, BASE_ONTO);
-      this.store.load(ttlExample, MIME_TTL, BASE_CASE);
-      this.store.load(ttlCar, MIME_TTL, BASE_CAR);
-      this.store.load(ttlCode, MIME_TTL, BASE_CODE);
-    } catch (e) {
-      const preview = ttlOnto.slice(0, 300);
-      show?.(`Parse error while loading TTL: ${e.message}\n\nPreview of ontogsn_lite.ttl:\n${preview}`);
-      throw e;
-    }
+    this._unsubs.push(
+      this.bus.on("gsn:contextClick", async (ev) => {
+        const iri = ev?.detail?.id;
+        if (!iri) return;
 
-    if (!this._wiredGraphBus) {
-      this._wiredGraphBus = true;
+        const tmpl = await fetchText(PATHS.q.propCtx);
+        const q = tmpl.replaceAll("{{CTX_IRI}}", `<${iri}>`);
 
-      this._unsubs.push(
-        this.bus.on("gsn:contextClick", async (ev) => {
-          const iri = ev?.detail?.id;
-          if (!iri) return;
+        const rows = bindingsToRows(this.store.query(q));
+        const ids = rows.map(r => r.nodeIRI).filter(Boolean);
 
-          const tmpl = await fetchText(PATHS.q.propCtx);
-          const q = tmpl.replaceAll("{{CTX_IRI}}", `<${iri}>`);
+        this.graphCtl?.clearAll();
+        this.graphCtl?.highlightByIds(ids, "in-context");
+      })
+    );
 
-          const rows = bindingsToRows(this.store.query(q));
-          const ids = rows.map(r => r.nodeIRI).filter(Boolean);
+    this._unsubs.push(
+      this.bus.on("gsn:defeaterClick", async (ev) => {
+        const iri = ev?.detail?.id;
+        if (!iri) return;
 
-          this.graphCtl?.clearAll();
-          this.graphCtl?.highlightByIds(ids, "in-context");
-        })
-      );
+        const tmpl = await fetchText(PATHS.q.propDef);
+        const q = tmpl.replaceAll("{{DFT_IRI}}", `<${iri}>`);
 
-      this._unsubs.push(
-        this.bus.on("gsn:defeaterClick", async (ev) => {
-          const iri = ev?.detail?.id;
-          if (!iri) return;
+        const rows = bindingsToRows(this.store.query(q));
+        const ids = rows.map(r => r.hitIRI).filter(Boolean);
 
-          const tmpl = await fetchText(PATHS.q.propDef);
-          const q = tmpl.replaceAll("{{DFT_IRI}}", `<${iri}>`);
-
-          const rows = bindingsToRows(this.store.query(q));
-          const ids = rows.map(r => r.hitIRI).filter(Boolean);
-
-          this.graphCtl?.clearAll();
-          this.graphCtl?.highlightByIds(ids, "def-prop");
-        })
-      );
-    }
+        this.graphCtl?.clearAll();
+        this.graphCtl?.highlightByIds(ids, "def-prop");
+      })
+    );
   }
 
   _attachUI() {
@@ -464,14 +413,6 @@ function isUpdateQuery(queryText) {
   const kw = getFirstKeyword(queryText);
   // basic set of SPARQL UPDATE operations
   return ["INSERT", "DELETE", "LOAD", "CREATE", "DROP", "CLEAR", "COPY", "MOVE", "ADD"].includes(kw);
-}
-
-async function getTTL(pathOrUrl) {
-  const txt = await fetchRepoText(pathOrUrl, { cache: "no-store", bust: true });
-
-  const first = txt.split(/\r?\n/).find(l => l.trim().length) || "";
-  if (first.startsWith("<!")) throw new Error(`Got HTML instead of Turtle from ${pathOrUrl}. Check the path.`);
-  return txt;
 }
 
 function termToDisplay(t) {
