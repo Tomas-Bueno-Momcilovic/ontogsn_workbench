@@ -428,3 +428,68 @@
   font-size: 12px;
   white-space: nowrap;
 }
+
+.gsn-graph-rules {
+  background: transparent !important; /* requirement */
+  border: 0;
+  padding: 6px 8px;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.gsn-graph-rules .gsn-rules-label {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.gsn-graph-rules label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.gsn-graph-show{
+  background: transparent !important;
+  border: 0;
+  padding: 6px 8px;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.gsn-graph-show .gsn-show-label{
+  font-weight: 600;
+  opacity: .8;
+}
+
+.gsn-graph-show label{
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Overlay UI (legend + show + rules) — does not affect SVG layout */
+.gsn-graph-ui{
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 10;
+
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  /* Let drag/zoom work behind the overlay... */
+  pointer-events: none;
+}
+
+/* ...but keep controls clickable */
+.gsn-graph-ui > * { pointer-events: auto; }

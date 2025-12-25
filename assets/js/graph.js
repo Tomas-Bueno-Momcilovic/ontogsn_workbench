@@ -30,6 +30,91 @@ export async function visualizeSPO(rows, {
 
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
 
+  // --- Overlay UI (legend + Show + Rules) --------------------------------
+  // This overlay is absolutely positioned (see graph.css), so it DOES NOT
+  // take up layout space and won't push the graph/fit center down.
+
+  // 1) Ensure overlay container exists
+  let ui = rootEl.querySelector(".gsn-graph-ui");
+  if (!ui) {
+    ui = document.createElement("div");
+    ui.className = "gsn-graph-ui";
+    rootEl.appendChild(ui);
+  }
+
+  // 2) Move legend into overlay so it also doesn't push the SVG down
+  const legend = rootEl.querySelector(".gsn-legend");
+  if (legend) ui.appendChild(legend);
+
+  // 3) Show bar
+  let showBar = rootEl.querySelector(".gsn-graph-show");
+  if (!showBar) {
+    showBar = document.createElement("div");
+    showBar.className = "gsn-graph-show btns";
+    showBar.innerHTML = `
+      <span class="gsn-show-label">Show:</span>
+
+      <label><input id="toggle-context" type="checkbox" checked data-no-table="1"> Contextual</label>
+      <label><input id="toggle-defeat"  type="checkbox" checked data-no-table="1"> Dialectic</label>
+
+      <label><input type="checkbox"
+        data-query="/assets/data/queries/visualize_undev_nodes.sparql"
+        data-class="undev" data-no-table="1"> Undeveloped</label>
+
+      <label><input type="checkbox"
+        data-query="/assets/data/queries/visualize_invalid_nodes.sparql"
+        data-class="invalid" data-no-table="1"> Invalid</label>
+
+      <label><input type="checkbox"
+        data-query="/assets/data/queries/visualize_valid_nodes.sparql"
+        data-class="valid" data-no-table="1"> Valid</label>
+
+      <label><input type="checkbox"
+        data-query="/assets/data/queries/read_all_collections.sparql"
+        data-class="collection" data-no-table="1"> Artefacts</label>
+    `;
+  }
+  ui.appendChild(showBar);
+
+  // 4) Rules header
+  let rulesHdr = rootEl.querySelector(".gsn-graph-rules");
+  if (!rulesHdr) {
+    rulesHdr = document.createElement("div");
+    rulesHdr.className = "gsn-graph-rules btns";
+    rulesHdr.innerHTML = `
+      <span class="gsn-rules-label">Rules:</span>
+
+      <label><input type="checkbox"
+        data-query="/assets/data/queries/rule_assumptionInvalidation.sparql"
+        data-class="rule" data-no-table="1">
+        Invalid assumptions
+      </label>
+
+      <label><input type="checkbox"
+        data-query="/assets/data/queries/rule_truthContradiction.sparql"
+        data-class="rule" data-no-table="1">
+        Contradicting truth
+      </label>
+
+      <label><input type="checkbox"
+        data-query="/assets/data/queries/rule_untrueSolution.sparql"
+        data-class="rule" data-no-table="1">
+        Untrue solution
+      </label>
+
+      <label><input type="checkbox"
+        data-queries="/assets/data/queries/rule_checkLoadWeight.sparql;
+                      /assets/data/queries/propagate_overloadedCar.sparql;
+                      /assets/data/queries/write_defeater_overloadedCar.sparql"
+        data-delete-query="/assets/data/queries/delete_defeater_overloadedCar.sparql"
+        data-class="rule" data-no-table="1"
+        data-event="car:overloadChanged">
+        Overloaded car
+      </label>
+    `;
+  }
+  ui.appendChild(rulesHdr);
+
   rootEl.classList.add("gsn-graph-pane");
   if (getComputedStyle(rootEl).position === "static") {
     rootEl.style.position = "relative";
@@ -40,7 +125,6 @@ export async function visualizeSPO(rows, {
     hud = document.createElement("div");
     hud.className = "gsn-graph-hud";
     hud.innerHTML = `
-      <span class="gsn-hint">scroll: zoom • drag: pan</span>
       <div id="modulesBar" class="modules-bar" data-tab-group="modules"></div>
     `;
     rootEl.appendChild(hud);
