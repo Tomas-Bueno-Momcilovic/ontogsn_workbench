@@ -18,7 +18,8 @@ async function boot() {
     });
 
     await graph.init();                 // wires graph UI + bus handlers
-    await graph.run(PATHS.q.visualize); // initial graph render
+    panes.initLeftTabs();
+    panes.initRightTabs();
   } catch (e) {
     console.error("[boot] failed:", e);
   }

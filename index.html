@@ -27,11 +27,11 @@
       <button class = "tab" id = "tab-converter" data-pane = "converter-root" > Converter </button>
       <button class = "tab" id = "tab-chat"      data-pane = "chat-root" > Chat </button>
     </div>
-    <div id = "rightButtons" class = "btns" data-tab-group = "right-main">
-      <button data-query = "/assets/data/queries/visualize_graph.sparql" data-no-table = "1" class = "tab active"> Tree </button>
-      <button id="btn-layered-view" data-no-table="1" class = "tab"> Layer </button>
-      <button data-query="/assets/data/queries/read_carLoadWeight.sparql" id="btn-model-view" data-no-table="1" class = "tab"> Model </button>
-    </div>    
+    <div id="rightButtons" class="btns" data-tab-group="right-main">
+      <button id="btn-tree-view" class="tab active" data-view="graph" data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1" > Tree </button>
+      <button id="btn-layered-view" class="tab" data-view="layered" data-no-table="1" > Layer </button>
+      <button id="btn-model-view" class="tab" data-view="model" data-query="/assets/data/queries/read_carLoadWeight.sparql" data-no-table="1" > Model </button>
+    </div>
   </div>
 
   <div class="split">

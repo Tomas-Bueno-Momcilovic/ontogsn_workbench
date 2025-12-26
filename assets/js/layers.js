@@ -4,6 +4,7 @@ import panes from "./panes.js";
 import { ensureCss, repoHref, fetchRepoText, resolveEl,
          uid, bindingsToRows, shortenIri, labelWidthPx, 
          inferGsnKind } from "./utils.js";
+import { bus } from "./events.js";
 
 // Minimal CSS safety: load the same stylesheet graph.js expects if not present.
 ensureCss(repoHref("/assets/css/graph.css", { from: import.meta.url, upLevels: 2 }));
@@ -500,10 +501,10 @@ export async function renderLayeredView(opts = {}) {
 }
 
 // Wire the “Layered View” button if present
-window.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("btn-layered-view")?.addEventListener("click", async () => {
-    await renderLayeredView();
-  });
+bus.on("right:tab", async (ev) => {
+  const d = ev?.detail || {};
+  if (d.view !== "layered") return;
+  await renderLayeredView();
 });
 
 // also export default for convenience (optional)

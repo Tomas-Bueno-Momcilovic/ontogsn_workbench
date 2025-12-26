@@ -1085,7 +1085,7 @@ class GraphApp {
   }
 
   _applyVisibility() {
-    const root = this.panes.getRightPane?.();
+    const root = this.rootEl;
     if (!root) return;
 
     const ctx = this.rootEl?.querySelector?.("#toggle-context");
@@ -1113,6 +1113,14 @@ class GraphApp {
   }
 
   _wireGraphBus() {
+
+    this._unsubs.push(
+      this.bus.on("right:tab", (ev) => {
+        const d = ev?.detail || {};
+        if (d.view !== "graph") return;
+        if (d.query) this.run(d.query);
+      })
+    );
     // emitted by visualizeSPO via emitCompat(bus, "gsn:contextClick" / "gsn:defeaterClick", ...)
     this._unsubs.push(
       this.bus.on("gsn:contextClick", async (ev) => {
@@ -1152,6 +1160,7 @@ class GraphApp {
     this._onDocClick = (e) => {
       const btn = e.target instanceof Element ? e.target.closest("[data-query]:not(input)") : null;
       if (!btn) return;
+      if (btn.closest('[data-tab-group="right-main"]')) return;
 
       const path = btn.getAttribute("data-query");
       if (!path) return;
@@ -1161,9 +1170,15 @@ class GraphApp {
 
     // Checkbox overlays / rules (graph-related)
     this._onDocChange = (e) => {
-      const el = e.target instanceof Element
-        ? e.target.closest('input[type="checkbox"][data-class]')
-        : null;
+      const t = e.target instanceof Element ? e.target : null;
+      if (!t) return;
+
+      // ✅ Visibility checkboxes (exist only after graph.html is mounted)
+      if (t.matches("#toggle-context, #toggle-defeat")) {
+        this._applyVisibility();
+        return;
+      }
+      const el = t.closest('input[type="checkbox"][data-class]');
       if (!el) return;
 
       const cls = el.getAttribute("data-class") || "overlay";
@@ -1203,13 +1218,6 @@ class GraphApp {
 
     this.rootEl.addEventListener("click", this._onDocClick);
     this.rootEl.addEventListener("change", this._onDocChange);
-
-    // Visibility checkboxes (Contextual/Dialectic)
-    const ctxBox = this.rootEl?.querySelector?.("#toggle-context");
-    const dfBox  = this.rootEl?.querySelector?.("#toggle-defeat");
-
-    ctxBox?.addEventListener("change", () => this._applyVisibility());
-    dfBox?.addEventListener("change", () => this._applyVisibility());
   }
 
   _setBusy(busy) {

@@ -122,7 +122,6 @@ class PaneManager {
     activate(initiallyActive);
   }
 
-
   /**
    * Public helper for other modules: activate a given left tab
    * (and therefore hide all other left panes).
@@ -133,6 +132,60 @@ class PaneManager {
     }
     if (typeof this._activateLeftTab === "function") {
       this._activateLeftTab(tabId);
+    }
+  }
+
+  initRightTabs() {
+    if (this._rightTabsInit) return;
+    this._rightTabsInit = true;
+
+    const rightButtons = document.querySelector('[data-tab-group="right-main"]');
+
+    const tabs = rightButtons
+      ? Array.from(rightButtons.querySelectorAll("button.tab"))
+      : [];
+
+    if (!tabs.length) {
+      console.warn("[PaneManager] No right tab buttons found.");
+      return;
+    }
+
+    this._rightTabs = tabs;
+
+    const activate = (btnOrId) => {
+      let btn = (typeof btnOrId === "string")
+        ? tabs.find(b => b.id === btnOrId)
+        : btnOrId;
+
+      if (!btn) btn = tabs[0];
+
+      tabs.forEach(b => b.classList.toggle("active", b === btn));
+
+      safeInvoke(this.bus, "emit", "right:tab", {
+        tabId: btn.id || null,
+        view: btn.dataset.view || null,
+        query: btn.dataset.query || null,
+        noTable: btn.dataset.noTable === "1",
+      });
+    };
+
+    this._activateRightTab = activate;
+
+    tabs.forEach(btn => {
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        activate(btn);
+      });
+    });
+
+    const initiallyActive = tabs.find(b => b.classList.contains("active")) || tabs[0];
+    activate(initiallyActive);
+  }
+
+  activateRightTab(tabId) {
+    if (!this._rightTabsInit) this.initRightTabs();
+    if (typeof this._activateRightTab === "function") {
+      this._activateRightTab(tabId);
     }
   }
 
@@ -177,7 +230,3 @@ class PaneManager {
 export const panes = new PaneManager();
 panes.setBus(bus);
 export default panes;
-
-window.addEventListener("DOMContentLoaded", () => {
-  panes.initLeftTabs();
-});

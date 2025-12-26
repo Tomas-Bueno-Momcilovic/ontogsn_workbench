@@ -3,6 +3,7 @@ import { OrbitControls } from "../vendor/OrbitControls.js";
 import app from "./queries.js";
 import panes from "./panes.js";
 import { mountTemplate, resolveEl, fetchText, downloadText } from "./utils.js";
+import { bus } from "./events.js";
 
 const HTML = new URL("../html/model.html", import.meta.url);
 const CSS  = new URL("../css/model.css",  import.meta.url);
@@ -1185,12 +1186,10 @@ const carLoadWeightQueryTextPromise =
             { cache: "force-cache" });
 
 // Wire the “Model View” button
-window.addEventListener("DOMContentLoaded", () => {
-  const btn = document.getElementById("btn-model-view");
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    renderModelView();
-  });
+bus.on("right:tab", async (ev) => {
+  const d = ev?.detail || {};
+  if (d.view !== "model") return;
+  await renderModelView();
 });
 
 ensureCarConfig();
