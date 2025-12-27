@@ -19,33 +19,91 @@
 
   <div class="split">
     <div id="leftButtons" class="btns" data-tab-group="left-main">
-      <button class = "tab active" id = "tab-welcome" data-pane="welcome-root" data-doc-query = "/assets/data/queries/read_welcomeDoc.sparql" data-doc-var = "doc"> Welcome </button>
-      <button class = "tab" id = "tab-table"     data-pane = "results" > Table </button>
-      <button class = "tab" id = "tab-editor"    data-pane = "editor-root" > Editor </button> 
-      <button class = "tab" id = "tab-doc"       data-pane = "doc-root" data-doc-query = "/assets/data/queries/read_document.sparql" data-doc-var = "doc"> Document </button>
-      <button class = "tab" id = "tab-code"      data-pane = "code-root" > Code </button>
-      <button class = "tab" id = "tab-converter" data-pane = "converter-root" > Converter </button>
-      <button class = "tab" id = "tab-chat"      data-pane = "chat-root" > Chat </button>
+      <!-- Button: Welcome -->
+      <button id="tab-welcome" class="tab active"
+              data-pane="welcome-root"
+              data-doc-query="/assets/data/queries/read_welcomeDoc.sparql"
+              data-doc-var="doc">
+        Welcome
+      </button>
+
+      <!-- Button: Table -->
+      <button id="tab-table" class="tab"
+              data-pane="results">
+        Table
+      </button>
+
+      <!-- Button: Editor -->
+      <button id="tab-editor" class="tab"
+              data-pane="editor-root">
+        Editor
+      </button>
+
+      <!-- Button: Document -->
+      <button id="tab-doc" class="tab"
+              data-pane="doc-root"
+              data-doc-query="/assets/data/queries/read_document.sparql"
+              data-doc-var="doc">
+        Document
+      </button>
+
+      <!-- Button: Code -->
+      <button id="tab-code" class="tab"
+              data-pane="code-root">
+        Code
+      </button>
+
+      <!-- Button: Converter -->
+      <button id="tab-converter" class="tab"
+              data-pane="converter-root">
+        Converter
+      </button>
+
+      <!-- Button: Chat -->
+      <button id="tab-chat" class="tab"
+              data-pane="chat-root">
+        Chat
+      </button>
     </div>
+
     <div id="rightButtons" class="btns" data-tab-group="right-main">
-      <button id="btn-tree-view" class="tab active" data-view="graph" data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1" > Tree </button>
-      <button id="btn-layered-view" class="tab" data-view="layered" data-no-table="1" > Layer </button>
-      <button id="btn-model-view" class="tab" data-view="model" data-query="/assets/data/queries/read_carLoadWeight.sparql" data-no-table="1" > Model </button>
+      <!-- Button: Tree -->
+      <button id="btn-tree-view" class="tab active"
+              data-view="graph" data-pane="graph-root"
+              data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1">
+        Tree
+      </button>
+
+      <!-- Button: Layer -->
+      <button id="btn-layered-view" class="tab"
+              data-view="layered" data-pane="layered-root" data-no-table="1">
+        Layer
+      </button>
+
+      <!-- Button: Model -->
+      <button id="btn-model-view" class="tab"
+              data-view="model" data-pane="model-root"
+              data-query="/assets/data/queries/read_carLoadWeight.sparql" data-no-table="1">
+        Model
+      </button>
     </div>
   </div>
 
   <div class="split">
     <div id="leftPane" class="pane pane-left">
-      <div id = "results"></div>
-      <!-- -->
-      <div id = "welcome-root"   style = "display: none;"></div> 
-      <div id = "editor-root"    style = "display: none;"></div>
-      <div id = "doc-root"       style = "display: none;"></div>
-      <div id = "converter-root" style = "display: none;"></div>
-      <div id = "code-root"      style = "display: none;"></div>
-      <div id = "chat-root"      style = "display: none;"></div>
+      <div id="results" class="left-view"></div>
+      <div id="welcome-root"   class="left-view" hidden></div>
+      <div id="editor-root"    class="left-view" hidden></div>
+      <div id="doc-root"       class="left-view" hidden></div>
+      <div id="converter-root" class="left-view" hidden></div>
+      <div id="code-root"      class="left-view" hidden></div>
+      <div id="chat-root"      class="left-view" hidden></div>
     </div>
-    <div id="rightPane" class="pane pane-right gsn-host"></div>
+    <div id="rightPane" class="pane pane-right">
+      <div id="graph-root" class="right-view gsn-host" hidden></div>
+      <div id="layered-root" class="right-view" hidden></div>
+      <div id="model-root" class="right-view" hidden></div>
+    </div>
   </div>
 
   <pre id="out"></pre>
@@ -62,6 +120,7 @@
 
   <script type = "module" src = "/assets/js/boot.js"    ></script>
   <script type = "module" src = "/assets/js/welcome.js" ></script>
+  <script type = "module" src = "/assets/js/graph.js" ></script>
   <script type = "module" src = "/assets/js/layers.js"  ></script>
   <script type = "module" src = "/assets/js/model.js"   ></script>
   <script type = "module" src = "/assets/js/editor.js"  ></script>
@@ -70,6 +129,16 @@
   <script type = "module" src = "/assets/js/converter.js"></script>
   <script type = "module" src = "/assets/js/code.js"    ></script>
   <script type = "module" src = "/assets/js/chat.js"    ></script>
+
+  <script>
+    window.addEventListener("error", (e) => {
+      console.error("[window error]", e.message, e.filename, e.lineno, e.colno, e.error);
+    });
+    window.addEventListener("unhandledrejection", (e) => {
+      console.error("[unhandledrejection]", e.reason);
+    });
+
+  </script>
 
 </body>
 </html>

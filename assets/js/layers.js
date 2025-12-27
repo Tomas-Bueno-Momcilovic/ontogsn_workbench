@@ -458,8 +458,12 @@ export async function renderLayeredView(opts = {}) {
   const rows = bindingsToRows(res);
 
   // 🔹 Resolve the right-hand host just like model.js does
-  const host   = opts.mount || panes.getRightPane() || "#rightPane";
-  const rootEl = resolveEl(host, { required: false, name: "Layered view mount" });
+  const host =
+    opts.mount
+    ?? panes.getRightPane?.("layered")
+    ?? "#layered-root";
+
+  const rootEl = resolveEl(host, { required: true, name: "Layered view mount" });
 
   if (!rootEl) {
     console.error("[layers] mount host not found:", host);
@@ -496,7 +500,7 @@ export async function renderLayeredView(opts = {}) {
   // 🔹 Register controller like the other views
   app.graphCtl = ctl;
   if (typeof panes.setRightController === "function") {
-    panes.setRightController("layers", ctl);
+    panes.setRightController?.("layered", ctl);
   }
 }
 

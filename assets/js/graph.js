@@ -1,6 +1,10 @@
 import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
 import { mountTemplate, resolveEl, addToSetMap, uid, splitTokens, exposeForDebug } from "./utils.js";
-import { emitCompat } from "./events.js";
+import queries from "./queries.js";
+import panes from "./panes.js";
+import { PATHS } from "./rdf/config.js";
+import { shortenIri } from "./rdf/sparql.js";
+import { bus, emitCompat } from "./events.js";
 
 const HTML = new URL("../html/graph.html", import.meta.url);
 const CSS  = new URL("../css/graph.css",  import.meta.url);
@@ -25,7 +29,9 @@ export async function visualizeSPO(rows, {
   bus = null
 } = {}) {
   // --- Resolve mount
-  const rootEl = resolveEl(mount, { name: "visualizeSPO: mount" });
+  const rootEl =
+    (mount instanceof Element) ? mount
+    : resolveEl(mount, { name: "visualizeSPO: mount" });
   if (!rootEl) throw new Error(`visualizeSPO: mount "${mount}" not found`);
 
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
@@ -682,7 +688,12 @@ export async function visualizeSPO(rows, {
       .call(zoom.transform, d3.zoomIdentity)
       .on("end interrupt", () => svg.call(zoom)); 
     }
-  function destroy() { rootEl.innerHTML = ""; }
+  function destroy() { 
+    rootEl.innerHTML = ""; 
+    rootEl.querySelector(".gsn-graph-ui")?.remove();
+    rootEl.querySelector(".gsn-graph-hud")?.remove();
+    rootEl.querySelector("svg.gsn-svg")?.remove();
+  }
 
   function clearCollections() {
     gOverCollections.selectAll("*").remove();
@@ -883,6 +894,7 @@ class GraphApp {
     this._unsubs = [];
 
     this._wired = false;
+    this._renderSeq = 0;
 
     this.renderOpts = {
       ...DEFAULT_GRAPH_RENDER_OPTS,
@@ -892,13 +904,16 @@ class GraphApp {
   }
 
   async init({ qs } = {}) {
-    this.rootEl = this.panes.getRightPane?.() ?? resolveEl("#rightPane", { required: true, name: "GraphApp root" });
+
+    this.rootEl = resolveEl("#graph-root", { required: true, name: "GraphApp root" });
 
     if (qs) this.qs = qs;
     if (!this.qs) throw new Error("GraphApp.init: qs is required");
 
     if (this._wired) return;
     this._wired = true;
+
+    await this.run(this.paths.q.visualize);
 
     this._wireGraphBus();
     this._attachUI();
@@ -990,22 +1005,14 @@ class GraphApp {
   }
 
   async _renderGraph(rows) {
-    const host =
-      this.panes.getRightPane?.()
-      ?? resolveEl("#rightPane", { required: false })
-      ?? resolveEl(".gsn-host", { required: false });
-
+    const seq = ++this._renderSeq;
+    const host = this.rootEl;
     if (!host) return;
 
     // Clear right pane via PaneManager if available
-    if (typeof this.panes.clearRightPane === "function") {
-      this.panes.clearRightPane();
-      this.graphCtl = null;
-    } else if (host instanceof Element) {
-      host.innerHTML = "";
-      this.graphCtl?.destroy?.();
-      this.graphCtl = null;
-    }
+    this.panes.clearRightPane?.();
+    this.graphCtl = null;
+    host.innerHTML = "";
 
     const newCtl = await visualizeSPO(rows, {
       mount: host,
@@ -1013,7 +1020,12 @@ class GraphApp {
       ...this.renderOpts,
     });
 
-    this.panes.setRightController?.("graph", newCtl);
+    if (seq !== this._renderSeq) {
+      newCtl?.destroy?.();
+      return;
+    }
+
+    //this.panes.setRightController?.("graph", newCtl);
     this.graphCtl = newCtl;
 
     this.graphCtl?.fit?.();
@@ -1023,6 +1035,8 @@ class GraphApp {
     await this._buildModulesBar(true);
 
     exposeForDebug("graphCtl", this.graphCtl);
+    console.debug("[GraphApp] render", rows.length, performance.now());
+
   }
 
   async _buildModulesBar(isDefault = false) {
@@ -1114,13 +1128,6 @@ class GraphApp {
 
   _wireGraphBus() {
 
-    this._unsubs.push(
-      this.bus.on("right:tab", (ev) => {
-        const d = ev?.detail || {};
-        if (d.view !== "graph") return;
-        if (d.query) this.run(d.query);
-      })
-    );
     // emitted by visualizeSPO via emitCompat(bus, "gsn:contextClick" / "gsn:defeaterClick", ...)
     this._unsubs.push(
       this.bus.on("gsn:contextClick", async (ev) => {
@@ -1160,7 +1167,6 @@ class GraphApp {
     this._onDocClick = (e) => {
       const btn = e.target instanceof Element ? e.target.closest("[data-query]:not(input)") : null;
       if (!btn) return;
-      if (btn.closest('[data-tab-group="right-main"]')) return;
 
       const path = btn.getAttribute("data-query");
       if (!path) return;
@@ -1228,3 +1234,46 @@ class GraphApp {
 
   }
 }
+
+// ---------------------------------------------------------------------------
+// Graph pane wiring (self-contained, like layers.js / model.js)
+// ---------------------------------------------------------------------------
+
+let _graphPaneApp = null;
+let _graphPaneInitPromise = null;
+
+async function ensureGraphPaneApp() {
+  if (_graphPaneInitPromise) return _graphPaneInitPromise;
+
+  _graphPaneInitPromise = (async () => {
+    await queries.init();
+
+    _graphPaneApp = createGraphApp({
+      panes,
+      bus,
+      qs: queries.qs,
+      paths: PATHS,
+      labelFn: shortenIri,
+    });
+
+    await _graphPaneApp.init(); // wires UI + click propagation
+    return _graphPaneApp;
+  })();
+
+  return _graphPaneInitPromise;
+}
+
+// Listen like other panes do
+bus.on("right:tab", async (ev) => {
+  const d = ev?.detail || {};
+  if (d.view !== "graph") return;
+
+  const app = await ensureGraphPaneApp();
+
+  // Prefer query from the tab; otherwise default
+  const q = d.query || PATHS?.q?.visualize || "/assets/data/queries/visualize_graph.sparql";
+  await app.run(q);
+
+  // Optional: helpful debug once
+  console.log("[graph] rendered via right:tab", d);
+});

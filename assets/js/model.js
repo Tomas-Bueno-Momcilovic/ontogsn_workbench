@@ -987,8 +987,13 @@ export async function renderModelView({
   height = 520
 } = {}) {
 
-  const host = mount ?? panes.getRightPane() ?? "#rightPane";
-  const rootEl = resolveEl(host, { name: "renderModelView: mount" });
+  const host =
+    mount
+    ?? panes.getRightPane?.("model")
+    ?? "#model-root";
+
+  const rootEl = resolveEl(host, { name: "renderModelView: mount", required: true });
+
   if (!rootEl) throw new Error(`Model view: mount host not found`);
 
   panes.clearRightPane();
@@ -1169,7 +1174,7 @@ export async function renderModelView({
   };
 
   offOverload?.();
-  offOverload = app.bus?.on?.("car:overloadChanged", overloadEventListener) ?? null;
+  offOverload = bus?.on?.("car:overloadChanged", overloadEventListener) ?? null;
 
   // Initial sync: if rule is already on when Model View opens, apply it
   if (overloadCheckbox && overloadCheckbox.checked) {

@@ -3,173 +3,116 @@ import { firstEl, resolveEl, safeInvoke } from "./utils.js";
 
 class PaneManager {
   constructor() {
-    /** @type {HTMLElement|null} */
     this.leftPane = null;
-    /** @type {HTMLElement|null} */
     this.rightPane = null;
 
-    /** @type {{id:string, controller:any}|null} */
     this.currentRight = null;
-
-    /** @type {((ev:UIEvent)=>void)|null} */
     this._resizeHandler = null;
-
-    /** @type {{ on:Function, emit:Function } | null} */
     this.bus = null;
 
-    // --- left-side tabs/panes --------------------------------------------
     this._leftTabsInit = false;
-    /** @type {HTMLButtonElement[]} */
+    this._rightTabsInit = false;
+
     this._leftTabs = [];
-    /** @type {HTMLElement[]} */
+    this._rightTabs = [];
     this._leftPanes = [];
-    /** @type {Record<string,string>} tab-id → pane-id */
-    this._tabToPane = {
-      "tab-welcome":    "welcome-root",
-      "tab-table":      "results",
-      "tab-editor":     "editor-root",
-      "tab-doc":        "doc-root",
-      "tab-code":       "code-root",
-      "tab-converter":  "converter-root",
-      "tab-chat":       "chat-root"
-    };
+    this._rightPanes = [];
+
+    this._activateLeftTab = null;
+    this._activateRightTab = null;
   }
 
   // --- DOM helpers -------------------------------------------------------
   getLeftPane() {
     if (this.leftPane && document.body.contains(this.leftPane)) return this.leftPane;
-
     this.leftPane = resolveEl("#leftPane", { required: false, name: "PaneManager leftPane" });
     if (!this.leftPane) console.warn("[PaneManager] #leftPane not found");
     return this.leftPane;
   }
 
-  getRightPane() {
-    if (this.rightPane && document.body.contains(this.rightPane)) return this.rightPane;
+  getRightPane(viewOrPaneId = null) {
+    const root =
+      (this.rightPane && document.body.contains(this.rightPane))
+        ? this.rightPane
+        : (this.rightPane = firstEl(["#rightPane", "#graph", ".gsn-host"]));
 
-    this.rightPane = firstEl(["#rightPane", "#graph", ".gsn-host"]);
-    if (!this.rightPane) console.warn("[PaneManager] #rightPane / .gsn-host not found");
-    return this.rightPane;
-  }
-
-  setBus(bus) {
-    this.bus = bus || null;
-  }
-
-  getRightController() {
-    return this.currentRight?.controller ?? null;
-  }
-
-  // --- Left pane: tabs + content ----------------------------------------
-
-  /**
-   * Initialise left-side tab behaviour (Table / Editor / Document / Code / Converter).
-   * Safe to call multiple times; later calls are ignored.
-   */
-  initLeftTabs() {
-    if (this._leftTabsInit) return;
-    this._leftTabsInit = true;
-
-    // Use the tab group (avoids duplicate IDs entirely)
-    const leftButtons = document.querySelector('[data-tab-group="left-main"]');
-
-    const tabs = leftButtons
-      ? Array.from(leftButtons.querySelectorAll('button.tab[data-pane]'))
-      : [];
-
-    if (!tabs.length) {
-      console.warn("[PaneManager] No left tab buttons found.");
-      return;
+    if (!root) {
+      console.warn("[PaneManager] #rightPane / .gsn-host not found");
+      return null;
     }
 
-    this._leftTabs = tabs;
+    if (!viewOrPaneId) return root;
 
-    // Build mapping from data-pane
-    this._tabToPane = Object.fromEntries(
-      tabs
-        .map(btn => [btn.id, btn.dataset.pane])
-        .filter(([id, pane]) => id && pane)
-    );
+    // Try common conventions: `${view}-root` or direct id
+    const tryIds = [
+      `#${viewOrPaneId}`,
+      `#${viewOrPaneId}-root`,
+    ];
 
-    // Collect panes that exist
-    this._leftPanes = Object.values(this._tabToPane)
+    return firstEl(tryIds, root) ?? root;
+  }
+
+  setBus(bus) { this.bus = bus || null; }
+  getRightController() { return this.currentRight?.controller ?? null; }
+
+  // --- Shared tab wiring --------------------------------------------------
+  _initTabGroup({
+    groupName,                 // e.g. "left-main"
+    slot,                      // "left" | "right"
+    paneDefaultSelector = null // optional fallback if no data-pane
+  }) {
+    const groupEl = document.querySelector(`[data-tab-group="${groupName}"]`);
+    const tabs = groupEl ? Array.from(groupEl.querySelectorAll("button.tab")) : [];
+
+    if (!tabs.length) {
+      console.warn(`[PaneManager] No ${slot} tab buttons found.`);
+      return { tabs: [], panes: [], activate: () => {} };
+    }
+
+    const paneIdOf = (btn) =>
+      btn.dataset.pane || btn.dataset.view || (paneDefaultSelector ? paneDefaultSelector(btn) : null);
+
+    // Collect panes that exist (if you have data-pane on the buttons)
+    const paneIds = tabs.map(paneIdOf).filter(Boolean);
+    const panes = paneIds
       .map(id => document.getElementById(id))
       .filter(Boolean);
 
-    const activate = (tabId) => {
-      const fallback = tabs[0]?.id;        // first tab becomes fallback
-      if (!tabId || !this._tabToPane[tabId]) tabId = fallback;
-
-      this._leftTabs.forEach(btn => {
-        btn.classList.toggle("active", btn.id === tabId);
-      });
-
-      const targetPaneId = this._tabToPane[tabId];
-      this._leftPanes.forEach(p => {
-        p.style.display = (p.id === targetPaneId ? "" : "none");
-      });
+    const showOnlyPaneId = (targetId) => {
+      if (!targetId || !panes.length) return;
+      panes.forEach(p => { p.hidden = (p.id !== targetId); });
     };
 
-    this._activateLeftTab = activate;
-
-    this._leftTabs.forEach(btn => {
-      btn.addEventListener("click", () => this.activateLeftTab(btn.id));
+    const emitPayload = (btn, paneId) => ({
+      slot,
+      tabId: btn.id || null,
+      view: btn.dataset.view || null,
+      paneId: paneId || null,
+      query: btn.dataset.query || null,
+      noTable: btn.dataset.noTable === "1",
+      docQuery: btn.dataset.docQuery || null,
+      docVar: btn.dataset.docVar || null,
     });
 
-    const initiallyActive =
-      tabs.find(b => b.classList.contains("active"))?.id || tabs[0]?.id;
-
-    activate(initiallyActive);
-  }
-
-  /**
-   * Public helper for other modules: activate a given left tab
-   * (and therefore hide all other left panes).
-   */
-  activateLeftTab(tabId) {
-    if (!this._leftTabsInit) {
-      this.initLeftTabs();
-    }
-    if (typeof this._activateLeftTab === "function") {
-      this._activateLeftTab(tabId);
-    }
-  }
-
-  initRightTabs() {
-    if (this._rightTabsInit) return;
-    this._rightTabsInit = true;
-
-    const rightButtons = document.querySelector('[data-tab-group="right-main"]');
-
-    const tabs = rightButtons
-      ? Array.from(rightButtons.querySelectorAll("button.tab"))
-      : [];
-
-    if (!tabs.length) {
-      console.warn("[PaneManager] No right tab buttons found.");
-      return;
-    }
-
-    this._rightTabs = tabs;
-
     const activate = (btnOrId) => {
-      let btn = (typeof btnOrId === "string")
+      const btn = (typeof btnOrId === "string")
         ? tabs.find(b => b.id === btnOrId)
         : btnOrId;
 
-      if (!btn) btn = tabs[0];
+      const b = btn || tabs[0];
+      if (!b) return;
 
-      tabs.forEach(b => b.classList.toggle("active", b === btn));
+      tabs.forEach(x => x.classList.toggle("active", x === b));
 
-      safeInvoke(this.bus, "emit", "right:tab", {
-        tabId: btn.id || null,
-        view: btn.dataset.view || null,
-        query: btn.dataset.query || null,
-        noTable: btn.dataset.noTable === "1",
-      });
+      const paneId = paneIdOf(b);
+      showOnlyPaneId(paneId);
+
+      // Standardized emits:
+      // - slot-specific (backwards/explicit)
+      // - generic (future-proof)
+      safeInvoke(this.bus, "emit", `${slot}:tab`, emitPayload(b, paneId));
+      safeInvoke(this.bus, "emit", "pane:tab", emitPayload(b, paneId));
     };
-
-    this._activateRightTab = activate;
 
     tabs.forEach(btn => {
       btn.addEventListener("click", (ev) => {
@@ -180,37 +123,67 @@ class PaneManager {
 
     const initiallyActive = tabs.find(b => b.classList.contains("active")) || tabs[0];
     activate(initiallyActive);
+
+    return { tabs, panes, activate };
+  }
+
+  // --- Left pane ----------------------------------------------------------
+  initLeftTabs() {
+    if (this._leftTabsInit) return;
+    this._leftTabsInit = true;
+
+    const { tabs, panes, activate } = this._initTabGroup({
+      groupName: "left-main",
+      slot: "left",
+    });
+
+    this._leftTabs = tabs;
+    this._leftPanes = panes;
+    this._activateLeftTab = activate;
+  }
+
+  activateLeftTab(tabId) {
+    if (!this._leftTabsInit) this.initLeftTabs();
+    this._activateLeftTab?.(tabId);
+  }
+
+  // --- Right pane ---------------------------------------------------------
+  initRightTabs() {
+    if (this._rightTabsInit) return;
+    this._rightTabsInit = true;
+
+    const { tabs, panes, activate } = this._initTabGroup({
+      groupName: "right-main",
+      slot: "right",
+    });
+
+    this._rightTabs = tabs;
+    this._rightPanes = panes;
+    this._activateRightTab = activate;
   }
 
   activateRightTab(tabId) {
     if (!this._rightTabsInit) this.initRightTabs();
-    if (typeof this._activateRightTab === "function") {
-      this._activateRightTab(tabId);
-    }
+    this._activateRightTab?.(tabId);
   }
 
   // --- Right pane controller lifecycle -----------------------------------
   setRightController(id, controller) {
-    // Tear down any existing controller first
     this._teardownRight();
-
     this.currentRight = { id, controller };
 
-  safeInvoke(this.bus, "emit", "right:controllerChanged", { id, controller });
-  if (id === "graph" || id === "gsn-graph") {
-    safeInvoke(this.bus, "emit", "graph:ready", { controller });
-  }
+    safeInvoke(this.bus, "emit", "right:controllerChanged", { id, controller });
+    if (id === "graph" || id === "gsn-graph") {
+      safeInvoke(this.bus, "emit", "graph:ready", { controller });
+    }
 
-    // Wire up auto-resize if the controller supports it
     if (controller && typeof controller.fit === "function") {
       this._resizeHandler = () => safeInvoke(controller, "fit");
       window.addEventListener("resize", this._resizeHandler);
     }
   }
 
-  clearRightPane() {
-    this._teardownRight();
-  }
+  clearRightPane() { this._teardownRight(); }
 
   _teardownRight() {
     const current = this.currentRight;
