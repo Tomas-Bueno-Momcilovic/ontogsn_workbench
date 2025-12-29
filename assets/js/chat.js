@@ -5,6 +5,17 @@ import { mountTemplate, resolveEl, bindingsToRows, escapeHtml } from "./utils.js
 const HTML = new URL("../html/chat.html", import.meta.url);
 const CSS  = new URL("../css/chat.css",  import.meta.url);
 
+const Q_CONTEXT = "/assets/data/queries/chat_context.sparql";
+const Q_NEIGH   = "/assets/data/queries/chat_neighborhood.sparql";
+
+const _qCache = new Map();
+async function loadQueryText(path) {
+  if (_qCache.has(path)) return _qCache.get(path);
+  const txt = await fetchRepoText(path, { cache: "no-store", bust: true });
+  _qCache.set(path, txt);
+  return txt;
+}
+
 // --- tiny helpers -----------------------------------------------------------
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -48,7 +59,9 @@ function keywords(q) {
   )).slice(0, 5);
 }
 
-function makeContextQuery(words) {
+async function makeContextQuery(words) {
+  const tpl = await loadQueryText(Q_CONTEXT);
+
   const pats = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const rx = pats.map(p => {
     const s = JSON.stringify(p); // safe SPARQL string literal
@@ -60,62 +73,38 @@ function makeContextQuery(words) {
     ].join(" || ");
   }).join(" || ");
 
-  return `
-PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX schema:<https://schema.org/>
-PREFIX gsn:   <https://w3id.org/OntoGSN/ontology#>
-
-SELECT DISTINCT ?s ?label ?id ?statement
-WHERE {
-  OPTIONAL { ?s rdfs:label ?label }
-  OPTIONAL { ?s schema:identifier ?id }
-  OPTIONAL { ?s gsn:statement ?statement }
-  FILTER(${rx})
-}
-LIMIT 30`;
+  return tpl.replaceAll("__RX__", rx || "true");
 }
 
-
-// Expand immediate graph around the top N candidates
-function makeNeighborhoodQuery(ids) {
+async function makeNeighborhoodQuery(ids) {
+  const tpl = await loadQueryText(Q_NEIGH);
   const vals = ids.map(i => `<${i}>`).join(" ");
-  return `
-SELECT ?s ?p ?o
-WHERE {
-  VALUES ?s { ${vals} }
-  ?s ?p ?o .
-}
-LIMIT 200`;
+  return tpl.replaceAll("__VALS__", vals || "<urn:dummy>");
 }
 
-// Query store for context block
+
 async function gatherContext(question) {
   const store = await ensureStore();
   const kws = keywords(question);
   if (!kws.length) return { synopsis: "", triples: [] };
 
-  const q1 = makeContextQuery(kws);
-  const r1 = store.query(q1);
-  const rows1 = bindingsToRows(r1);
+  const q1 = await makeContextQuery(kws);
+  const rows1 = bindingsToRows(store.query(q1));
   const ids = rows1.map(r => r.s).filter(Boolean).slice(0, 12);
 
   let triples = [];
   if (ids.length) {
-    const q2 = makeNeighborhoodQuery(ids);
-    const r2 = store.query(q2);
-    triples = bindingsToRows(r2).map(({ s, p, o }) => ({ s, p, o }));
+    const q2 = await makeNeighborhoodQuery(ids);
+    triples = bindingsToRows(store.query(q2)).map(({ s, p, o }) => ({ s, p, o }));
   }
 
-  // Short, LLM-friendly synopsis
   const topLines = rows1.slice(0, 12).map(r =>
     `• ${r.id ?? r.label ?? r.s}  [${r.s}]`
   ).join("\n");
 
-  return {
-    synopsis: topLines,
-    triples
-  };
+  return { synopsis: topLines, triples };
 }
+
 
 // Call OpenRouter (non-streaming for simplicity)
 // Docs: POST https://openrouter.ai/api/v1/chat/completions + headers. :contentReference[oaicite:2]{index=2}
