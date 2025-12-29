@@ -1,5 +1,6 @@
 import app from "./queries.js";
-import { marked } from "https://cdn.jsdelivr.net/npm/marked@12.0.2/lib/marked.esm.js";
+import { marked } from "../vendor/marked.esm.js";
+import DOMPurify from "../vendor/purify.es.js";
 import panes from "./panes.js";
 import { escapeHtml, fetchText, fetchRepoText, repoHref, resolveEl } from "./utils.js";
 
@@ -17,15 +18,16 @@ marked.use({
     link(href, title, text) {
       if (href && href.startsWith("$")) {
         const tag = href.slice(1);
-        const safeTag   = escapeHtml(tag);
+        const safeTag = escapeHtml(tag);
         const safeTitle = title ? ` title="${escapeHtml(title)}"` : "";
+        const safeText = escapeHtml(text);
 
         return `
           <button
             type="button"
             class="doc-entity"
             data-doc-tag="${safeTag}"${safeTitle}
-          >${text}</button>
+          >${safeText}</button>
         `;
       }
 
@@ -40,12 +42,17 @@ function resolveDocUrl(relOrAbs) {
   const s = String(relOrAbs).trim();
   if (!s) return null;
 
-  // Protocol-relative: //example.org/...
   if (s.startsWith("//")) return `${location.protocol}${s}`;
 
-  // Absolute http(s)/data/blob/etc are handled by repoHref as “already absolute”
-  return repoHref(s, { from: import.meta.url, upLevels: 2 });
+  const url = repoHref(s, { from: import.meta.url, upLevels: 2 });
+
+  const u = new URL(url, location.href);
+  if (!["http:", "https:"].includes(u.protocol)) {
+    throw new Error(`Blocked document URL protocol: ${u.protocol}`);
+  }
+  return u.toString();
 }
+
 
 async function fetchDoc(pathLiteral) {
   const url = resolveDocUrl(pathLiteral);
@@ -55,48 +62,42 @@ async function fetchDoc(pathLiteral) {
 
 // Markdown → HTML renderer
 function renderMarkdown(mdText) {
-    return marked.parse(mdText);
-  }
+  const dirty = marked.parse(mdText);
+  return DOMPurify.sanitize(dirty, { USE_PROFILES: { html: true } });
+}
+
+let docReq = 0;
 
 async function runDocQueryInto(rootEl, queryPath, varHint) {
+  const reqId = ++docReq;
+
+  // (optional) loading UI
+  rootEl.innerHTML = "<p>Loading…</p>";
+
   await app.init();
-
-  // Load query text (same pattern as fetchText in queries.js/editor.js)
-  const queryText = await fetchRepoText(queryPath, {
-    from: import.meta.url,
-    upLevels: 2,
-    cache: "no-store",
-    bust: true,
-  });
-
+  const queryText = await fetchRepoText(queryPath, { from: import.meta.url, upLevels: 2, cache: "no-store", bust: true });
   const rows = await app.selectBindings(queryText);
-  if (!rows.length) {
-    rootEl.innerHTML = "<p>No document path returned by query.</p>";
-    return;
-  }
 
-  const row    = rows[0];
-  const names  = Object.keys(row);
-  if (!names.length) {
-    rootEl.innerHTML = "<p>Query returned results but no variables.</p>";
-    return;
-  }
+  if (reqId !== docReq) return; // superseded
 
-  // Pick variable: prefer data-doc-var, else some sensible defaults, else first var
-  let varName = varHint && row[varHint] ? varHint : null;
-  if (!varName) {
-    const preferred = ["doc", "document", "path", "file", "url", "md", "markdown"];
-    varName = preferred.find(n => row[n]) || names[0];
-  }
+  const row0 = rows[0];
 
-  const val = row[varName]?.value;
-  if (!val) {
-    rootEl.innerHTML =
-      "<p>Could not find a suitable document path variable in query result.</p>";
-    return;
-  }
+  // normalize: allow "doc" or "?doc"
+  const key = (varHint || "").trim().replace(/^\?/, "");
 
-  const md   = await fetchDoc(val);
+  // pick a variable: hinted one, otherwise the first binding column
+  const chosenKey = (key && row0[key]) ? key : Object.keys(row0)[0];
+
+  const cell = row0[chosenKey];
+
+  // Oxigraph/SPARQL JSON bindings are often objects like { type, value, ... }
+  const val = (cell && typeof cell === "object" && "value" in cell) ? cell.value : cell;
+
+  if (!val) throw new Error(`Doc query returned no usable value for ${chosenKey}`);
+
+  const md = await fetchDoc(val);
+  if (reqId !== docReq) return;
+
   const html = renderMarkdown(md);
   rootEl.innerHTML = `<article class="doc-view">${html}</article>`;
 }
@@ -187,16 +188,16 @@ function buildTooltipHtml(tag, rows) {
     `;
   }
 
-  const firstRow  = rows[0];
+  const firstRow = rows[0];
   const entityIri = firstRow.entity?.value || "";
 
-  const labels   = [];
+  const labels = [];
   const comments = [];
-  const types    = [];
+  const types = [];
 
   for (const r of rows) {
     const pIri = r.p?.value;
-    const o    = r.o;
+    const o = r.o;
     if (!pIri || !o) continue;
 
     const val = o.value;
@@ -212,11 +213,11 @@ function buildTooltipHtml(tag, rows) {
   }
 
   const uniq = arr => [...new Set(arr)];
-  const label   = uniq(labels)[0];
+  const label = uniq(labels)[0];
   const comment = uniq(comments)[0];
   const typeStr = uniq(types).slice(0, 3).join(", ");
 
-  const mainLabel  = label || tag;
+  const mainLabel = label || tag;
   const displayIri = entityIri ? escapeHtml(entityIri) : "";
 
   let html = `
@@ -248,14 +249,14 @@ function showDocEntityTooltip(targetEl, tag, rows) {
   tooltip.innerHTML = buildTooltipHtml(tag, rows);
   document.body.appendChild(tooltip);
 
-  const rect    = targetEl.getBoundingClientRect();
+  const rect = targetEl.getBoundingClientRect();
   const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
   const scrollY = window.pageYOffset || document.documentElement.scrollTop;
 
-  const top  = rect.bottom + scrollY + 4; // a bit under the word
-  const left = rect.left   + scrollX;
+  const top = rect.bottom + scrollY + 4; // a bit under the word
+  const left = rect.left + scrollX;
 
-  tooltip.style.top  = `${top}px`;
+  tooltip.style.top = `${top}px`;
   tooltip.style.left = `${left}px`;
 
   currentTooltip = tooltip;
@@ -266,29 +267,10 @@ function showDocEntityTooltip(targetEl, tag, rows) {
 async function handleDocEntityClick(tag, targetEl) {
   await app.init();
 
-  // Example strategy: use the tag as a schema:identifier
-  // Adjust prefixes / property to match your actual ontology.
-  const queryText = `
-PREFIX schema: <https://schema.org/>
-PREFIX ex: <https://example.org/car-demo#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+  const qPath = "/assets/data/queries/read_documentEntity.sparql";
+  let queryText = await fetchRepoText(qPath, { cache: "no-store", bust: true });
 
-SELECT ?entity ?s ?p ?o
-WHERE {
-  ?entity schema:identifier ?id .
-  FILTER(CONTAINS(STR(?id), ${JSON.stringify(tag)}))
-  {
-    ?entity ?p ?o .
-    BIND(?entity AS ?s)
-  }
-  UNION
-  {
-    ?s ?p ?entity .
-    BIND(?entity AS ?o)
-  }
-}
-LIMIT 20
-  `;
+  queryText = queryText.replaceAll("__TAG__", JSON.stringify(String(tag)));
 
   const rows = await app.selectBindings(queryText);
 
@@ -299,4 +281,8 @@ LIMIT 20
   app.bus?.emit?.("ontogsndoc:entityClick", { tag, rows });
 }
 
-window.addEventListener("DOMContentLoaded", initDocView);
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initDocView);
+} else {
+  initDocView();
+}
