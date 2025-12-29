@@ -34,76 +34,24 @@ export async function visualizeSPO(rows, {
     : resolveEl(mount, { name: "visualizeSPO: mount" });
   if (!rootEl) throw new Error(`visualizeSPO: mount "${mount}" not found`);
 
+  
+
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
 
-  // --- Overlay UI (legend + Show + Rules) --------------------------------
-  // This overlay is absolutely positioned (see graph.css), so it DOES NOT
-  // take up layout space and won't push the graph/fit center down.
+  // --- Overlay UI --------------------------------
+  const ui = rootEl.querySelector(".gsn-graph-ui");
+  if (!ui) throw new Error("graph.html is missing .gsn-graph-ui");
 
-  // 1) Ensure overlay container exists
-  let ui = rootEl.querySelector(".gsn-graph-ui");
-  if (!ui) {
-    ui = document.createElement("div");
-    ui.className = "gsn-graph-ui";
-    rootEl.appendChild(ui);
-  }
+  const rulesHdr = rootEl.querySelector(".gsn-graph-rules");
+  if (!rulesHdr) throw new Error("graph.html is missing .gsn-graph-rules");
 
-  // 2) Move legend into overlay so it also doesn't push the SVG down
-  const legend = rootEl.querySelector(".gsn-legend");
-  if (legend) ui.appendChild(legend);
+  let hud = rootEl.querySelector(".gsn-graph-hud");
+  if (!hud) throw new Error("graph.html is missing .gsn-graph-hud");
 
-  // 3) Rules header
-  let rulesHdr = rootEl.querySelector(".gsn-graph-rules");
-  if (!rulesHdr) {
-    rulesHdr = document.createElement("div");
-    rulesHdr.className = "gsn-graph-rules btns";
-    rulesHdr.innerHTML = `
-      <span class="gsn-rules-label">Rules:</span>
-
-      <label><input type="checkbox"
-        data-query="/assets/data/queries/rule_assumptionInvalidation.sparql"
-        data-class="rule" data-no-table="1">
-        Invalid assumptions
-      </label>
-
-      <label><input type="checkbox"
-        data-query="/assets/data/queries/rule_truthContradiction.sparql"
-        data-class="rule" data-no-table="1">
-        Contradicting truth
-      </label>
-
-      <label><input type="checkbox"
-        data-query="/assets/data/queries/rule_untrueSolution.sparql"
-        data-class="rule" data-no-table="1">
-        Untrue solution
-      </label>
-
-      <label><input type="checkbox"
-        data-queries="/assets/data/queries/rule_checkLoadWeight.sparql;
-                      /assets/data/queries/propagate_overloadedCar.sparql;
-                      /assets/data/queries/write_defeater_overloadedCar.sparql"
-        data-delete-query="/assets/data/queries/delete_defeater_overloadedCar.sparql"
-        data-class="rule" data-no-table="1"
-        data-event="car:overloadChanged">
-        Overloaded car
-      </label>
-    `;
-  }
-  ui.appendChild(rulesHdr);
-
+  // Ensure positioning context for absolute overlay UI
   rootEl.classList.add("gsn-graph-pane");
   if (getComputedStyle(rootEl).position === "static") {
     rootEl.style.position = "relative";
-  }
-
-  let hud = rootEl.querySelector(".gsn-graph-hud");
-  if (!hud) {
-    hud = document.createElement("div");
-    hud.className = "gsn-graph-hud";
-    hud.innerHTML = `
-      <div id="modulesBar" class="modules-bar" data-tab-group="modules"></div>
-    `;
-    rootEl.appendChild(hud);
   }
 
   const svgNode = rootEl.querySelector(".gsn-svg");
@@ -1165,6 +1113,15 @@ class GraphApp {
   _attachUI() {
     // Click-to-run buttons (graph-related SPARQL buttons)
     this._onDocClick = (e) => {
+
+      const act = e.target instanceof Element ? e.target.closest("[data-act]") : null;
+      if (act?.dataset?.act === "toggle-overlay") {
+        const root = this.rootEl;
+        const collapsed = root.classList.toggle("gsn-overlay-collapsed");
+        act.setAttribute("aria-expanded", String(!collapsed));
+        act.title = collapsed ? "Show legend & rules" : "Hide legend & rules";
+        return;
+      }
       const btn = e.target instanceof Element ? e.target.closest("[data-query]:not(input)") : null;
       if (!btn) return;
 
