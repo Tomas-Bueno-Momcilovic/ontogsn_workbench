@@ -48,30 +48,33 @@ function keywords(q) {
   )).slice(0, 5);
 }
 
-// Build a tiny SPARQL to fetch a) matched nodes and b) their immediate edges
 function makeContextQuery(words) {
-  // up to 5 words → disjunction of regex tests over id/label/comment + IRIs
-  const re = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const RX = re.map(w =>
-    `regex(str(?s), "...") || regex(str(?label), "...") || regex(str(?id), "...") || regex(str(?statement), "...")`
-  ).join(" || ");
+  const pats = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const rx = pats.map(p => {
+    const s = JSON.stringify(p); // safe SPARQL string literal
+    return [
+      `regex(str(?s), ${s}, "i")`,
+      `regex(str(?label), ${s}, "i")`,
+      `regex(str(?id), ${s}, "i")`,
+      `regex(str(?statement), ${s}, "i")`,
+    ].join(" || ");
+  }).join(" || ");
 
   return `
 PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX schema:<https://schema.org/>
 PREFIX gsn:   <https://w3id.org/OntoGSN/ontology#>
 
-# 1) Candidate nodes by keyword
 SELECT DISTINCT ?s ?label ?id ?statement
 WHERE {
   OPTIONAL { ?s rdfs:label ?label }
   OPTIONAL { ?s schema:identifier ?id }
-  OPTIONAL { ?s gsn:statement ?statement}
-  #FILTER(STRSTARTS(STR(?s), "https://w3id.org/OntoGSN/cases/ACT-FAST-robust-llm#"))
-  FILTER(${RX})
+  OPTIONAL { ?s gsn:statement ?statement }
+  FILTER(${rx})
 }
 LIMIT 30`;
 }
+
 
 // Expand immediate graph around the top N candidates
 function makeNeighborhoodQuery(ids) {
