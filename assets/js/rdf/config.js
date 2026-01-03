@@ -14,6 +14,7 @@ export const PATHS = {
   // Ontologies
   onto    : "/assets/data/ontologies/ontogsn_lite.ttl",
   example : "/assets/data/ontologies/example_ac.ttl",
+  car_ac  : "/assets/data/ontologies/car_assurance.ttl",
   car     : "/assets/data/ontologies/car.ttl",
   code    : "/assets/data/ontologies/example_python_code.ttl",
 
@@ -33,6 +34,7 @@ export const PATHS = {
 export const DATASETS = [
   { path: PATHS.onto,    base: BASE_ONTO },
   { path: PATHS.example, base: BASE_CASE },
+  { path: PATHS.car_ac,  base: BASE_CAR },
   { path: PATHS.car,     base: BASE_CAR  },
   { path: PATHS.code,    base: BASE_CODE },
 ];

@@ -159,8 +159,6 @@ ex:car_G2
         ex:rearRightWheel
     .
 
-
-
 ex:M_Car
     a gsn:Module ;
     rdfs:label       "M:Car" ;
@@ -172,4 +170,5 @@ ex:M_Car
                  ex:car_C2 , ex:car_J1 ,
                  ex:car_A1 , ex:car_A2 ,
                  ex:car_A3 , ex:car_Sn1 , 
-                 ex:car_Sn2 , ex:car_Sn3 .
+                 ex:car_Sn2 , ex:car_Sn3,
+                 ex:car_G2 .
