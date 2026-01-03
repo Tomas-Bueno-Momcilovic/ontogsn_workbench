@@ -89,7 +89,6 @@ class PaneManager {
       view: btn.dataset.view || null,
       paneId: paneId || null,
       query: btn.dataset.query || null,
-      noTable: btn.dataset.noTable === "1",
       docQuery: btn.dataset.docQuery || null,
       docVar: btn.dataset.docVar || null,
     });
