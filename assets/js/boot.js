@@ -1,8 +1,5 @@
 import queries from "./queries.js";
-import { PATHS } from "./rdf/config.js";
-import { bus } from "./events.js";
 import panes from "./panes.js";
-import { shortenIri } from "./rdf/sparql.js";
 
 async function boot() {
   try {
