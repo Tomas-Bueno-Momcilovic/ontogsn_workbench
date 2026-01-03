@@ -1,0 +1,9 @@
+.doc-hit {
+  outline: 2px solid var(--highlight-stroke, #186e78);
+  background: rgba(24, 110, 120, 0.12);
+  border-radius: 4px;
+}
+
+mark.doc-hit {
+  padding: 0 .1em;
+}

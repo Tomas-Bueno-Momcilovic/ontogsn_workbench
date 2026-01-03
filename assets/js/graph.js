@@ -7,34 +7,34 @@ import { shortenIri } from "./rdf/sparql.js";
 import { bus, emitCompat } from "./events.js";
 
 const HTML = new URL("../html/graph.html", import.meta.url);
-const CSS  = new URL("../css/graph.css",  import.meta.url);
+const CSS = new URL("../css/graph.css", import.meta.url);
 
 export async function visualizeSPO(rows, {
-  mount      = ".gsn-host",
-  width      = null,
-  height     = 520,
+  mount = ".gsn-host",
+  width = null,
+  height = 520,
   supportedBy = ["supported by",
-                 "gsn:supportedBy",
-                 "https://w3id.org/OntoGSN/ontology#supportedBy",
-                 "http://w3id.org/gsn#supportedBy"],
-  contextOf   = ["in context of",
-                 "gsn:inContextOf",
-                 "https://w3id.org/OntoGSN/ontology#inContextOf",
-                 "http://w3id.org/gsn#inContextOf"],
-  challenges  = ["challenges",
-                 "gsn:challenges",
-                 "https://w3id.org/OntoGSN/ontology#challenges",
-                 "http://w3id.org/gsn#challenges"],
+    "gsn:supportedBy",
+    "https://w3id.org/OntoGSN/ontology#supportedBy",
+    "http://w3id.org/gsn#supportedBy"],
+  contextOf = ["in context of",
+    "gsn:inContextOf",
+    "https://w3id.org/OntoGSN/ontology#inContextOf",
+    "http://w3id.org/gsn#inContextOf"],
+  challenges = ["challenges",
+    "gsn:challenges",
+    "https://w3id.org/OntoGSN/ontology#challenges",
+    "http://w3id.org/gsn#challenges"],
   label = d => d,
   bus = null
 } = {}) {
   // --- Resolve mount
   const rootEl =
     (mount instanceof Element) ? mount
-    : resolveEl(mount, { name: "visualizeSPO: mount" });
+      : resolveEl(mount, { name: "visualizeSPO: mount" });
   if (!rootEl) throw new Error(`visualizeSPO: mount "${mount}" not found`);
 
-  
+
 
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
 
@@ -57,64 +57,64 @@ export async function visualizeSPO(rows, {
   const svgNode = rootEl.querySelector(".gsn-svg");
   if (!svgNode) throw new Error("visualizeSPO: internal error – svg root not found");
 
-  const rect       = rootEl.getBoundingClientRect();
+  const rect = rootEl.getBoundingClientRect();
   const pixelWidth = width ?? Math.max(300, rect.width || 800);
 
-  svgNode.setAttribute("width",  String(pixelWidth));
+  svgNode.setAttribute("width", String(pixelWidth));
   svgNode.setAttribute("height", String(height));
 
-  const svg              = d3.select(svgNode);
-  const g                = svg.select(".gsn-viewport");
-  const defs             = svg.append("defs");
+  const svg = d3.select(svgNode);
+  const g = svg.select(".gsn-viewport");
+  const defs = svg.append("defs");
   const gOverCollections = g.append("g").attr("class", "gsn-overlay-collections");
 
-  function marker(id, klass){
+  function marker(id, klass) {
     const m = defs.append("marker")
-      .attr("id", id).attr("viewBox","0 0 10 10")
+      .attr("id", id).attr("viewBox", "0 0 10 10")
       .attr("refX", 9).attr("refY", 5)
       .attr("markerWidth", 8).attr("markerHeight", 8)
-      .attr("orient","auto-start-reverse")
+      .attr("orient", "auto-start-reverse")
       .attr("class", `gsn-marker ${klass}`);
-    m.append("path").attr("d","M0,0 L10,5 L0,10 Z").attr("fill", "currentColor");
+    m.append("path").attr("d", "M0,0 L10,5 L0,10 Z").attr("fill", "currentColor");
   }
 
-  const idArrow    = uid("arrow-");
+  const idArrow = uid("arrow-");
   const idArrowCtx = uid("arrow-ctx-");
   const idArrowDef = uid("arrow-def-");
 
-  marker(idArrow    , "norm");
-  marker(idArrowCtx , "ctx");
-  marker(idArrowDef , "def");
+  marker(idArrow, "norm");
+  marker(idArrowCtx, "ctx");
+  marker(idArrowDef, "def");
 
-  function labelWidth(t, 
-                      minW = 44, 
-                      maxW = 180, 
-                      pad  = 12) {
+  function labelWidth(t,
+    minW = 44,
+    maxW = 180,
+    pad = 12) {
     return Math.min(maxW, Math.max(minW, 7.2 * String(t).length + pad));
   }
 
   // --- Normalize predicates into Sets
-  const norm    = x => String(x).trim();
-  const supSet  = new Set(supportedBy.map(norm));
-  const ctxSet  = new Set(contextOf.map(norm));
+  const norm = x => String(x).trim();
+  const supSet = new Set(supportedBy.map(norm));
+  const ctxSet = new Set(contextOf.map(norm));
   const chalSet = new Set(challenges.map(norm));
 
   // Base node height used for layout + shape drawing
   const NODE_H = 26;
 
-    function kindFromTypeIri(typeIri) {
-      if (!typeIri) return null;
-      const t = String(typeIri);
+  function kindFromTypeIri(typeIri) {
+    if (!typeIri) return null;
+    const t = String(typeIri);
 
-      if (t.endsWith("#Goal")         || t.endsWith("/Goal"))         return "goal";
-      if (t.endsWith("#Strategy")     || t.endsWith("/Strategy"))     return "strategy";
-      if (t.endsWith("#Solution")     || t.endsWith("/Solution"))     return "solution";
-      if (t.endsWith("#Context")      || t.endsWith("/Context"))      return "context";
-      if (t.endsWith("#Assumption")   || t.endsWith("/Assumption"))   return "assumption";
-      if (t.endsWith("#Justification")|| t.endsWith("/Justification"))return "justification";
+    if (t.endsWith("#Goal") || t.endsWith("/Goal")) return "goal";
+    if (t.endsWith("#Strategy") || t.endsWith("/Strategy")) return "strategy";
+    if (t.endsWith("#Solution") || t.endsWith("/Solution")) return "solution";
+    if (t.endsWith("#Context") || t.endsWith("/Context")) return "context";
+    if (t.endsWith("#Assumption") || t.endsWith("/Assumption")) return "assumption";
+    if (t.endsWith("#Justification") || t.endsWith("/Justification")) return "justification";
 
-      return null;
-    }
+    return null;
+  }
 
   // Infer a GSN element kind from the short label (e.g. "G1", "S1", "Sn1", "A1", "J1").
   // Adjust this if your identifiers use a different convention.
@@ -123,14 +123,14 @@ export async function visualizeSPO(rows, {
     if (fromType) return fromType;
 
     const txt = String(labelText || id);
-    const p2  = txt.slice(0, 2).toUpperCase();
-    const p1  = txt.charAt(0).toUpperCase();
+    const p2 = txt.slice(0, 2).toUpperCase();
+    const p1 = txt.charAt(0).toUpperCase();
 
     if (p2 === "SN") return "solution";
-    if (p1 === "S")  return "strategy";
-    if (p1 === "C")  return "context";
-    if (p1 === "A")  return "assumption";
-    if (p1 === "J")  return "justification";
+    if (p1 === "S") return "strategy";
+    if (p1 === "C") return "context";
+    if (p1 === "A") return "assumption";
+    if (p1 === "J") return "justification";
 
     return "goal";
   }
@@ -140,10 +140,10 @@ export async function visualizeSPO(rows, {
 
   // --- Build adjacency from rows
   const children = new Map();
-  const parents  = new Map();
-  const context  = new Map();
+  const parents = new Map();
+  const context = new Map();
   const allNodes = new Set();
-  const defeat   = new Map();
+  const defeat = new Map();
 
   for (const r of rows) {
     if (!r || !r.s || !r.p || !r.o) continue;
@@ -165,7 +165,7 @@ export async function visualizeSPO(rows, {
     if (supSet.has(P)) {
       allNodes.add(S); allNodes.add(O);
       addToSetMap(children, S, O);
-      addToSetMap(parents,  O, S);
+      addToSetMap(parents, O, S);
     } else if (ctxSet.has(P)) {
       addToSetMap(context, S, O);
     } else if (chalSet.has(P)) {
@@ -217,13 +217,13 @@ export async function visualizeSPO(rows, {
       contexts: context.get(id) ? [...context.get(id)].map(cid => ({ id: cid, label: label(cid), _contextOf: id })) : []
     };
   }
-  const forest    = roots.map(toHierarchy);
+  const forest = roots.map(toHierarchy);
   const superRoot = (forest.length === 1) ? forest[0] : { id: "__ROOT__", label: "", children: forest };
 
   // --- Layout with d3.tree()
-  const root  = d3.hierarchy(superRoot, d => d.children);
-  const dx    = 200;
-  const dy    = 80;
+  const root = d3.hierarchy(superRoot, d => d.children);
+  const dx = 200;
+  const dy = 80;
   d3.tree().nodeSize([dx, dy])(root);
 
   // Position map: id -> {x,y,data}
@@ -236,9 +236,9 @@ export async function visualizeSPO(rows, {
 
   // Unique nodes for rendering (no duplicates)
   const nodes = [...pos.entries()].map(([id, v]) => {
-    const lbl      = v.data.label;
-    const typeIri  = nodeType.get(id) || null;
-    const kind     = inferNodeKind(id, lbl, typeIri);
+    const lbl = v.data.label;
+    const typeIri = nodeType.get(id) || null;
+    const kind = inferNodeKind(id, lbl, typeIri);
     return {
       id,
       label: lbl,
@@ -285,13 +285,13 @@ export async function visualizeSPO(rows, {
     const srcW = n.w;
     ctxs.forEach((c, i) => {
       const x = n.x + ctxOffsetX + i * ctxOffsetY;
-      const y = n.y; 
+      const y = n.y;
       const tgtW = labelWidth(c.label);
 
       const typeIri = nodeType.get(c.id) || null;
-      const kind    = inferNodeKind(c.id, c.label, typeIri) || "context";
-      const w       = labelWidth(c.label);
-      const h       = NODE_H;
+      const kind = inferNodeKind(c.id, c.label, typeIri) || "context";
+      const w = labelWidth(c.label);
+      const h = NODE_H;
 
       ctxNodes.push({
         id: c.id,
@@ -308,7 +308,7 @@ export async function visualizeSPO(rows, {
 
       ctxLinks.push({
         source: { x: n.x, y: n.y, w: srcW },
-        target: { x,   y,   w: tgtW }
+        target: { x, y, w: tgtW }
       });
     });
   }
@@ -331,11 +331,11 @@ export async function visualizeSPO(rows, {
       });
     });
   }
-  console.debug("nodes"     , nodes.length      , nodes.slice(0, 3));
-  console.debug("treeLinks" , treeLinks.length  , treeLinks.slice(0, 3));
-  console.debug("extraLinks", extraLinks.length , extraLinks.slice(0, 3));
-  console.debug("ctxLinks"  , ctxLinks.length   , ctxLinks.slice(0, 3));
-  console.debug("defLinks"  , defLinks.length   , defLinks.slice(0, 3));
+  console.debug("nodes", nodes.length, nodes.slice(0, 3));
+  console.debug("treeLinks", treeLinks.length, treeLinks.slice(0, 3));
+  console.debug("extraLinks", extraLinks.length, extraLinks.slice(0, 3));
+  console.debug("ctxLinks", ctxLinks.length, ctxLinks.slice(0, 3));
+  console.debug("defLinks", defLinks.length, defLinks.slice(0, 3));
 
   // --- Collections
   const extNodeById = new Map();
@@ -343,16 +343,16 @@ export async function visualizeSPO(rows, {
 
   function getHostPos(id) {
     const key = String(id).trim();
-    const p   = pos.get(key) || ctxPos.get(key);
+    const p = pos.get(key) || ctxPos.get(key);
     return p ? { x: p.x, y: p.y } : null;
   }
 
   function makeExternalNode(id, x, y, kind) {
     // draw a small rounded-rect + text (very lightweight)
     const g = gOverCollections.append("g")
-      .attr("class"     , `gsn-node collection ext ${kind}`)
-      .attr("data-id"   , id)
-      .attr("transform" , `translate(${x},${y})`);
+      .attr("class", `gsn-node collection ext ${kind}`)
+      .attr("data-id", id)
+      .attr("transform", `translate(${x},${y})`);
 
     g.append("rect")
       .attr("x", -28).attr("y", -12)
@@ -383,73 +383,117 @@ export async function visualizeSPO(rows, {
   g.selectAll("path.gsn-link")
     .data(treeLinks)
     .join("path")
-      .attr("class", "gsn-link")
-      .attr("d", d => linkV({
-        source: { x: d.source.x,
-                  y: d.source.y + d.source.h / 2 },
-        target: { x: d.target.x,
-                  y: d.target.y - d.target.h / 2 }
-      }))
-      .attr("marker-end", `url(#${idArrow})`)
+    .attr("class", "gsn-link")
+    .attr("d", d => linkV({
+      source: {
+        x: d.source.x,
+        y: d.source.y + d.source.h / 2
+      },
+      target: {
+        x: d.target.x,
+        y: d.target.y - d.target.h / 2
+      }
+    }))
+    .attr("marker-end", `url(#${idArrow})`)
     .append("title").text("supported by");
 
   g.selectAll("path.gsn-link.extra")
     .data(extraLinks)
     .join("path")
-      .attr("class", "gsn-link extra")
-      .attr("d", d => linkV({
-        source: { x: d.source.x,
-                  y: d.source.y + d.source.h / 2 },
-        target: { x: d.target.x,
-                  y: d.target.y - d.target.h / 2 }
-      }))
-      .attr("marker-end", `url(#${idArrow})`)
+    .attr("class", "gsn-link extra")
+    .attr("d", d => linkV({
+      source: {
+        x: d.source.x,
+        y: d.source.y + d.source.h / 2
+      },
+      target: {
+        x: d.target.x,
+        y: d.target.y - d.target.h / 2
+      }
+    }))
+    .attr("marker-end", `url(#${idArrow})`)
     .append("title").text("supported by");
 
   g.selectAll("path.gsn-link.ctx")
     .data(ctxLinks)
     .join("path")
-      .attr("class", "gsn-link ctx")
-      //.attr("d", d => linkLine(d))
-      .attr("d", d => linkH({
-        source: { x: d.source.x + ((d.source?.w ?? 0) / 2), 
-                  y: d.source.y },
-        target: { x: d.target.x - ((d.target?.w ?? 0) / 2), 
-                  y: d.target.y }
-      }))
-      .attr("marker-end", `url(#${idArrowCtx})`)
+    .attr("class", "gsn-link ctx")
+    //.attr("d", d => linkLine(d))
+    .attr("d", d => linkH({
+      source: {
+        x: d.source.x + ((d.source?.w ?? 0) / 2),
+        y: d.source.y
+      },
+      target: {
+        x: d.target.x - ((d.target?.w ?? 0) / 2),
+        y: d.target.y
+      }
+    }))
+    .attr("marker-end", `url(#${idArrowCtx})`)
     .append("title").text("in context of");
 
   g.selectAll("path.gsn-link.def")
     .data(defLinks)
     .join("path")
-      .attr("class", "gsn-link def")
-      //.attr("d", d => linkLine(d))
-      .attr("d", d => linkH({
-        source: { x: d.source.x + ((d.source?.w ?? 0) / 2), 
-                  y: d.source.y },
-        target: { x: d.target.x - ((d.target?.w ?? 0) / 2), 
-                  y: d.target.y }
-      }))
-      .attr("marker-end", `url(#${idArrowDef})`)
+    .attr("class", "gsn-link def")
+    //.attr("d", d => linkLine(d))
+    .attr("d", d => linkH({
+      source: {
+        x: d.source.x + ((d.source?.w ?? 0) / 2),
+        y: d.source.y
+      },
+      target: {
+        x: d.target.x - ((d.target?.w ?? 0) / 2),
+        y: d.target.y
+      }
+    }))
+    .attr("marker-end", `url(#${idArrowDef})`)
     .append("title").text("challenges");
 
   const nodeG = g.selectAll("g.gsn-node")
     .data(nodes)
     .join("g")
-      .attr("class", d => `gsn-node ${d.kind}`)
-      .attr("transform", d => `translate(${d.x},${d.y})`);
+    .attr("class", d => `gsn-node ${d.kind}`)
+    .attr("transform", d => `translate(${d.x},${d.y})`);
 
+  nodeG.on("click", (ev, d) => {
+    if (ev.detail > 1) return;
+    emitCompat(bus, "gsn:nodeClick", {
+      id: d.id,
+      label: d.label,
+      kind: d.kind,
+      typeIri: d.typeIri
+    });
+  });
 
   const defG = g.selectAll("g.gsn-node.def")
     .data(defNodes)
     .join("g")
-      .attr("class", "gsn-node def")
-      .attr("transform", d => `translate(${d.x},${d.y})`);
-  
+    .attr("class", "gsn-node def")
+    .attr("transform", d => `translate(${d.x},${d.y})`);
+
   defG.on("click", (ev, d) => {
     emitCompat(bus, "gsn:defeaterClick", { id: d.id, label: d.label });
   });
+
+  function emitNodeDbl(ev, payload) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    emitCompat(bus, "gsn:nodeDblClick", payload);
+  }
+
+  nodeG.on("dblclick", (ev, d) => emitNodeDbl(ev, {
+    iri: d.id,
+    label: d.label,
+    kind: d.kind,
+    typeIri: d.typeIri
+  }));
+
+  defG.on("dblclick", (ev, d) => emitNodeDbl(ev, {
+    iri: d.id,
+    label: d.label,
+    kind: "defeater"
+  }));
 
   g.selectAll("g.gsn-node.def").raise();
 
@@ -476,13 +520,13 @@ export async function visualizeSPO(rows, {
       .remove();
   }
 
-  
-  function highlightByIds(ids, klass){ 
+
+  function highlightByIds(ids, klass) {
     const S = new Set(ids.map(String));
 
     nodeG.classed(klass, d => S.has(d.id));
-    ctxG.classed( klass, d => S.has(String(d.id)));
-    defG.classed( klass, d => S.has(String(d.id)));
+    ctxG.classed(klass, d => S.has(String(d.id)));
+    defG.classed(klass, d => S.has(String(d.id)));
 
     if (klass === "undev") {
       updateUndevDiamonds(rootEl);
@@ -511,10 +555,10 @@ export async function visualizeSPO(rows, {
       // Parallelogram for strategies
       const slant = Math.min(20, w / 5);
       const points = [
-        [x + slant,     y],
+        [x + slant, y],
         [x + w + slant, y],
         [x + w - slant, y + h],
-        [x - slant,     y + h]
+        [x - slant, y + h]
       ].map(p => p.join(",")).join(" ");
       gShape.append("polygon")
         .attr("points", points);
@@ -530,7 +574,7 @@ export async function visualizeSPO(rows, {
     } else {
       // Plain rectangle for goals (default)
       gShape.append("rect")
-        .attr("width",  w)
+        .attr("width", w)
         .attr("height", h)
         .attr("x", x)
         .attr("y", y);
@@ -556,12 +600,19 @@ export async function visualizeSPO(rows, {
   const ctxG = g.selectAll("g.gsn-node.ctx")
     .data(ctxNodes)
     .join("g")
-      .attr("class", d => `gsn-node ctx ${d.kind}`)
-      .attr("transform", d => `translate(${d.x},${d.y})`);
+    .attr("class", d => `gsn-node ctx ${d.kind}`)
+    .attr("transform", d => `translate(${d.x},${d.y})`);
 
   ctxG.on("click", (ev, d) => {
     emitCompat(bus, "gsn:contextClick", { id: d.id, label: d.label });
   });
+
+  ctxG.on("dblclick", (ev, d) => emitNodeDbl(ev, {
+    iri: d.id,
+    label: d.label,
+    kind: d.kind,
+    typeIri: d.typeIri
+  }));
 
   // Shape: rect for normal context, ellipse for assumption/justification
   ctxG.each(function (d) {
@@ -579,10 +630,10 @@ export async function visualizeSPO(rows, {
         .attr("ry", h / 2);
     } else {
       gCtx.append("rect")
-        .attr("width",  w)
+        .attr("width", w)
         .attr("height", h)
-        .attr("x",      x)
-        .attr("y",      y);
+        .attr("x", x)
+        .attr("y", y);
     }
   });
 
@@ -604,6 +655,8 @@ export async function visualizeSPO(rows, {
   // --- Zoom/Pan + controls
   const zoom = d3.zoom().scaleExtent([0.25, 3]).on("zoom", ev => g.attr("transform", ev.transform));
   svg.call(zoom);
+  const disableDblZoom = () => svg.on("dblclick.zoom", null);
+  disableDblZoom();
 
   function fit(pad = 40) {
     svg.interrupt();
@@ -613,31 +666,31 @@ export async function visualizeSPO(rows, {
 
     const bbox = g.node().getBBox();
     if (!bbox.width || !bbox.height) return;
-    
-    const vw   = svgNode.clientWidth || svgNode.viewBox.baseVal.width || 800;
-    const vh   = svgNode.clientHeight || svgNode.viewBox.baseVal.height || height;
-    const sx   = (vw - pad * 2) / bbox.width;
-    const sy   = (vh - pad * 2) / bbox.height;
-    const s    = Math.max(0.25, Math.min(2.5, Math.min(sx, sy)));
-    const tx   = pad - bbox.x * s + (vw - (bbox.width * s + pad * 2)) / 2;
-    const ty   = pad - bbox.y * s + (vh - (bbox.height * s + pad * 2)) / 2;
+
+    const vw = svgNode.clientWidth || svgNode.viewBox.baseVal.width || 800;
+    const vh = svgNode.clientHeight || svgNode.viewBox.baseVal.height || height;
+    const sx = (vw - pad * 2) / bbox.width;
+    const sy = (vh - pad * 2) / bbox.height;
+    const s = Math.max(0.25, Math.min(2.5, Math.min(sx, sy)));
+    const tx = pad - bbox.x * s + (vw - (bbox.width * s + pad * 2)) / 2;
+    const ty = pad - bbox.y * s + (vh - (bbox.height * s + pad * 2)) / 2;
 
     const t = d3.zoomIdentity.translate(tx, ty).scale(s);
     svg.transition()
       .duration(450)
       .call(zoom.transform, t)
-      .on("end interrupt", () => {svg.call(zoom)});
+      .on("end interrupt", () => { svg.call(zoom); disableDblZoom(); });
     if (!vw || !vh) return;
   }
-  function reset()  { 
-    svg.interrupt(); 
+  function reset() {
+    svg.interrupt();
     svg.transition()
       .duration(400)
       .call(zoom.transform, d3.zoomIdentity)
-      .on("end interrupt", () => svg.call(zoom)); 
-    }
-  function destroy() { 
-    rootEl.innerHTML = ""; 
+      .on("end interrupt", () => { svg.call(zoom); disableDblZoom(); });
+  }
+  function destroy() {
+    rootEl.innerHTML = "";
     rootEl.querySelector(".gsn-graph-ui")?.remove();
     rootEl.querySelector(".gsn-graph-hud")?.remove();
     rootEl.querySelector("svg.gsn-svg")?.remove();
@@ -651,12 +704,12 @@ export async function visualizeSPO(rows, {
 
   function addCollections(rows, opts = {}) {
     // rows: [{ctx, clt, item}]
-    const dxHub     = opts.dxHub     ?? opts.dx     ?? 90;
-    const dyHub     = opts.dyHub     ?? opts.dy     ?? 40;
-    const dyStride  = opts.dyStride  ?? 30;
-    const rHub      = opts.rHub      ?? 5;
-    const rItem     = opts.rItem     ?? 4;
-    const armLen    = opts.armLen    ?? 50;
+    const dxHub = opts.dxHub ?? opts.dx ?? 90;
+    const dyHub = opts.dyHub ?? opts.dy ?? 40;
+    const dyStride = opts.dyStride ?? 30;
+    const rHub = opts.rHub ?? 5;
+    const rItem = opts.rItem ?? 4;
+    const armLen = opts.armLen ?? 50;
     const maxPerRow = opts.maxPerRow ?? 6;
 
     const groups = new Map(); // key: `${ctx}||${clt}` → { ctx, clt, items: Set<item> }
@@ -677,7 +730,7 @@ export async function visualizeSPO(rows, {
       hubsPerCtx.set(ctx, idx + 1);
 
       const hubX = host.x + dxHub;
-      const hubY = host.y + dyHub + idx*dyStride; // south + stacked south
+      const hubY = host.y + dyHub + idx * dyStride; // south + stacked south
 
       // Hub (collection) as a small dot
       const hub = gOverCollections.append("g")
@@ -695,18 +748,18 @@ export async function visualizeSPO(rows, {
 
       // 3) Arrange items in a small radial fan around the hub
       const itemList = Array.from(items);
-      const perRing  = Math.max(1, maxPerRow);
-      const ringGap  = 16;     // distance between concentric rings of items
-      const baseR    = armLen; // radius for first ring
+      const perRing = Math.max(1, maxPerRow);
+      const ringGap = 16;     // distance between concentric rings of items
+      const baseR = armLen; // radius for first ring
 
       itemList.forEach((itemId, i) => {
-        const ring        = Math.floor(i / perRing);
-        const pos         = i % perRing;
-        const startAngle  = opts.startAngle ?? Math.PI / 2;
-        const angle       = startAngle + (2 * Math.PI / perRing) * pos; // start upwards
-        const radius      = baseR + ring * ringGap;
-        const ix          = hubX + Math.cos(angle) * radius;
-        const iy          = hubY + Math.sin(angle) * radius;
+        const ring = Math.floor(i / perRing);
+        const pos = i % perRing;
+        const startAngle = opts.startAngle ?? Math.PI / 2;
+        const angle = startAngle + (2 * Math.PI / perRing) * pos; // start upwards
+        const radius = baseR + ring * ringGap;
+        const ix = hubX + Math.cos(angle) * radius;
+        const iy = hubY + Math.sin(angle) * radius;
 
         // spoke
         gOverCollections.append("path")
@@ -1051,7 +1104,7 @@ class GraphApp {
     if (!root) return;
 
     const ctx = this.rootEl?.querySelector?.("#toggle-context");
-    const df  = this.rootEl?.querySelector?.("#toggle-defeat");
+    const df = this.rootEl?.querySelector?.("#toggle-defeat");
 
     const showCtx = ctx ? ctx.checked : true;
     const showDef = df ? df.checked : true;
@@ -1108,6 +1161,28 @@ class GraphApp {
         this.graphCtl?.highlightByIds?.(ids, "def-prop");
       })
     );
+
+    this._unsubs.push(
+      this.bus.on("graph:highlight", (ev) => {
+        const { ids = [], cls = "overlay", replace = true } = ev.detail || {};
+        if (!this.graphCtl) return;
+
+        if (replace) this.overlays.set(cls, new Set(ids));
+        else {
+          const cur = this.overlays.get(cls) ?? new Set();
+          ids.forEach(x => cur.add(x));
+          this.overlays.set(cls, cur);
+        }
+        this._reapplyOverlays();
+      })
+    );
+
+    this._unsubs.push(
+      this.bus.on("graph:clearHighlights", () => {
+        this.overlays.clear();
+        this._reapplyOverlays();
+      })
+    );
   }
 
   _attachUI() {
@@ -1152,7 +1227,7 @@ class GraphApp {
       if (!paths.length) return;
 
       const deletePath = el.getAttribute("data-delete-query");
-      const eventName  = el.getAttribute("data-event");
+      const eventName = el.getAttribute("data-event");
 
       const isOverloadRule = paths.some(p => p.includes("propagate_overloadedCar.sparql"));
 
