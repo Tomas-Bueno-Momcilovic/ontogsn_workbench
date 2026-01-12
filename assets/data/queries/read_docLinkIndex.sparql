@@ -1,0 +1,10 @@
+PREFIX dl: <https://example.org/ontogsn/doclink#>
+
+SELECT ?iri ?docPath ?headingId ?tag ?text ?key WHERE {
+  ?m  dl:node    ?iri ;
+      dl:docPath ?docPath .
+  OPTIONAL { ?m dl:headingId ?headingId }
+  OPTIONAL { ?m dl:tag       ?tag }
+  OPTIONAL { ?m dl:text      ?text }
+  OPTIONAL { ?m dl:key       ?key }
+}

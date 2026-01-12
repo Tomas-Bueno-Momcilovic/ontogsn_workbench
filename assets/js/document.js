@@ -287,6 +287,7 @@ function initDocView() {
 
   // Click handler for ontology references inside the document
   root.addEventListener("click", (ev) => {
+    if (ev.detail > 1) return;
     const target = ev.target instanceof Element
       ? ev.target.closest(".doc-entity")
       : null;

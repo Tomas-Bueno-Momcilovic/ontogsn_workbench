@@ -34,8 +34,6 @@ export async function visualizeSPO(rows, {
       : resolveEl(mount, { name: "visualizeSPO: mount" });
   if (!rootEl) throw new Error(`visualizeSPO: mount "${mount}" not found`);
 
-
-
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
 
   // --- Overlay UI --------------------------------
