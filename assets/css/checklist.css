@@ -1,0 +1,106 @@
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.checklist-top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#checklist-search {
+  flex: 1;
+  min-width: 140px;
+  padding: 6px 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+}
+
+.checklist-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.checklist-actions button {
+  padding: 6px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+}
+
+.checklist-actions button:hover {
+  background: #f5f5f5;
+}
+
+.checklist-stats {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.checklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chk-row {
+  display: grid;
+  grid-template-columns: 18px 80px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 8px;
+  border: 1px solid #e2e2e2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.chk-row:hover {
+  background: #fafafa;
+}
+
+.chk-row input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.chk-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.chk-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chk-stmt {
+  font-size: 13px;
+  line-height: 1.25rem;
+}
+
+.chk-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.chk-badge {
+  border: 1px solid #e0e0e0;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: #f7f7f7;
+}
+
+.checklist-empty {
+  padding: 8px;
+  font-size: 13px;
+  opacity: 0.8;
+}

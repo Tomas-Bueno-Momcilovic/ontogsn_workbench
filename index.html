@@ -40,6 +40,12 @@
         Table
       </button>
 
+      <!-- Button: Checklist -->
+      <button id="tab-checklist" class="tab"
+              data-pane="checklist-root">
+        Checklist
+      </button>
+
       <!-- Button: Editor -->
       <button id="tab-editor" class="tab"
               data-pane="editor-root">
@@ -102,6 +108,7 @@
       <div id="welcome-root"   class="left-view" hidden></div>
       <div id="editor-root"    class="left-view" hidden></div>
       <div id="doc-root"       class="left-view" hidden></div>
+      <div id="checklist-root" class="left-view" hidden></div>
       <div id="converter-root" class="left-view" hidden></div>
       <div id="code-root"      class="left-view" hidden></div>
       <div id="chat-root"      class="left-view" hidden></div>
@@ -128,6 +135,7 @@
 
   <script type = "module" src = "/assets/js/boot.js"    ></script>
   <script type = "module" src = "/assets/js/welcome.js" ></script>
+  <script type = "module" src = "/assets/js/checklist.js"></script>
   <script type = "module" src = "/assets/js/settings.js"></script>
   <script type = "module" src = "/assets/js/graph.js"   ></script>
   <script type = "module" src = "/assets/js/layers.js"  ></script>
