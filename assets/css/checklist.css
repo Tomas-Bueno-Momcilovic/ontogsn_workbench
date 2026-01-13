@@ -104,3 +104,8 @@
   font-size: 13px;
   opacity: 0.8;
 }
+
+.chk-row {
+  --depth: 0;
+  margin-left: calc(var(--depth) * 18px);
+}

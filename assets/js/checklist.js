@@ -6,13 +6,16 @@ import {
   resolveEl,
   fetchRepoText,
   shortenIri,
-  safeInvoke
+  safeInvoke,
+  splitTokens
 } from "./utils.js";
+
 
 const HTML = new URL("../html/checklist.html", import.meta.url);
 const CSS  = new URL("../css/checklist.css",  import.meta.url);
 
 const GOALS_QUERY_PATH = "/assets/data/queries/read_goalsForChecklist.sparql";
+const PARENTS_QUERY_PATH = "/assets/data/queries/read_goalParentsForChecklist.sparql";
 
 // NOTE: Your current index.html clears localStorage on load.
 // If you want persistence across reloads, remove that dev-only localStorage.clear().
@@ -111,6 +114,7 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText) {
     const row = document.createElement("div");
     row.className = "chk-row";
     row.setAttribute("role", "listitem");
+    row.style.setProperty("--depth", String(it.depth ?? 0));
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
@@ -187,6 +191,118 @@ async function queryGoals() {
   return (bindings || []).map(normalizeItem).filter(x => x.goal);
 }
 
+async function queryGoalParents() {
+  await app.init();
+  const queryText = await fetchRepoText(PARENTS_QUERY_PATH, {
+    from: import.meta.url,
+    upLevels: 2,
+    cache: "no-store",
+    bust: true
+  });
+
+  const bindings = await app.selectBindings(queryText);
+  const parentsByChild = new Map();
+
+  for (const row of (bindings || [])) {
+    const child = pickText(row, "child", "");
+    const parentsRaw = pickText(row, "parents", "");
+    if (!child) continue;
+    parentsByChild.set(child, splitTokens(parentsRaw)); // splits on , or ;
+  }
+
+  return parentsByChild;
+}
+
+function applyHierarchy(rawItems, parentsByChild) {
+  const items = Array.from(rawItems || []);
+  const byIri = new Map(items.map(it => [it.goal, it]));
+
+  const sortKey = (it) => {
+    const m = String(it?.modules ?? "").toLowerCase();
+    const id = String(it?.id ?? "").toLowerCase();
+    const iri = String(it?.goal ?? "");
+    return `${m}|||${id}|||${iri}`;
+  };
+
+  // Pick a single “primary” parent per goal for a stable tree display
+  const primaryParent = new Map(); // childIri -> parentIri|null
+
+  for (const it of items) {
+    const parents = (parentsByChild.get(it.goal) || [])
+      .filter(p => byIri.has(p) && p !== it.goal);
+
+    if (!parents.length) {
+      primaryParent.set(it.goal, null);
+      continue;
+    }
+
+    parents.sort((a, b) => {
+      const ka = sortKey(byIri.get(a)) || a;
+      const kb = sortKey(byIri.get(b)) || b;
+      return ka.localeCompare(kb);
+    });
+
+    primaryParent.set(it.goal, parents[0]);
+  }
+
+  // Build children adjacency from primaryParent
+  const childrenOf = new Map(); // parentIri -> childIri[]
+  for (const [child, parent] of primaryParent.entries()) {
+    if (!parent) continue;
+    if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+    childrenOf.get(parent).push(child);
+  }
+
+  // Sort children lists
+  for (const [p, arr] of childrenOf.entries()) {
+    arr.sort((a, b) => sortKey(byIri.get(a)).localeCompare(sortKey(byIri.get(b))));
+    childrenOf.set(p, arr);
+  }
+
+  // Roots = goals with no parent
+  const roots = items
+    .filter(it => !primaryParent.get(it.goal))
+    .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+
+  const ordered = [];
+  const visited = new Set();
+  const stack = new Set(); // cycle guard
+
+  function dfs(goalIri, depth) {
+    if (!goalIri || visited.has(goalIri)) return;
+    if (stack.has(goalIri)) return; // break cycles
+
+    const it = byIri.get(goalIri);
+    if (!it) return;
+
+    stack.add(goalIri);
+    visited.add(goalIri);
+
+    it.depth = depth;
+    ordered.push(it);
+
+    const kids = childrenOf.get(goalIri) || [];
+    for (const k of kids) dfs(k, depth + 1);
+
+    stack.delete(goalIri);
+  }
+
+  for (const r of roots) dfs(r.goal, 0);
+
+  // Any leftovers (cycles / disconnected) -> append at depth 0
+  const leftovers = items
+    .filter(it => !visited.has(it.goal))
+    .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+
+  for (const it of leftovers) {
+    it.depth = 0;
+    ordered.push(it);
+  }
+
+  return ordered;
+}
+
+
 async function initChecklistView() {
   panes.initLeftTabs?.();
 
@@ -213,7 +329,13 @@ async function initChecklistView() {
 
   const refresh = async () => {
     try {
-      items = await queryGoals();
+      const [raw, parentsByChild] = await Promise.all([
+        queryGoals(),
+        queryGoalParents()
+      ]);
+
+      items = applyHierarchy(raw, parentsByChild);
+
       state = loadState(); // re-load in case other tabs changed it
       rerender();
     } catch (e) {
