@@ -20,6 +20,101 @@ class PaneManager {
 
     this._activateLeftTab = null;
     this._activateRightTab = null;
+
+    this.ctx = {};
+    this._paneDefs = { left: new Map(), right: new Map() };        // paneId -> { loader, cache }
+    this._paneState = { left: new Map(), right: new Map() };       // paneId -> { mod, cleanup, mounted }
+    this._activePaneId = { left: null, right: null };
+    this._activateSeq = 0; // guards against async race on fast clicks
+  }
+
+  setContext(ctx) {
+    this.ctx = { ...(this.ctx || {}), ...(ctx || {}) };
+  }
+
+  registerPane(slot, paneId, loader, { cache = true } = {}) {
+    this._paneDefs[slot]?.set(paneId, { loader, cache });
+  }
+
+  async _deactivatePane(slot, paneId) {
+    if (!paneId) return;
+
+    const state = this._paneState[slot].get(paneId);
+    if (!state) return;
+
+    // Prefer explicit suspend/unmount, then fallback to cleanup function
+    try {
+      if (state.mod?.suspend) await state.mod.suspend({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
+      if (state.mod?.unmount) await state.mod.unmount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
+      if (typeof state.cleanup === "function") state.cleanup();
+    } catch (e) {
+      console.warn(`[PaneManager] deactivate failed for ${slot}:${paneId}`, e);
+    }
+
+    state.cleanup = null;
+    state.mounted = false;
+
+    const def = this._paneDefs[slot].get(paneId);
+    if (def && def.cache === false) {
+      // free memory / force re-import next time
+      this._paneState[slot].delete(paneId);
+    } else {
+      this._paneState[slot].set(paneId, state);
+    }
+  }
+
+  async _activatePane(slot, paneId, payload) {
+    if (!paneId) return;
+
+    const seq = ++this._activateSeq;
+
+    // no-op if already active
+    if (this._activePaneId[slot] === paneId) {
+      const state = this._paneState[slot].get(paneId);
+      if (state?.mod?.resume) {
+        try { await state.mod.resume({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, payload }); } catch {}
+      }
+      return;
+    }
+
+    // deactivate previous
+    const prev = this._activePaneId[slot];
+    this._activePaneId[slot] = paneId;
+    await this._deactivatePane(slot, prev);
+
+    // if user clicked again quickly, abandon this activation
+    if (seq !== this._activateSeq) return;
+
+    // load module (lazy)
+    const def = this._paneDefs[slot].get(paneId);
+    if (!def?.loader) return; // static pane => only hide/show is enough
+
+    let state = this._paneState[slot].get(paneId) || { mod: null, cleanup: null, mounted: false };
+
+    if (!state.mod) {
+      state.mod = await def.loader();
+    }
+
+    // mount/resume
+    const root = document.getElementById(paneId);
+    if (!root) {
+      console.warn(`[PaneManager] pane root #${paneId} not found`);
+      return;
+    }
+
+    try {
+      if (!state.mounted && state.mod?.mount) {
+        const cleanup = await state.mod.mount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload });
+        state.cleanup = (typeof cleanup === "function") ? cleanup : null;
+        state.mounted = true;
+      } else if (state.mod?.resume) {
+        await state.mod.resume({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload });
+      }
+    } catch (e) {
+      console.error(`[PaneManager] mount failed for ${slot}:${paneId}`, e);
+    }
+
+    this._paneState[slot].set(paneId, state);
   }
 
   // --- DOM helpers -------------------------------------------------------
@@ -106,11 +201,14 @@ class PaneManager {
       const paneId = paneIdOf(b);
       showOnlyPaneId(paneId);
 
-      // Standardized emits:
-      // - slot-specific (backwards/explicit)
-      // - generic (future-proof)
-      safeInvoke(this.bus, "emit", `${slot}:tab`, emitPayload(b, paneId));
-      safeInvoke(this.bus, "emit", "pane:tab", emitPayload(b, paneId));
+      const payload = emitPayload(b, paneId);
+
+      safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
+      safeInvoke(this.bus, "emit", "pane:tab", payload);
+
+      Promise.resolve(this._activatePane(slot, paneId, payload))
+        .catch((e) => console.error(`[PaneManager] activatePane failed ${slot}:${paneId}`, e));
+
     };
 
     tabs.forEach(btn => {
