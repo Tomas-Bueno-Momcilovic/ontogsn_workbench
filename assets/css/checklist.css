@@ -49,13 +49,45 @@
 
 .chk-row {
   display: grid;
-  grid-template-columns: 18px 80px 1fr;
+  grid-template-columns: 16px 18px 80px 1fr; /* twisty | checkbox | id | main */
   gap: 8px;
   align-items: start;
   padding: 8px 8px;
   border: 1px solid #e2e2e2;
   border-radius: 8px;
   background: #fff;
+
+  --depth: 0;
+  margin-left: calc(var(--depth) * 18px);
+}
+
+.chk-twisty {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.75;
+  line-height: 16px;
+  font-size: 12px;
+  user-select: none;
+}
+
+.chk-twisty:hover {
+  opacity: 1;
+  background: #f0f0f0;
+  border-radius: 4px;
+}
+
+.chk-twisty:focus-visible {
+  outline: 2px solid #999;
+  outline-offset: 2px;
+}
+
+.chk-twisty--empty {
+  visibility: hidden; /* keeps alignment */
 }
 
 .chk-row:hover {
@@ -71,17 +103,21 @@
   font-size: 12px;
   opacity: 0.9;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chk-main {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .chk-stmt {
   font-size: 13px;
   line-height: 1.25rem;
+  overflow-wrap: anywhere;
 }
 
 .chk-meta {
@@ -108,4 +144,23 @@
 .chk-row {
   --depth: 0;
   margin-left: calc(var(--depth) * 18px);
+}
+
+/* When a node is collapsed, hide its own label/text for clarity */
+.chk-row.is-collapsed .chk-id,
+.chk-row.is-collapsed .chk-main {
+  display: none;
+}
+
+/* Optional: compact the row to show only twisty + checkbox + a hint */
+.chk-row.is-collapsed {
+  grid-template-columns: 16px 18px 1fr;
+}
+
+.chk-row.is-collapsed::after {
+  content: "…";
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.6;
+  padding-top: 2px;
 }

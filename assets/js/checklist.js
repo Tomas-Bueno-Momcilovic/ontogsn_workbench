@@ -23,6 +23,27 @@ const GOALS_QUERY_PATH   = "/assets/data/queries/read_goalsForChecklist.sparql";
 const PARENTS_QUERY_PATH = "/assets/data/queries/read_goalParentsForChecklist.sparql";
 const UPDATE_DONE_PATH   = "/assets/data/queries/update_doneForChecklist.sparql";
 
+// --- UI persistence --------------------------------------------------------
+const COLLAPSE_KEY = "ontogsn_checklist_collapsed_v1";
+
+function loadCollapsed() {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsed(set) {
+  try {
+    localStorage.setItem(COLLAPSE_KEY, JSON.stringify(Array.from(set)));
+  } catch { /* ignore */ }
+}
+
+// --- data normalization ----------------------------------------------------
 function normalizeItem(row) {
   const goal = pickBindingValue(row, "goal", "");
   const id   = pickBindingValue(row, "id", "") || shortenIri(goal);
@@ -42,7 +63,6 @@ function normalizeItem(row) {
 }
 
 async function getUpdateDoneTemplate() {
-  // Use repo-level cached fetch so we don't refetch on every checkbox click.
   return fetchRepoTextCached(UPDATE_DONE_PATH, {
     from: import.meta.url,
     upLevels: 2,
@@ -65,9 +85,10 @@ async function updateDoneInStore(goalIri, doneBool) {
 
   const update = applyTemplate(tpl, { SUBJ: subj, LIT: lit }).trim();
 
-  app.store.update(update);
+  await app.store.update(update);
 }
 
+// --- filtering -------------------------------------------------------------
 function matchesFilter(item, q) {
   if (!q) return true;
   const s = q.toLowerCase();
@@ -81,111 +102,13 @@ function matchesFilter(item, q) {
   );
 }
 
+// --- selection -------------------------------------------------------------
 function emitSelect(goalIri) {
   safeInvoke(bus, "emit", "checklist:select", { iri: goalIri });
   window.dispatchEvent(new CustomEvent("checklist:select", { detail: { iri: goalIri } }));
 }
 
-function renderList(listEl, emptyEl, statsEl, items, state, filterText) {
-  const filtered = (items || []).filter(it => matchesFilter(it, filterText));
-
-  const total = filtered.length;
-  const doneCount = filtered.reduce((n, it) => n + (state[it.goal] ? 1 : 0), 0);
-
-  if (statsEl) {
-    statsEl.textContent = total ? `${doneCount} / ${total} done` : `0 / 0 done`;
-  }
-
-  if (!listEl) return;
-
-  listEl.replaceChildren();
-
-  if (!filtered.length) {
-    if (emptyEl) emptyEl.hidden = false;
-    return;
-  }
-  if (emptyEl) emptyEl.hidden = true;
-
-  const frag = document.createDocumentFragment();
-
-  for (const it of filtered) {
-    const row = document.createElement("div");
-    row.className = "chk-row";
-    row.setAttribute("role", "listitem");
-    row.style.setProperty("--depth", String(it.depth ?? 0));
-
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = !!state[it.goal];
-
-    cb.addEventListener("change", async () => {
-      const next = cb.checked;
-      cb.disabled = true;
-
-      try {
-        await updateDoneInStore(it.goal, next);
-        state[it.goal] = next;
-        it.done = next;
-      } catch (e) {
-        console.error("[Checklist] failed to update xyz:done:", e);
-        cb.checked = !!state[it.goal]; // revert
-      } finally {
-        cb.disabled = false;
-        renderList(listEl, emptyEl, statsEl, items, state, filterText);
-      }
-    });
-
-    const id = document.createElement("div");
-    id.className = "chk-id";
-    id.textContent = it.displayId || (it.id || shortenIri(it.goal));
-
-    const main = document.createElement("div");
-    main.className = "chk-main";
-
-    const stmt = document.createElement("div");
-    stmt.className = "chk-stmt";
-    stmt.textContent = it.stmt || "";
-
-    const meta = document.createElement("div");
-    meta.className = "chk-meta";
-
-    if (it.valid) {
-      const b = document.createElement("span");
-      b.className = "chk-badge";
-      b.textContent = `valid: ${it.valid}`;
-      meta.appendChild(b);
-    }
-    if (it.undeveloped) {
-      const b = document.createElement("span");
-      b.className = "chk-badge";
-      b.textContent = `undeveloped: ${it.undeveloped}`;
-      meta.appendChild(b);
-    }
-    if (it.supportedBy) {
-      const b = document.createElement("span");
-      b.className = "chk-badge";
-      b.textContent = `supportedBy: ${it.supportedBy}`;
-      meta.appendChild(b);
-    }
-
-    if (meta.childNodes.length) main.appendChild(meta);
-    main.insertBefore(stmt, meta.childNodes.length ? meta : null);
-
-    row.addEventListener("click", (ev) => {
-      if (ev.target === cb) return;
-      emitSelect(it.goal);
-    });
-
-    row.appendChild(cb);
-    row.appendChild(id);
-    row.appendChild(main);
-
-    frag.appendChild(row);
-  }
-
-  listEl.appendChild(frag);
-}
-
+// --- queries ---------------------------------------------------------------
 async function queryGoals() {
   await app.init();
   const queryText = await fetchRepoText(GOALS_QUERY_PATH, {
@@ -301,9 +224,173 @@ function applyHierarchy(rawItems, parentsByChild) {
     ordered.push(it);
   }
 
-  return ordered;
+  return {
+    ordered,
+    parentOf: primaryParent,
+    childrenOf
+  };
 }
 
+// --- collapse helpers ------------------------------------------------------
+function isHiddenByCollapse(goalIri, parentOf = new Map(), collapsed = new Set()) {
+  let p = parentOf.get(goalIri);
+  while (p) {
+    if (collapsed.has(p)) return true;
+    p = parentOf.get(p);
+  }
+  return false;
+}
+
+
+// --- rendering -------------------------------------------------------------
+function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
+  collapsed,
+  parentOf,
+  childrenOf
+} = {}) {
+  const q = (filterText || "").trim();
+
+  const visible = (items || []).filter(it => {
+    if (!matchesFilter(it, q)) return false;
+
+    // In “normal” mode, collapse actually hides descendants.
+    // In filter mode, show matches regardless of collapse so search “finds” things.
+    if (!q) {
+      return !isHiddenByCollapse(it.goal, parentOf, collapsed);
+    }
+    return true;
+  });
+
+  const total = visible.length;
+  const doneCount = visible.reduce((n, it) => n + (state[it.goal] ? 1 : 0), 0);
+
+  if (statsEl) statsEl.textContent = total ? `${doneCount} / ${total} done` : `0 / 0 done`;
+
+  if (!listEl) return;
+  listEl.replaceChildren();
+
+  if (!visible.length) {
+    if (emptyEl) emptyEl.hidden = false;
+    return;
+  }
+  if (emptyEl) emptyEl.hidden = true;
+
+  const frag = document.createDocumentFragment();
+
+  for (const it of visible) {
+    const row = document.createElement("div");
+    row.className = "chk-row";
+    row.setAttribute("role", "listitem");
+    row.style.setProperty("--depth", String(it.depth ?? 0));
+
+    const kids = childrenOf?.get?.(it.goal) || [];
+    const hasKids = kids.length > 0;
+    const isCollapsed = collapsed?.has?.(it.goal);
+
+    row.classList.toggle("is-collapsed", hasKids && !!isCollapsed);
+
+    // twisty
+    let twisty;
+    if (hasKids) {
+      twisty = document.createElement("button");
+      twisty.type = "button";
+      twisty.className = "chk-twisty";
+      twisty.textContent = isCollapsed ? "▸" : "▾";
+      twisty.title = isCollapsed ? "Expand" : "Collapse";
+      twisty.setAttribute("aria-label", isCollapsed ? "Expand" : "Collapse");
+
+      twisty.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        if (collapsed.has(it.goal)) collapsed.delete(it.goal);
+        else collapsed.add(it.goal);
+
+        saveCollapsed(collapsed);
+        renderList(listEl, emptyEl, statsEl, items, state, q, { collapsed, parentOf, childrenOf });
+      });
+    } else {
+      twisty = document.createElement("span");
+      twisty.className = "chk-twisty chk-twisty--empty";
+      twisty.textContent = "▾";
+    }
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!state[it.goal];
+    cb.addEventListener("change", async () => {
+      const next = cb.checked;
+      cb.disabled = true;
+
+      try {
+        await updateDoneInStore(it.goal, next);
+        state[it.goal] = next;
+        it.done = next;
+      } catch (e) {
+        console.error("[Checklist] failed to update xyz:done:", e);
+        cb.checked = !!state[it.goal]; // revert
+      } finally {
+        cb.disabled = false;
+        renderList(listEl, emptyEl, statsEl, items, state, q, { collapsed, parentOf, childrenOf });
+      }
+    });
+
+    const id = document.createElement("div");
+    id.className = "chk-id";
+    id.textContent = it.displayId || (it.id || shortenIri(it.goal));
+
+    const main = document.createElement("div");
+    main.className = "chk-main";
+
+    const stmt = document.createElement("div");
+    stmt.className = "chk-stmt";
+    stmt.textContent = it.stmt || "";
+
+    const meta = document.createElement("div");
+    meta.className = "chk-meta";
+
+    if (it.valid) {
+      const b = document.createElement("span");
+      b.className = "chk-badge";
+      b.textContent = `valid: ${it.valid}`;
+      meta.appendChild(b);
+    }
+    if (it.undeveloped) {
+      const b = document.createElement("span");
+      b.className = "chk-badge";
+      b.textContent = `undeveloped: ${it.undeveloped}`;
+      meta.appendChild(b);
+    }
+    if (it.supportedBy) {
+      const b = document.createElement("span");
+      b.className = "chk-badge";
+      b.textContent = `supportedBy: ${it.supportedBy}`;
+      meta.appendChild(b);
+    }
+
+    if (meta.childNodes.length) main.appendChild(meta);
+    main.insertBefore(stmt, meta.childNodes.length ? meta : null);
+
+    row.addEventListener("click", (ev) => {
+      // don’t treat twisty/checkbox clicks as row selection
+      if (ev.target === cb) return;
+      if (twisty && twisty.contains(ev.target)) return;
+      emitSelect(it.goal);
+    });
+
+    // IMPORTANT: order matches CSS grid columns: twisty | checkbox | id | main
+    row.appendChild(twisty);
+    row.appendChild(cb);
+    row.appendChild(id);
+    row.appendChild(main);
+
+    frag.appendChild(row);
+  }
+
+  listEl.appendChild(frag);
+}
+
+// --- init ------------------------------------------------------------------
 async function initChecklistView() {
   panes.initLeftTabs?.();
 
@@ -323,14 +410,20 @@ async function initChecklistView() {
   let items = [];
   let state = {};
 
+  // collapse state (persisted)
+  let collapsed = loadCollapsed();
+
+  // hierarchy maps needed for hiding
+  let parentOf = new Map();
+  let childrenOf = new Map();
+
   const rerender = () => {
     const q = (searchEl?.value ?? "").trim();
-    renderList(listEl, emptyEl, statsEl, items, state, q);
+    renderList(listEl, emptyEl, statsEl, items, state, q, { collapsed, parentOf, childrenOf });
   };
 
   const refresh = async () => {
     try {
-      // Warm update template cache in background (no await needed)
       getUpdateDoneTemplate().catch(() => {});
 
       const [raw, parentsByChild] = await Promise.all([
@@ -338,7 +431,15 @@ async function initChecklistView() {
         queryGoalParents()
       ]);
 
-      items = applyHierarchy(raw, parentsByChild);
+      const h = applyHierarchy(raw, parentsByChild);
+      items = h.ordered;
+      parentOf = h.parentOf;
+      childrenOf = h.childrenOf;
+
+      // prune collapsed items that no longer exist
+      const present = new Set(items.map(it => it.goal));
+      collapsed = new Set(Array.from(collapsed).filter(iri => present.has(iri)));
+      saveCollapsed(collapsed);
 
       state = {};
       for (const it of items) state[it.goal] = !!it.done;
