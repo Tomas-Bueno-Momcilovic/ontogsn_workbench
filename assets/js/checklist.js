@@ -241,6 +241,56 @@ function isHiddenByCollapse(goalIri, parentOf = new Map(), collapsed = new Set()
   return false;
 }
 
+function computeTriState(items, childrenOf, state) {
+  // iri -> { all:boolean, some:boolean }
+  const tri = new Map();
+
+  // reverse order so children are processed before parents
+  for (let i = (items?.length ?? 0) - 1; i >= 0; i--) {
+    const iri = items[i]?.goal;
+    if (!iri) continue;
+
+    const kids = childrenOf?.get?.(iri) || [];
+    if (!kids.length) {
+      const on = !!state[iri];
+      tri.set(iri, { all: on, some: on });
+      continue;
+    }
+
+    let all = true;
+    let some = false;
+
+    for (const k of kids) {
+      const kt = tri.get(k) || { all: !!state[k], some: !!state[k] };
+      all = all && kt.all;
+      some = some || kt.some;
+    }
+
+    tri.set(iri, { all, some });
+  }
+
+  return tri;
+}
+
+function collectDescendants(rootIri, childrenOf) {
+  const out = [];
+  const stack = [rootIri];
+  const seen = new Set();
+
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur || seen.has(cur)) continue;
+    seen.add(cur);
+    out.push(cur);
+
+    const kids = childrenOf?.get?.(cur) || [];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
+  }
+
+  return out;
+}
+
+
 
 // --- rendering -------------------------------------------------------------
 function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
@@ -260,6 +310,22 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
     }
     return true;
   });
+
+  const tri = computeTriState(items, childrenOf, state);
+
+  const isLeaf = (iri) => ((childrenOf?.get?.(iri) || []).length === 0);
+
+  const leafTotal = visible.reduce((n, it) => n + (isLeaf(it.goal) ? 1 : 0), 0);
+  const leafDone  = visible.reduce((n, it) => n + (isLeaf(it.goal) && state[it.goal] ? 1 : 0), 0);
+
+  const fullDone  = visible.reduce((n, it) => n + (tri.get(it.goal)?.all ? 1 : 0), 0);
+
+  if (statsEl) {
+    statsEl.textContent = leafTotal
+      ? `${leafDone} / ${leafTotal} leaves done • ${fullDone} / ${visible.length} nodes complete`
+      : `0 / 0 leaves done`;
+  }
+
 
   const total = visible.length;
   const doneCount = visible.reduce((n, it) => n + (state[it.goal] ? 1 : 0), 0);
@@ -317,18 +383,26 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
-    cb.checked = !!state[it.goal];
+    const t = tri.get(it.goal) || { all: !!state[it.goal], some: !!state[it.goal] };
+
+    cb.checked = !!t.all;
+    cb.indeterminate = !t.all && !!t.some;
     cb.addEventListener("change", async () => {
       const next = cb.checked;
       cb.disabled = true;
 
+      const targets = hasKids ? collectDescendants(it.goal, childrenOf) : [it.goal];
+
       try {
-        await updateDoneInStore(it.goal, next);
-        state[it.goal] = next;
-        it.done = next;
+        // simple version (sequential). Later you can replace with ONE bulk UPDATE using VALUES.
+        for (const iri of targets) {
+          await updateDoneInStore(iri, next);
+          state[iri] = next;
+        }
       } catch (e) {
         console.error("[Checklist] failed to update xyz:done:", e);
-        cb.checked = !!state[it.goal]; // revert
+        // no perfect rollback without reading store; easiest is refresh
+        await Promise.resolve(); // keep structure
       } finally {
         cb.disabled = false;
         renderList(listEl, emptyEl, statsEl, items, state, q, { collapsed, parentOf, childrenOf });

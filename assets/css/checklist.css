@@ -164,3 +164,15 @@
   opacity: 0.6;
   padding-top: 2px;
 }
+
+/* base (checked) */
+.chk-row input[type="checkbox"]{
+  accent-color: #2563eb; /* blue */
+}
+
+/* indeterminate (lighter) */
+.chk-row input[type="checkbox"]:indeterminate{
+  accent-color: #93c5fd !important; /* light blue */
+  filter: saturate(0.8) brightness(1.15); /* extra visual difference */
+}
+
