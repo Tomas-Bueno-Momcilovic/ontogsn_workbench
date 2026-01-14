@@ -5,66 +5,68 @@ import {
   mountTemplate,
   resolveEl,
   fetchRepoText,
+  fetchRepoTextCached,
   shortenIri,
   safeInvoke,
-  splitTokens
+  splitTokens,
+  applyTemplate,
+  asBool,
+  asBoolText,
+  pickBindingValue,
+  sparqlIri
 } from "./utils.js";
-
 
 const HTML = new URL("../html/checklist.html", import.meta.url);
 const CSS  = new URL("../css/checklist.css",  import.meta.url);
 
-const GOALS_QUERY_PATH = "/assets/data/queries/read_goalsForChecklist.sparql";
+const GOALS_QUERY_PATH   = "/assets/data/queries/read_goalsForChecklist.sparql";
 const PARENTS_QUERY_PATH = "/assets/data/queries/read_goalParentsForChecklist.sparql";
-
-// NOTE: Your current index.html clears localStorage on load.
-// If you want persistence across reloads, remove that dev-only localStorage.clear().
-const STORAGE_KEY = "ontogsn_checklist_done_v1";
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const obj = JSON.parse(raw);
-    return (obj && typeof obj === "object") ? obj : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveState(state) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state ?? {}));
-  } catch { /* ignore */ }
-}
-
-function asBoolText(v) {
-  if (v == null) return "";
-  const s = String(v).trim().toLowerCase();
-  if (s === "true" || s === "false") return s;
-  return String(v);
-}
-
-function pickText(row, name, fallback = "") {
-  const cell = row?.[name];
-  // app.selectBindings returns { value, term }
-  return cell?.value ?? fallback;
-}
+const UPDATE_DONE_PATH   = "/assets/data/queries/update_doneForChecklist.sparql";
 
 function normalizeItem(row) {
-  const goal = pickText(row, "goal", "");
-  const id   = pickText(row, "id", "") || shortenIri(goal);
-  const stmt = pickText(row, "stmt", "") || "";
-  const valid = asBoolText(pickText(row, "valid", ""));
-  const undeveloped = asBoolText(pickText(row, "undeveloped", ""));
-  const supportedBy = pickText(row, "supportedBy", "");
-  const modules = pickText(row, "modules", "");
+  const goal = pickBindingValue(row, "goal", "");
+  const id   = pickBindingValue(row, "id", "") || shortenIri(goal);
+  const stmt = pickBindingValue(row, "stmt", "") || "";
+
+  const valid       = asBoolText(pickBindingValue(row, "valid", ""));
+  const undeveloped = asBoolText(pickBindingValue(row, "undeveloped", ""));
+  const supportedBy = pickBindingValue(row, "supportedBy", "");
+  const modules     = pickBindingValue(row, "modules", "");
+
+  const doneRaw = pickBindingValue(row, "done", null);
+  const done    = asBool(doneRaw) ?? false; // default false if absent
 
   const displayId = `${(modules && modules.trim()) ? modules.trim() : "—"}: ${id}`;
 
-  return { goal, id, displayId, modules, stmt, valid, undeveloped, supportedBy };
+  return { goal, id, displayId, modules, stmt, valid, undeveloped, supportedBy, done };
 }
 
+async function getUpdateDoneTemplate() {
+  // Use repo-level cached fetch so we don't refetch on every checkbox click.
+  return fetchRepoTextCached(UPDATE_DONE_PATH, {
+    from: import.meta.url,
+    upLevels: 2,
+    cache: "no-store",
+    bust: true
+  });
+}
+
+async function updateDoneInStore(goalIri, doneBool) {
+  await app.init();
+
+  const subj = sparqlIri(goalIri);
+  if (!subj) throw new Error("updateDoneInStore: missing goal IRI");
+
+  const lit = doneBool
+    ? `"true"^^<http://www.w3.org/2001/XMLSchema#boolean>`
+    : `"false"^^<http://www.w3.org/2001/XMLSchema#boolean>`;
+
+  const tpl = await getUpdateDoneTemplate();
+
+  const update = applyTemplate(tpl, { SUBJ: subj, LIT: lit }).trim();
+
+  app.store.update(update);
+}
 
 function matchesFilter(item, q) {
   if (!q) return true;
@@ -79,9 +81,7 @@ function matchesFilter(item, q) {
   );
 }
 
-
 function emitSelect(goalIri) {
-  // Generic “selection” event you can hook into in graph.js later if you want.
   safeInvoke(bus, "emit", "checklist:select", { iri: goalIri });
   window.dispatchEvent(new CustomEvent("checklist:select", { detail: { iri: goalIri } }));
 }
@@ -93,9 +93,7 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText) {
   const doneCount = filtered.reduce((n, it) => n + (state[it.goal] ? 1 : 0), 0);
 
   if (statsEl) {
-    statsEl.textContent = total
-      ? `${doneCount} / ${total} done`
-      : `0 / 0 done`;
+    statsEl.textContent = total ? `${doneCount} / ${total} done` : `0 / 0 done`;
   }
 
   if (!listEl) return;
@@ -119,11 +117,22 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText) {
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.checked = !!state[it.goal];
-    cb.addEventListener("change", () => {
-      state[it.goal] = cb.checked;
-      saveState(state);
-      // update stats quickly (no full re-query)
-      renderList(listEl, emptyEl, statsEl, items, state, filterText);
+
+    cb.addEventListener("change", async () => {
+      const next = cb.checked;
+      cb.disabled = true;
+
+      try {
+        await updateDoneInStore(it.goal, next);
+        state[it.goal] = next;
+        it.done = next;
+      } catch (e) {
+        console.error("[Checklist] failed to update xyz:done:", e);
+        cb.checked = !!state[it.goal]; // revert
+      } finally {
+        cb.disabled = false;
+        renderList(listEl, emptyEl, statsEl, items, state, filterText);
+      }
     });
 
     const id = document.createElement("div");
@@ -140,7 +149,6 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText) {
     const meta = document.createElement("div");
     meta.className = "chk-meta";
 
-    // lightweight badges
     if (it.valid) {
       const b = document.createElement("span");
       b.className = "chk-badge";
@@ -163,7 +171,6 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText) {
     if (meta.childNodes.length) main.appendChild(meta);
     main.insertBefore(stmt, meta.childNodes.length ? meta : null);
 
-    // Clicking the row (except checkbox) emits a selection event
     row.addEventListener("click", (ev) => {
       if (ev.target === cb) return;
       emitSelect(it.goal);
@@ -204,10 +211,10 @@ async function queryGoalParents() {
   const parentsByChild = new Map();
 
   for (const row of (bindings || [])) {
-    const child = pickText(row, "child", "");
-    const parentsRaw = pickText(row, "parents", "");
+    const child = pickBindingValue(row, "child", "");
+    const parentsRaw = pickBindingValue(row, "parents", "");
     if (!child) continue;
-    parentsByChild.set(child, splitTokens(parentsRaw)); // splits on , or ;
+    parentsByChild.set(child, splitTokens(parentsRaw));
   }
 
   return parentsByChild;
@@ -224,7 +231,6 @@ function applyHierarchy(rawItems, parentsByChild) {
     return `${m}|||${id}|||${iri}`;
   };
 
-  // Pick a single “primary” parent per goal for a stable tree display
   const primaryParent = new Map(); // childIri -> parentIri|null
 
   for (const it of items) {
@@ -245,7 +251,6 @@ function applyHierarchy(rawItems, parentsByChild) {
     primaryParent.set(it.goal, parents[0]);
   }
 
-  // Build children adjacency from primaryParent
   const childrenOf = new Map(); // parentIri -> childIri[]
   for (const [child, parent] of primaryParent.entries()) {
     if (!parent) continue;
@@ -253,24 +258,22 @@ function applyHierarchy(rawItems, parentsByChild) {
     childrenOf.get(parent).push(child);
   }
 
-  // Sort children lists
   for (const [p, arr] of childrenOf.entries()) {
     arr.sort((a, b) => sortKey(byIri.get(a)).localeCompare(sortKey(byIri.get(b))));
     childrenOf.set(p, arr);
   }
 
-  // Roots = goals with no parent
   const roots = items
     .filter(it => !primaryParent.get(it.goal))
     .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
 
   const ordered = [];
   const visited = new Set();
-  const stack = new Set(); // cycle guard
+  const stack = new Set();
 
   function dfs(goalIri, depth) {
     if (!goalIri || visited.has(goalIri)) return;
-    if (stack.has(goalIri)) return; // break cycles
+    if (stack.has(goalIri)) return;
 
     const it = byIri.get(goalIri);
     if (!it) return;
@@ -289,7 +292,6 @@ function applyHierarchy(rawItems, parentsByChild) {
 
   for (const r of roots) dfs(r.goal, 0);
 
-  // Any leftovers (cycles / disconnected) -> append at depth 0
   const leftovers = items
     .filter(it => !visited.has(it.goal))
     .sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
@@ -301,7 +303,6 @@ function applyHierarchy(rawItems, parentsByChild) {
 
   return ordered;
 }
-
 
 async function initChecklistView() {
   panes.initLeftTabs?.();
@@ -320,7 +321,7 @@ async function initChecklistView() {
   const clearEl   = resolveEl("#checklist-clear",   { root, required: false });
 
   let items = [];
-  let state = loadState();
+  let state = {};
 
   const rerender = () => {
     const q = (searchEl?.value ?? "").trim();
@@ -329,6 +330,9 @@ async function initChecklistView() {
 
   const refresh = async () => {
     try {
+      // Warm update template cache in background (no await needed)
+      getUpdateDoneTemplate().catch(() => {});
+
       const [raw, parentsByChild] = await Promise.all([
         queryGoals(),
         queryGoalParents()
@@ -336,7 +340,9 @@ async function initChecklistView() {
 
       items = applyHierarchy(raw, parentsByChild);
 
-      state = loadState(); // re-load in case other tabs changed it
+      state = {};
+      for (const it of items) state[it.goal] = !!it.done;
+
       rerender();
     } catch (e) {
       console.error("[Checklist] refresh failed:", e);
@@ -351,23 +357,27 @@ async function initChecklistView() {
     refresh();
   });
 
-  clearEl?.addEventListener("click", (ev) => {
+  clearEl?.addEventListener("click", async (ev) => {
     ev.preventDefault();
-    // clear only the goals currently in the checklist (not global keys)
-    for (const it of items) state[it.goal] = false;
-    saveState(state);
+
+    for (const it of items) {
+      try { await updateDoneInStore(it.goal, false); }
+      catch (e) { console.warn("[Checklist] clear failed for", it.goal, e); }
+
+      state[it.goal] = false;
+      it.done = false;
+    }
+
     rerender();
   });
 
   searchEl?.addEventListener("input", () => rerender());
 
-  // Refresh whenever the Checklist tab becomes active
   bus.on("left:tab", (e) => {
     const paneId = e?.detail?.paneId;
     if (paneId === "checklist-root") refresh();
   });
 
-  // Initial load
   refresh();
 }
 

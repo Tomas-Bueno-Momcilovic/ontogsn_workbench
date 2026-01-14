@@ -31,6 +31,42 @@ export async function fetchText(url, { cache = "force-cache", bust = false } = {
   return txt;
 }
 
+export function asBool(v) {
+  if (v == null) return null;
+  const s = String(v).trim().toLowerCase();
+  if (s === "true") return true;
+  if (s === "false") return false;
+  return null;
+}
+
+export function asBoolText(v) {
+  if (v == null) return "";
+  const s = String(v).trim().toLowerCase();
+  if (s === "true" || s === "false") return s;
+  return String(v);
+}
+
+export function pickBindingValue(row, name, fallback = "") {
+  const cell = row?.[name];
+  return cell?.value ?? fallback;
+}
+
+export function sparqlIri(iri) {
+  const s = String(iri ?? "").trim();
+  if (!s) return "";
+  if (/[<>\s]/.test(s)) throw new Error(`Invalid IRI for SPARQL: ${s}`);
+  return `<${s}>`;
+}
+
+const _repoTextCache = new Map(); // key: path -> text
+
+export async function fetchRepoTextCached(path, fetchOpts) {
+  if (_repoTextCache.has(path)) return _repoTextCache.get(path);
+  const txt = await fetchRepoText(path, fetchOpts);
+  _repoTextCache.set(path, txt);
+  return txt;
+}
+
 
 // Join "/assets/..." against the repo root (not the site origin root).
 export function repoHref(path, { from = import.meta.url, upLevels = 2 } = {}) {
