@@ -24,6 +24,7 @@ export const PATHS = {
   car_ac  : "/assets/data/ontologies/car_assurance.ttl",
   car     : "/assets/data/ontologies/car.ttl",
   code    : "/assets/data/ontologies/example_python_code.ttl",
+  check   : "/assets/data/ontologies/example_checklist.ttl",
 
   // Base queries
   q: {
@@ -65,6 +66,7 @@ function _buildDefaultDatasets() {
     { path: PATHS.car_ac,  base: BASES.car  },
     { path: PATHS.car,     base: BASES.car  },
     { path: PATHS.code,    base: BASES.code },
+    { path: PATHS.check,   base: BASES.case },
   ];
 }
 
