@@ -1,0 +1,22 @@
+PREFIX gsn:    <https://w3id.org/OntoGSN/ontology#>
+PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <https://schema.org/>
+
+SELECT DISTINCT ?goalId ?label ?moduleId WHERE {
+  ?goal a gsn:Goal .
+
+  OPTIONAL { ?goal rdfs:label ?lbl1 . }
+  OPTIONAL { ?goal schema:name ?lbl2 . }
+
+  BIND(COALESCE(?lbl1, ?lbl2, REPLACE(STR(?goal), "^.*[#/]", "")) AS ?label)
+  BIND(REPLACE(STR(?goal), "^.*[#/]", "") AS ?goalId)
+
+  OPTIONAL {
+    { ?goal gsn:inModule ?module }
+    UNION { ?module gsn:hasMember ?goal }
+    UNION { ?goal schema:isPartOf ?module }
+
+    BIND(REPLACE(STR(?module), "^.*[#/]", "") AS ?moduleId)
+  }
+}
+ORDER BY ?moduleId ?goalId

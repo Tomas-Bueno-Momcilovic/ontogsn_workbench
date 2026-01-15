@@ -1,0 +1,22 @@
+PREFIX gsn:    <https://w3id.org/OntoGSN/ontology#>
+PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <https://schema.org/>
+
+SELECT DISTINCT ?solutionId ?label ?moduleId WHERE {
+  ?solution a gsn:Solution .
+
+  OPTIONAL { ?solution rdfs:label ?lbl1 . }
+  OPTIONAL { ?solution schema:name ?lbl2 . }
+
+  BIND(COALESCE(?lbl1, ?lbl2, REPLACE(STR(?solution), "^.*[#/]", "")) AS ?label)
+  BIND(REPLACE(STR(?solution), "^.*[#/]", "") AS ?solutionId)
+
+  OPTIONAL {
+    { ?solution gsn:inModule ?module }
+    UNION { ?module gsn:hasMember ?solution }
+    UNION { ?solution schema:isPartOf ?module }
+
+    BIND(REPLACE(STR(?module), "^.*[#/]", "") AS ?moduleId)
+  }
+}
+ORDER BY ?moduleId ?solutionId
