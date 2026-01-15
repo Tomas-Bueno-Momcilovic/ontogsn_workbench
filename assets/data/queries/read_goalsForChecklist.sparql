@@ -5,6 +5,7 @@ PREFIX xyz:    <http://www.example.com/placeholder#>
 
 SELECT
   ?goal
+  ?kind
   ?id
   ?stmt
   ?valid
@@ -13,32 +14,31 @@ SELECT
   (GROUP_CONCAT(DISTINCT ?modId; separator=", ") AS ?modules)
   (GROUP_CONCAT(DISTINCT ?supId; separator=", ") AS ?supportedBy)
 WHERE {
-  ?goal a gsn:Goal .
+  ?goal a ?type .
+  FILTER(?type IN (gsn:Goal, gsn:Solution))
+
+  # "Goal" / "Solution" for UI (works for #... and /... style IRIs)
+  BIND(COALESCE(STRAFTER(STR(?type), "#"), REPLACE(STR(?type), "^.*/", "")) AS ?kind)
 
   OPTIONAL { ?goal schema:identifier ?id . }
   OPTIONAL { ?goal gsn:statement ?stmt . }
   OPTIONAL { ?goal gsn:valid ?valid . }
   OPTIONAL { ?goal gsn:undeveloped ?undeveloped . }
 
-  # --- NEW: checklist state from ontology ---
   OPTIONAL { ?goal xyz:done ?done . }
 
-  # --- module membership (Module gsn:contains Goal) ---
   OPTIONAL {
     ?m a gsn:Module ;
        gsn:contains ?goal .
-
     OPTIONAL { ?m schema:identifier ?mIdent . }
     OPTIONAL { ?m rdfs:label ?mLabel . }
-
     BIND(COALESCE(STR(?mIdent), STR(?mLabel), STR(?m)) AS ?modId)
   }
 
-  # --- supportedBy metadata (not checklist items) ---
   OPTIONAL {
     ?goal gsn:supportedBy ?sup .
     OPTIONAL { ?sup schema:identifier ?supId . }
   }
 }
-GROUP BY ?goal ?id ?stmt ?valid ?undeveloped
+GROUP BY ?goal ?kind ?id ?stmt ?valid ?undeveloped
 ORDER BY LCASE(STR(?modules)) LCASE(STR(?id)) LCASE(STR(?goal))

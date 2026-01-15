@@ -46,6 +46,7 @@ function saveCollapsed(set) {
 // --- data normalization ----------------------------------------------------
 function normalizeItem(row) {
   const goal = pickBindingValue(row, "goal", "");
+  const kind = (pickBindingValue(row, "kind", "") || "").trim(); // "Goal" | "Solution"
   const id   = pickBindingValue(row, "id", "") || shortenIri(goal);
   const stmt = pickBindingValue(row, "stmt", "") || "";
 
@@ -59,7 +60,7 @@ function normalizeItem(row) {
 
   const displayId = `${(modules && modules.trim()) ? modules.trim() : "—"}: ${id}`;
 
-  return { goal, id, displayId, modules, stmt, valid, undeveloped, supportedBy, done };
+  return { goal, kind, id, displayId, modules, stmt, valid, undeveloped, supportedBy, done };
 }
 
 async function getUpdateDoneTemplate() {
@@ -312,12 +313,9 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
   });
 
   const tri = computeTriState(items, childrenOf, state);
-
   const isLeaf = (iri) => ((childrenOf?.get?.(iri) || []).length === 0);
-
   const leafTotal = visible.reduce((n, it) => n + (isLeaf(it.goal) ? 1 : 0), 0);
   const leafDone  = visible.reduce((n, it) => n + (isLeaf(it.goal) && state[it.goal] ? 1 : 0), 0);
-
   const fullDone  = visible.reduce((n, it) => n + (tri.get(it.goal)?.all ? 1 : 0), 0);
 
   if (statsEl) {
@@ -325,12 +323,6 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
       ? `${leafDone} / ${leafTotal} leaves done • ${fullDone} / ${visible.length} nodes complete`
       : `0 / 0 leaves done`;
   }
-
-
-  const total = visible.length;
-  const doneCount = visible.reduce((n, it) => n + (state[it.goal] ? 1 : 0), 0);
-
-  if (statsEl) statsEl.textContent = total ? `${doneCount} / ${total} done` : `0 / 0 done`;
 
   if (!listEl) return;
   listEl.replaceChildren();
@@ -422,6 +414,13 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
 
     const meta = document.createElement("div");
     meta.className = "chk-meta";
+
+    if (it.kind) {
+      const b = document.createElement("span");
+      b.className = "chk-badge";
+      b.textContent = `kind: ${it.kind}`;
+      meta.appendChild(b);
+    }
 
     if (it.valid) {
       const b = document.createElement("span");
