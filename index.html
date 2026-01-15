@@ -72,6 +72,12 @@
         Converter
       </button>
 
+      <!-- Button: Audio -->
+      <button id="btn-audio-view" class="tab"
+              data-view="audio" data-pane="audio-root" data-no-table="1">
+        Audio
+      </button>
+
       <!-- Button: Chat -->
       <button id="tab-chat" class="tab"
               data-pane="chat-root">
@@ -110,6 +116,7 @@
       <div id="doc-root"       class="left-view" hidden></div>
       <div id="checklist-root" class="left-view" hidden></div>
       <div id="converter-root" class="left-view" hidden></div>
+      <div id="audio-root" class="right-view" hidden></div>
       <div id="code-root"      class="left-view" hidden></div>
       <div id="chat-root"      class="left-view" hidden></div>
       <div id="settings-root"  class="left-view" hidden></div>
@@ -144,6 +151,7 @@
   <script type = "module" src = "/assets/js/table.js"   ></script>
   <script type = "module" src = "/assets/js/document.js"></script>
   <script type = "module" src = "/assets/js/converter.js"></script>
+  <script type="module" src="/assets/js/audio.js"></script>
   <script type = "module" src = "/assets/js/code.js"    ></script>
   <script type = "module" src = "/assets/js/chat.js"    ></script>
 
