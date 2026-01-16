@@ -1,0 +1,45 @@
+<div class="audio">
+  <div class="audio-top">
+    <button id="audio-rec" type="button" title="Record from microphone">Record</button>
+    <button id="audio-stop" type="button" disabled title="Stop recording">Stop</button>
+
+    <label for="audio-file" title="Upload a .wav (or other audio)">
+      Upload…
+      <input id="audio-file" class="audio-file-input" type="file" accept=".wav,audio/*" />
+    </label>
+
+    <button id="audio-download" type="button" title="Download the current audio">Download</button>
+    <button id="audio-clear" type="button" title="Clear audio">Clear</button>
+
+    <span id="audio-status" class="audio-status"></span>
+  </div>
+
+  <div class="audio-wave-wrap">
+    <canvas id="audio-wave"></canvas>
+    <div class="audio-hint">
+      Tip: mic recording works best on <code>localhost</code> or <code>https</code>.
+    </div>
+  </div>
+
+  <audio id="audio-player" class="audio-player" controls></audio>
+
+  <div class="audio-transcribe">
+    <div class="audio-transcribe-top">
+      <button id="audio-transcribe" type="button" title="Transcribe audio locally in your browser">
+        Transcribe
+      </button>
+
+      <select id="audio-asr-model" title="Transcription model">
+        <option value="Xenova/whisper-tiny">whisper-tiny (multilingual)</option>
+        <option value="Xenova/whisper-tiny.en">whisper-tiny.en (English)</option>
+      </select>
+
+      <span id="audio-asr-status" class="audio-status"></span>
+    </div>
+
+    <textarea id="audio-transcript"
+              class="audio-transcript"
+              placeholder="Transcript will appear here…"
+              spellcheck="false"></textarea>
+  </div>
+</div>

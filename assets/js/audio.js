@@ -1,6 +1,7 @@
 import { mountTemplate, resolveEl } from "./utils.js";
 import { bus } from "./events.js";
 
+const HTML = new URL("../html/audio.html", import.meta.url);
 const CSS = new URL("../css/audio.css", import.meta.url);
 
 let audioRoot = null;
@@ -29,11 +30,23 @@ let liveSrc = null;
 let liveRAF = 0;
 let liveData = null;
 
+let txBtn = null;
+let txModelSel = null;
+let txStatusEl = null;
+let txOutEl = null;
+
+
 
 function setStatus(msg, kind = "") {
   if (!statusEl) return;
   statusEl.textContent = msg;
   statusEl.dataset.kind = kind || "";
+}
+
+function setTxStatus(msg, kind = "") {
+  if (!txStatusEl) return;
+  txStatusEl.textContent = msg;
+  txStatusEl.dataset.kind = kind || "";
 }
 
 function clearCurrentUrl() {
@@ -54,6 +67,9 @@ function clearAudioState() {
   if (audioEl) audioEl.load();
 
   drawEmptyWave("No audio loaded");
+
+  if (txOutEl) txOutEl.value = "";
+  setTxStatus("");
 }
 
 function drawEmptyWave(label = "") {
@@ -240,6 +256,167 @@ async function decodeToBuffer(arrayBuffer) {
   }
 }
 
+// --- Whisper (Transformers.js) ------------------------------------------
+// CDN ESM build (no installation needed)
+const HF_TRANSFORMERS_URL =
+  "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.0/dist/transformers.min.js";
+
+let _hf = null;
+let _asr = null;
+let _asrKey = "";
+let _asrLoading = null;
+
+async function loadTransformersJs() {
+  if (_hf) return _hf;
+  _hf = await import(HF_TRANSFORMERS_URL);
+
+  // Remote models only + cache in browser storage
+  _hf.env.allowLocalModels = false;
+  _hf.env.useBrowserCache = true;
+
+  return _hf;
+}
+
+async function pickDevice() {
+  if (navigator.gpu?.requestAdapter) {
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) return "webgpu";
+    } catch {}
+  }
+  return "wasm";
+}
+
+
+async function getTranscriber(modelId, device) {
+  const key = `${modelId}@@${device}`;
+  if (_asr && _asrKey === key) return _asr;
+
+  // avoid double-loading
+  if (_asrLoading) return _asrLoading;
+
+  _asrLoading = (async () => {
+    const { pipeline } = await loadTransformersJs();
+
+    setTxStatus(`Loading model (${device})…`);
+
+    const t = await pipeline(
+      "automatic-speech-recognition",
+      modelId,
+      {
+        device,
+        progress_callback: (p) => {
+          // p can be various shapes; keep it resilient
+          const status = p?.status || p?.type || "";
+          const prog = (typeof p?.progress === "number") ? ` ${(p.progress * 100).toFixed(0)}%` : "";
+          if (status) setTxStatus(`${status}${prog}`);
+        }
+      }
+    );
+
+    _asr = t;
+    _asrKey = key;
+    _asrLoading = null;
+
+    setTxStatus(`Model ready (${device}).`);
+    return t;
+  })();
+
+  return _asrLoading;
+}
+
+async function resampleTo16kMono(audioBuffer) {
+  const targetRate = 16000;
+  const length = Math.ceil(audioBuffer.duration * targetRate);
+
+  const oc = new OfflineAudioContext(1, length, targetRate);
+
+  // Build a mono buffer from input (average channels if needed)
+  const mono = oc.createBuffer(1, audioBuffer.length, audioBuffer.sampleRate);
+  const out = mono.getChannelData(0);
+
+  if (audioBuffer.numberOfChannels === 1) {
+    out.set(audioBuffer.getChannelData(0));
+  } else {
+    const chans = [];
+    for (let c = 0; c < audioBuffer.numberOfChannels; c++) {
+      chans.push(audioBuffer.getChannelData(c));
+    }
+    for (let i = 0; i < audioBuffer.length; i++) {
+      let s = 0;
+      for (let c = 0; c < chans.length; c++) s += chans[c][i] || 0;
+      out[i] = s / chans.length;
+    }
+  }
+
+  const src = oc.createBufferSource();
+  src.buffer = mono;
+  src.connect(oc.destination);
+  src.start(0);
+
+  const rendered = await oc.startRendering();
+  return rendered.getChannelData(0); // Float32Array at 16kHz
+}
+
+async function blobToWhisperInput(blob) {
+  const ab = await blob.arrayBuffer();
+  const decoded = await decodeToBuffer(ab);
+  return resampleTo16kMono(decoded);
+}
+
+async function transcribeCurrentAudio() {
+  if (!currentBlob) {
+    setTxStatus("No audio loaded.", "err");
+    return;
+  }
+  if (isRecording()) {
+    setTxStatus("Stop recording first.", "err");
+    return;
+  }
+
+  const modelId = txModelSel?.value || "Xenova/whisper-tiny";
+
+  if (txBtn) txBtn.disabled = true;
+  setTxStatus("Preparing…");
+
+  let device = await pickDevice();
+  let transcriber = null;
+
+  try {
+    // Load model + auto-fallback
+    try {
+      transcriber = await getTranscriber(modelId, device);
+    } catch (e) {
+      if (device === "webgpu") {
+        console.warn("[audio] WebGPU failed, falling back to WASM:", e);
+        setTxStatus("WebGPU unavailable → falling back to WASM…");
+        device = "wasm";
+        transcriber = await getTranscriber(modelId, device);
+      } else {
+        throw e;
+      }
+    }
+
+    setTxStatus("Decoding + resampling…");
+    const audio = await blobToWhisperInput(currentBlob);
+
+    setTxStatus("Transcribing…");
+    const out = await transcriber(audio, {
+      chunk_length_s: 30,
+      stride_length_s: 5
+    });
+
+    const text = (out?.text ?? "").trim();
+    if (txOutEl) txOutEl.value = text || "(no text)";
+    setTxStatus("Done.");
+  } catch (e) {
+    console.error("[audio] transcribe failed:", e);
+    setTxStatus(`Transcribe failed: ${e?.message || e}`, "err");
+  } finally {
+    if (txBtn) txBtn.disabled = false;
+  }
+}
+
 async function loadBlobAsCurrent(blob, label = "audio") {
   clearCurrentUrl();
 
@@ -261,6 +438,9 @@ async function loadBlobAsCurrent(blob, label = "audio") {
   drawWave(lastPeaks);
 
   setStatus(`Loaded ${label} (${lastDuration.toFixed(2)}s)`);
+
+  if (txOutEl) txOutEl.value = "";
+  setTxStatus("");
 }
 
 async function handleFile(file) {
@@ -491,6 +671,7 @@ function wireUi(root) {
   const btnClear = root.querySelector("#audio-clear");
   const btnDownload = root.querySelector("#audio-download");
   const fileInput = root.querySelector("#audio-file");
+  const btnTx = root.querySelector("#audio-transcribe");
 
   btnRec.addEventListener("click", async () => {
     if (isRecording()) return;
@@ -502,6 +683,10 @@ function wireUi(root) {
     // If recording didn't start, re-enable
     btnRec.disabled = isRecording() ? true : false;
     btnStop.disabled = isRecording() ? false : true;
+  });
+
+  btnTx.addEventListener("click", async () => {
+    await transcribeCurrentAudio();
   });
 
   btnStop.addEventListener("click", () => {
@@ -558,57 +743,39 @@ function wireUi(root) {
   });
 }
 
-function initAudioView() {
+async function initAudioView() {
   const root = resolveEl("#audio-root", { required: false, name: "Audio view: #audio-root" });
   if (!root || root.dataset.initialised === "1") return;
 
   root.dataset.initialised = "1";
   audioRoot = root;
 
-  // load CSS
-  mountTemplate(root, { cssUrl: CSS });
+  // ✅ mount HTML + CSS from files
+  await mountTemplate(root, {
+    templateUrl: HTML,
+    cssUrl: CSS,
+    cache: "no-store",
+    bust: true,
+    replace: true
+  });
 
-  root.innerHTML = `
-    <div class="audio">
-      <div class="audio-top">
-        <button id="audio-rec" type="button" title="Record from microphone">Record</button>
-        <button id="audio-stop" type="button" disabled title="Stop recording">Stop</button>
-
-        <label for="audio-file" title="Upload a .wav (or other audio)">
-          Upload…
-          <input id="audio-file" class="audio-file-input" type="file" accept=".wav,audio/*" />
-        </label>
-
-        <button id="audio-download" type="button" title="Download the current audio">Download</button>
-        <button id="audio-clear" type="button" title="Clear audio">Clear</button>
-
-        <span id="audio-status" class="audio-status"></span>
-      </div>
-
-      <div class="audio-wave-wrap">
-        <canvas id="audio-wave"></canvas>
-        <div class="audio-hint">
-          Tip: mic recording works best on <code>localhost</code> or <code>https</code>.
-        </div>
-      </div>
-
-      <audio id="audio-player" class="audio-player" controls></audio>
-    </div>
-  `;
-
-  canvas = root.querySelector("#audio-wave");
-  ctx2d = canvas.getContext("2d");
-  audioEl = root.querySelector("#audio-player");
+  canvas   = root.querySelector("#audio-wave");
+  ctx2d    = canvas.getContext("2d");
+  audioEl  = root.querySelector("#audio-player");
   statusEl = root.querySelector("#audio-status");
 
-  // give the canvas a real CSS size so resizeCanvas works
-  // (canvas uses CSS height from audio.css)
+  txBtn      = root.querySelector("#audio-transcribe");
+  txModelSel = root.querySelector("#audio-asr-model");
+  txStatusEl = root.querySelector("#audio-asr-status");
+  txOutEl    = root.querySelector("#audio-transcript");
+
+  setTxStatus("");
+
   drawEmptyWave("No audio loaded");
   setStatus("Ready.");
 
   wireUi(root);
 
-  // Optional: pause audio when leaving the tab
   bus.on("right:tab", (ev) => {
     const d = ev?.detail || {};
     const isAudio = (d.paneId === "audio-root" || d.view === "audio");
@@ -621,7 +788,8 @@ function initAudioView() {
 }
 
 if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", initAudioView, { once: true });
+  window.addEventListener("DOMContentLoaded", () => initAudioView().catch(console.error), { once: true });
 } else {
-  initAudioView();
+  initAudioView().catch(console.error);
 }
+

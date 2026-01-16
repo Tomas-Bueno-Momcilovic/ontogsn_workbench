@@ -69,3 +69,36 @@
   font-size: 12px;
   opacity: 0.75;
 }
+
+.audio-transcribe {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.audio-transcribe-top {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.audio-transcribe-top select {
+  padding: 6px 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: white;
+}
+
+.audio-transcript {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+               "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.35;
+}
