@@ -97,8 +97,67 @@
   padding: 8px;
   border: 1px solid #d0d0d0;
   border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
                "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.audio-transcribe-top button {
+  padding: 6px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font: inherit;
+}
+
+.audio-transcribe-top button:hover {
+  background: #f5f5f5;
+}
+
+.audio-transcribe-top button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.audio-status[data-kind="busy"]::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 2px solid #bbb;
+  border-top-color: var(--highlight-stroke, #186e78);
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: -2px;
+  animation: audio-spin 0.8s linear infinite;
+}
+
+@keyframes audio-spin {
+  to { transform: rotate(360deg); }
+}
+
+.audio-live-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  padding: 6px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font: inherit;
+  user-select: none;
+}
+
+.audio-live-toggle:hover {
+  background: #f5f5f5;
+}
+
+.audio-live-toggle input {
+  margin: 0;
 }

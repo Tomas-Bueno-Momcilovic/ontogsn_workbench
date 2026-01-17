@@ -10,6 +10,10 @@
 
     <button id="audio-download" type="button" title="Download the current audio">Download</button>
     <button id="audio-clear" type="button" title="Clear audio">Clear</button>
+    <label class="audio-live-toggle" title="Transcribe while recording">
+        <input id="audio-live-stt" type="checkbox" />
+        Live STT
+    </label>
 
     <span id="audio-status" class="audio-status"></span>
   </div>
@@ -28,10 +32,13 @@
       <button id="audio-transcribe" type="button" title="Transcribe audio locally in your browser">
         Transcribe
       </button>
+      <button id="audio-copy" type="button" title="Copy transcript to clipboard">Copy</button>
+      <button id="audio-tx-clear" type="button" title="Clear transcript">Clear transcript</button>
 
       <select id="audio-asr-model" title="Transcription model">
         <option value="Xenova/whisper-tiny">whisper-tiny (multilingual)</option>
         <option value="Xenova/whisper-tiny.en">whisper-tiny.en (English)</option>
+        <option value="Xenova/wav2vec2-base-960h">wav2vec2-base-960h (fast, English)</option>
       </select>
 
       <span id="audio-asr-status" class="audio-status"></span>
