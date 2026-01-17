@@ -1,11 +1,24 @@
 <!doctype html>
 <html lang="en">
 <head>
+  <script type="importmap">
+  {
+    "imports": {
+      "@core/":    "./assets/core/",
+      "@rdf/":     "./assets/core/rdf/",
+      "@panes/":   "./assets/panes/",
+      "@bridges/": "./assets/bridges/",
+      "@vendor/":  "./assets/vendor/",
+      "@data/":    "./assets/data/",
+      "three":     "./assets/vendor/three.module.js"
+    }
+  }
+  </script>
   <meta charset = "utf-8" />
   <meta name    = "viewport" content = "width = device-width, initial-scale = 1" />
   <title> OntoGSN Interface Test Instance </title>
-  <link rel = "stylesheet" href = "/assets/css/app.css" />
-  <link rel = "stylesheet" href = "/assets/vendor/github.min.css" />
+  <link rel="stylesheet" href="./assets/core/app.css" />
+  <link rel="stylesheet" href="./assets/vendor/github.min.css" />
 </head>
 <body>
   <script>
@@ -29,7 +42,7 @@
       <!-- Button: Welcome -->
       <button id="tab-welcome" class="tab active"
               data-pane="welcome-root"
-              data-doc-query="/assets/data/queries/read_welcomeDoc.sparql"
+              data-doc-query="data/queries/read_welcomeDoc.sparql"
               data-doc-var="doc">
         Welcome
       </button>
@@ -55,7 +68,7 @@
       <!-- Button: Document -->
       <button id="tab-doc" class="tab"
               data-pane="doc-root"
-              data-doc-query="/assets/data/queries/read_document.sparql"
+              data-doc-query="data/queries/read_document.sparql"
               data-doc-var="doc">
         Document
       </button>
@@ -89,7 +102,7 @@
       <!-- Button: Tree -->
       <button id="btn-tree-view" class="tab active"
               data-view="graph" data-pane="graph-root"
-              data-query="/assets/data/queries/visualize_graph.sparql" data-no-table="1">
+              data-query="data/queries/visualize_graph.sparql" data-no-table="1">
         Tree
       </button>
 
@@ -102,7 +115,7 @@
       <!-- Button: Model -->
       <button id="btn-model-view" class="tab"
               data-view="model" data-pane="model-root"
-              data-query="/assets/data/queries/read_carLoadWeight.sparql" data-no-table="1">
+              data-query="data/queries/read_carLoadWeight.sparql" data-no-table="1">
         Model
       </button>
 
@@ -128,10 +141,10 @@
       <div id="settings-root"  class="left-view" hidden></div>
     </div>
     <div id="rightPane" class="pane pane-right">
-      <div id="graph-root" class="right-view gsn-host" hidden></div>
-      <div id="layered-root" class="right-view" hidden></div>
-      <div id="model-root" class="right-view" hidden></div>
-      <div id="audio-root" class="right-view" hidden></div>
+      <div id="graph-root"     class="right-view gsn-host" hidden></div>
+      <div id="layered-root"   class="right-view" hidden></div>
+      <div id="model-root"     class="right-view" hidden></div>
+      <div id="audio-root"     class="right-view" hidden></div>
     </div>
   </div>
 
@@ -142,26 +155,10 @@
     <div id="rightModules" class="btns"></div>
   </div>
 
-  <!-- Important: serve this file with a local web server (e.g., `python -m http.server`) -->
-  <script src  = "/assets/vendor/n3.min.js"></script>
-  <script type = "importmap">{"imports": {"three": "/assets/vendor/three.module.js"}}</script>
-  <script src = "/assets/vendor/highlight.min.js"></script>
+  <script src  = "./assets/vendor/n3.min.js"></script>
+  <script src = "./assets/vendor/highlight.min.js"></script>
 
-  <script type = "module" src = "/assets/js/boot.js"    ></script>
-  <script type = "module" src = "/assets/js/welcome.js" ></script>
-  <script type = "module" src = "/assets/js/checklist.js"></script>
-  <script type = "module" src = "/assets/js/settings.js"></script>
-  <script type = "module" src = "/assets/js/graph.js"   ></script>
-  <script type = "module" src = "/assets/js/layers.js"  ></script>
-  <script type = "module" src = "/assets/js/model.js"   ></script>
-  <script type = "module" src = "/assets/js/editor.js"  ></script>
-  <script type = "module" src = "/assets/js/table.js"   ></script>
-  <script type = "module" src = "/assets/js/document.js"></script>
-  <script type = "module" src = "/assets/js/converter.js"></script>
-  <script type="module" src="/assets/js/audio.js"></script>
-  <script type = "module" src = "/assets/js/code.js"    ></script>
-  <script type = "module" src = "/assets/js/terminal.js"></script>
-  <script type = "module" src = "/assets/js/chat.js"    ></script>
+  <script type="module" src="./assets/core/boot.js"></script>
 
   <script>
     window.addEventListener("error", (e) => {
