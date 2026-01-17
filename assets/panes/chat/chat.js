@@ -1,53 +1,41 @@
 import app from "@core/queries.js";
-import { mountTemplate, resolveEl, bindingsToRows, escapeHtml } from "@core/utils.js";
+import panes from "@core/panes.js";
+import { bus } from "@core/events.js";
+
+import {
+  mountTemplate,
+  resolveEl,
+  fetchRepoTextCached,
+  bindingsToRows,
+  escapeHtml,
+  sparqlIri,
+  safeInvoke
+} from "@core/utils.js";
 
 // module-relative URLs (works on localhost + GH Pages)
 const HTML = new URL("./chat.html", import.meta.url);
 const CSS  = new URL("./chat.css",  import.meta.url);
 
+// repo paths (resolved via fetchRepoTextCached + from/upLevels)
 const Q_CONTEXT = "data/queries/chat_context.sparql";
 const Q_NEIGH   = "data/queries/chat_neighborhood.sparql";
 
-const _qCache = new Map();
-async function loadQueryText(path) {
-  if (_qCache.has(path)) return _qCache.get(path);
-  const txt = await fetchRepoText(path, { cache: "no-store", bust: true });
-  _qCache.set(path, txt);
-  return txt;
-}
-
-// --- tiny helpers -----------------------------------------------------------
-const $ = (sel, root = document) => root.querySelector(sel);
-
-// Grab or persist the key/model locally
-const KEY_K = "openrouter_api_key";
+// localStorage keys
+const KEY_K   = "openrouter_api_key";
 const MODEL_K = "openrouter_model";
 
-async function buildChatUI() {
-  const root = resolveEl("#chat-root", { name: "chat.js: #chat-root", required: false });
-  if (!root || root.dataset.initialised === "1") return;
-  root.dataset.initialised = "1";
+let _init = false;
+let _root = null;
 
-  await mountTemplate(root, {
-    templateUrl: HTML,
-    cssUrl: CSS,
-    cache: "no-store", bust: true // for dev while iterating
-  });
+// ---- helpers -------------------------------------------------------------
 
-  const keyEl   = root.querySelector("#chat-key");
-  const modelEl = root.querySelector("#chat-model");
-
-  if (keyEl)   keyEl.value   = localStorage.getItem(KEY_K)   || "";
-  if (modelEl) modelEl.value = localStorage.getItem(MODEL_K) || modelEl.value;
-
-  const formEl = root.querySelector("#chat-form");
-  if (formEl) formEl.addEventListener("submit", onChatSubmit);
-
+function normCmd(s) {
+  return String(s ?? "").trim();
 }
 
 // Make sure Oxigraph is ready
 async function ensureStore() {
-  if (!app.store) await app.init?.(); // no-op if already initialized
+  if (!app.store) await app.init();
   return app.store;
 }
 
@@ -59,10 +47,24 @@ function keywords(q) {
   )).slice(0, 5);
 }
 
+function escapeRegexLiteral(s) {
+  return String(s ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function loadQueryText(path) {
+  return fetchRepoTextCached(path, {
+    from: import.meta.url,
+    upLevels: 2,
+    cache: "no-store",
+    bust: true
+  });
+}
+
 async function makeContextQuery(words) {
   const tpl = await loadQueryText(Q_CONTEXT);
 
-  const pats = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pats = words.map(escapeRegexLiteral);
+
   const rx = pats.map(p => {
     const s = JSON.stringify(p); // safe SPARQL string literal
     return [
@@ -78,19 +80,30 @@ async function makeContextQuery(words) {
 
 async function makeNeighborhoodQuery(ids) {
   const tpl = await loadQueryText(Q_NEIGH);
-  const vals = ids.map(i => `<${i}>`).join(" ");
+
+  // ensure valid IRIs for SPARQL VALUES
+  const vals = ids
+    .map(s => String(s ?? "").trim())
+    .filter(Boolean)
+    .map(sparqlIri)
+    .join(" ");
+
   return tpl.replaceAll("__VALS__", vals || "<urn:dummy>");
 }
 
-
 async function gatherContext(question) {
   const store = await ensureStore();
+
   const kws = keywords(question);
   if (!kws.length) return { synopsis: "", triples: [] };
 
   const q1 = await makeContextQuery(kws);
   const rows1 = bindingsToRows(store.query(q1));
-  const ids = rows1.map(r => r.s).filter(Boolean).slice(0, 12);
+
+  const ids = rows1
+    .map(r => r.s)
+    .filter(Boolean)
+    .slice(0, 12);
 
   let triples = [];
   if (ids.length) {
@@ -105,25 +118,21 @@ async function gatherContext(question) {
   return { synopsis: topLines, triples };
 }
 
-
-// Call OpenRouter (non-streaming for simplicity)
-// Docs: POST https://openrouter.ai/api/v1/chat/completions + headers. :contentReference[oaicite:2]{index=2}
+// Call OpenRouter (non-streaming)
 async function askOpenRouter({ apiKey, model, messages }) {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "HTTP-Referer": location.origin, // optional attribution
-      "X-Title": "OntoGSN Chat (local)" // optional attribution
+      "HTTP-Referer": location.origin,
+      "X-Title": "OntoGSN Chat"
     },
     body: JSON.stringify({
       model,
       messages,
       temperature: 0.2,
-      max_tokens: 10000,
-      //stream: true
-      // You can set stream: true and handle SSE later if you want typing. :contentReference[oaicite:3]{index=3}
+      max_tokens: 10000
     })
   });
 
@@ -131,55 +140,71 @@ async function askOpenRouter({ apiKey, model, messages }) {
     const t = await res.text();
     throw new Error(`OpenRouter ${res.status}: ${t}`);
   }
+
   const data = await res.json();
-  const c = data?.choices?.[0]?.message?.content || "";
-  return c;
+  return data?.choices?.[0]?.message?.content || "";
 }
 
-// --- UI wiring --------------------------------------------------------------
-function appendMsg(role, html) {
-  const log = $("#chat-log");
-  if (!log) return; // or throw; your choice
+// ---- pane UI -------------------------------------------------------------
+
+function appendMsg(root, role, html) {
+  const log = resolveEl("#chat-log", { root, required: false, name: "chat: #chat-log" });
+  if (!log) return;
 
   const el = document.createElement("div");
   el.className = role === "user" ? "msg user" : "msg bot";
-  el.style.cssText = "margin:.25rem 0;padding:.35rem .5rem;border-radius:.5rem;background:#f7f7f7;";
+
+  // keep the minimal styling, but ideally your chat.css handles this
+  el.style.cssText =
+    "margin:.25rem 0;padding:.35rem .5rem;border-radius:.5rem;background:#f7f7f7;";
+
   el.innerHTML = html;
   log.appendChild(el);
   log.scrollTop = log.scrollHeight;
 }
 
+function setBusy(root, on) {
+  const sendBtn = resolveEl("#chat-send", { root, required: false });
+  const inputEl = resolveEl("#chat-input", { root, required: false });
+  if (sendBtn) sendBtn.disabled = !!on;
+  if (inputEl) inputEl.disabled = !!on;
+}
+
 async function onChatSubmit(ev) {
   ev.preventDefault();
+  if (!_root) return;
 
-  const apiKeyEl = /** @type {HTMLInputElement|null} */ ($("#chat-key"));
-  const modelEl  = /** @type {HTMLInputElement|null} */ ($("#chat-model"));
-  const inputEl  = /** @type {HTMLTextAreaElement|null} */ ($("#chat-input"));
-  const sendBtn  = /** @type {HTMLButtonElement|null} */ ($("#chat-send"));
+  const apiKeyEl = resolveEl("#chat-key",   { root: _root, required: false });
+  const modelEl  = resolveEl("#chat-model", { root: _root, required: false });
+  const inputEl  = resolveEl("#chat-input", { root: _root, required: false });
 
-  if (!apiKeyEl || !modelEl || !inputEl || !sendBtn) return;
+  if (!apiKeyEl || !modelEl || !inputEl) return;
 
-  const apiKey = apiKeyEl.value.trim();
-  const model  = modelEl.value.trim() || "openai/gpt-4o-mini";
-  const q      = inputEl.value.trim();
+  const apiKey = normCmd(apiKeyEl.value);
+  const model  = normCmd(modelEl.value) || "openai/gpt-4o-mini";
+  const q      = normCmd(inputEl.value);
 
-  if (!apiKey) { alert("Paste your OpenRouter API key first."); return; }
+  if (!apiKey) {
+    alert("Paste your OpenRouter API key first.");
+    return;
+  }
   if (!q) return;
 
   // persist locally
   localStorage.setItem(KEY_K, apiKey);
   localStorage.setItem(MODEL_K, model);
 
-  appendMsg("user", escapeHtml(q));
+  appendMsg(_root, "user", escapeHtml(q));
   inputEl.value = "";
-  sendBtn.disabled = true;
+  setBusy(_root, true);
 
   try {
     const { synopsis, triples } = await gatherContext(q);
+
     const contextBlock =
 `You are the OntoGSN assistant. Use the provided *Knowledge Graph context* to answer briefly and accurately.
 - Prefer concrete node identifiers (like G1, C1, Sn1) when relevant.
-- If the answer is not supported by the context, say you don't know and why (for example, you received no context data).
+- If the answer is not supported by the context, say you don't know and why.
 - Key relations: gsn:supportedBy, gsn:inContextOf, gsn:challenges, prov:Collection links.
 
 [Knowledge Graph context — nodes]
@@ -189,20 +214,85 @@ ${synopsis || "(no close matches)"}
 ${triples.slice(0, 120).map(t => `${t.s}  ${t.p}  ${t.o}`).join("\n")}`;
 
     const messages = [
-      { role: "system", content: "You answer questions about an assurance case represented in a GSN-like ontology." },
-      { role: "user", content: `${q}\n\n${contextBlock}` }
+      {
+        role: "system",
+        content: "You answer questions about an assurance case represented in a GSN-like ontology."
+      },
+      {
+        role: "user",
+        content: `${q}\n\n${contextBlock}`
+      }
     ];
 
     const answer = await askOpenRouter({ apiKey, model, messages });
-    appendMsg("bot", escapeHtml(answer));
+    appendMsg(_root, "bot", escapeHtml(answer));
   } catch (e) {
-    appendMsg("bot", `<em>${escapeHtml(e.message)}</em>`);
+    appendMsg(_root, "bot", `<em>${escapeHtml(e?.message || String(e))}</em>`);
   } finally {
-    sendBtn.disabled = false;
+    setBusy(_root, false);
   }
 }
 
-// Initialise chat UI once DOM is ready
-window.addEventListener("DOMContentLoaded", () => {
-  buildChatUI();
-});
+async function initChatPane() {
+  if (_init) return;
+  _init = true;
+
+  panes.initLeftTabs?.();
+
+  const root = resolveEl("#chat-root", { name: "chat.js: #chat-root", required: false });
+  if (!root || root.dataset.initialised === "1") return;
+  root.dataset.initialised = "1";
+
+  _root = root;
+
+  await mountTemplate(root, {
+    templateUrl: HTML,
+    cssUrl: CSS,
+    cache: "no-store",
+    bust: true
+  });
+
+  // restore key/model
+  const keyEl   = resolveEl("#chat-key",   { root, required: false });
+  const modelEl = resolveEl("#chat-model", { root, required: false });
+
+  if (keyEl)   keyEl.value   = localStorage.getItem(KEY_K) || "";
+  if (modelEl) modelEl.value = localStorage.getItem(MODEL_K) || modelEl.value;
+
+  const formEl = resolveEl("#chat-form", { root, required: false });
+  formEl?.addEventListener("submit", onChatSubmit);
+
+  // focus input when the pane becomes active
+  bus.on("left:tab", (ev) => {
+    const d = ev?.detail || {};
+    const isChat =
+      d.view === "chat" ||
+      d.paneId === "chat-root" ||
+      d.tabId === "tab-chat";
+
+    if (!isChat) return;
+
+    setTimeout(() => {
+      resolveEl("#chat-input", { root, required: false })?.focus();
+    }, 0);
+  });
+
+  // optional: external panes can auto-run a question
+  bus.on("chat:ask", async (ev) => {
+    const q = String(ev?.detail?.question ?? "").trim();
+    if (!q) return;
+
+    const inputEl = resolveEl("#chat-input", { root, required: false });
+    if (inputEl) inputEl.value = q;
+
+    // submit programmatically
+    safeInvoke(formEl, "dispatchEvent", new Event("submit", { bubbles: true, cancelable: true }));
+  });
+}
+
+// boot
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", initChatPane);
+} else {
+  initChatPane();
+}
