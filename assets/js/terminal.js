@@ -4,13 +4,12 @@ import { bus } from "./events.js";
 import {
   mountTemplate,
   resolveEl,
-  escapeHtml,
-  fetchRepoText,
-  shortenIri,
   safeInvoke
 } from "./utils.js";
 
-const CSS = new URL("../css/terminal.css", import.meta.url);
+const HTML = new URL("../html/terminal.html", import.meta.url);
+const CSS  = new URL("../css/terminal.css",  import.meta.url);
+
 
 // Query paths (these files will be added below)
 const Q_ALL_GOALS     = "/assets/data/queries/read_all_goals.sparql";
@@ -22,6 +21,26 @@ const Q_LIST_MODULES  = "/assets/data/queries/list_modules.sparql";
 
 const HISTORY_KEY = "ontogsn_terminal_history_v1";
 const MAX_HISTORY = 200;
+const MAX_OUT_LINES = 2000;
+
+let _termShellEl = null;
+let _busyExec = 0;
+
+function setBusy(on) {
+  if (!_termShellEl) return;
+  _termShellEl.classList.toggle("is-busy", !!on);
+  if (_inputEl) _inputEl.disabled = !!on;
+}
+
+function trimOutput() {
+  if (!_outEl) return;
+  const extra = _outEl.children.length - MAX_OUT_LINES;
+  if (extra <= 0) return;
+
+  const n = Math.min(extra, 100);
+  for (let i = 0; i < n; i++) _outEl.removeChild(_outEl.firstElementChild);
+}
+
 
 let _init = false;
 let _root = null;
@@ -47,8 +66,11 @@ function appendLine(text, cls = "") {
   div.className = `terminal-line ${cls}`.trim();
   div.textContent = String(text ?? "");
   _outEl.appendChild(div);
+
+  trimOutput();
   scrollToBottom();
 }
+
 
 function appendBlank() {
   appendLine("");
@@ -176,54 +198,61 @@ async function runQueryPath(path, { pretty = null } = {}) {
   await app.init();
 
   const myExec = ++_execSeq;
+  _busyExec = myExec;
+  setBusy(true);
 
-  const t0 = performance.now();
-  const res = await app.runPath(path, { cache: "no-store", bust: true });
-  const dt = performance.now() - t0;
+  try {
+    const t0 = performance.now();
+    const res = await app.runPath(path, { cache: "no-store", bust: true });
+    const dt = performance.now() - t0;
 
-  // stale result -> ignore
-  if (myExec !== _execSeq) return;
+    if (myExec !== _execSeq) return;
 
-  if (res.kind === "update") {
-    printOk(`OK (update) — ${dt.toFixed(1)} ms`);
-    return;
+    if (res.kind === "update") {
+      printOk(`OK (update) — ${dt.toFixed(1)} ms`);
+      return;
+    }
+
+    const rows = res.rows || [];
+    printMeta(`rows: ${rows.length} — ${dt.toFixed(1)} ms`);
+
+    const lines = (typeof pretty === "function")
+      ? pretty(rows)
+      : formatRowsAsTable(rows);
+
+    for (const ln of lines) appendLine(ln);
+  } finally {
+    if (_busyExec === myExec) setBusy(false);
   }
-
-  const rows = res.rows || [];
-  printMeta(`rows: ${rows.length} — ${dt.toFixed(1)} ms`);
-
-  let lines;
-  if (typeof pretty === "function") {
-    lines = pretty(rows);
-  } else {
-    lines = formatRowsAsTable(rows);
-  }
-
-  for (const ln of lines) appendLine(ln);
 }
 
-// Inline SPARQL (careful, but useful)
 async function runQueryText(text) {
   await app.init();
 
   const myExec = ++_execSeq;
+  _busyExec = myExec;
+  setBusy(true);
 
-  const t0 = performance.now();
-  const res = await app.runText(text, { source: "terminal:inline" });
-  const dt = performance.now() - t0;
+  try {
+    const t0 = performance.now();
+    const res = await app.runText(text, { source: "terminal:inline" });
+    const dt = performance.now() - t0;
 
-  if (myExec !== _execSeq) return;
+    if (myExec !== _execSeq) return;
 
-  if (res.kind === "update") {
-    printOk(`OK (update) — ${dt.toFixed(1)} ms`);
-    return;
+    if (res.kind === "update") {
+      printOk(`OK (update) — ${dt.toFixed(1)} ms`);
+      return;
+    }
+
+    const rows = res.rows || [];
+    printMeta(`rows: ${rows.length} — ${dt.toFixed(1)} ms`);
+
+    const lines = formatRowsAsTable(rows);
+    for (const ln of lines) appendLine(ln);
+  } finally {
+    if (_busyExec === myExec) setBusy(false);
   }
-
-  const rows = res.rows || [];
-  printMeta(`rows: ${rows.length} — ${dt.toFixed(1)} ms`);
-
-  const lines = formatRowsAsTable(rows);
-  for (const ln of lines) appendLine(ln);
 }
 
 // ---------- command router -------------------------------------------------
@@ -344,34 +373,45 @@ async function execCommand(raw) {
   }
 }
 
+const COMMANDS = [
+  "help",
+  "clear",
+  "history",
+  "read all goals",
+  "read all solutions",
+  "read all nodes",
+  "list modules",
+  "run path ",
+  "run ",
+  "open doc "
+];
+
+function completeInput() {
+  const v = String(_inputEl?.value ?? "");
+  const n = normalizeCmd(v);
+
+  if (!n) {
+    _inputEl.value = "help";
+    return;
+  }
+
+  const hits = COMMANDS.filter(c => c.startsWith(n));
+  if (hits.length === 1) {
+    _inputEl.value = hits[0];
+    _inputEl.setSelectionRange(_inputEl.value.length, _inputEl.value.length);
+  } else if (hits.length > 1) {
+    printMeta("Suggestions:");
+    for (const h of hits) appendLine(`  ${h}`, "meta");
+  }
+}
+
+
 // ---------- UI boot --------------------------------------------------------
 
-function buildUI(root) {
-  root.innerHTML = `
-    <div class="terminal">
-      <div class="terminal-topbar">
-        <div class="terminal-title">Terminal</div>
-        <button type="button" id="term-help">Help</button>
-        <button type="button" id="term-clear">Clear</button>
-      </div>
-
-      <div class="terminal-out" id="term-out" aria-label="Terminal output"></div>
-
-      <div class="terminal-inputrow">
-        <div class="terminal-prompt">ontogsn&gt;</div>
-        <input id="term-input" class="terminal-input" type="text"
-               spellcheck="false" autocomplete="off"
-               placeholder='Type "help" (e.g., read all goals)' />
-      </div>
-
-      <div class="terminal-hint">
-        Enter to run · ↑/↓ history · Ctrl+L clear
-      </div>
-    </div>
-  `;
-
+function wireUI(root) {
   _outEl = resolveEl("#term-out", { root });
   _inputEl = resolveEl("#term-input", { root });
+  _termShellEl = resolveEl(".terminal", { root });
 
   resolveEl("#term-help", { root }).addEventListener("click", () => {
     execCommand("help");
@@ -388,6 +428,21 @@ function buildUI(root) {
     if (ev.ctrlKey && (ev.key === "l" || ev.key === "L")) {
       ev.preventDefault();
       execCommand("clear");
+      return;
+    }
+
+    // ESC = clear input
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      _inputEl.value = "";
+      _histIdx = -1;
+      return;
+    }
+
+    // TAB = autocomplete
+    if (ev.key === "Tab") {
+      ev.preventDefault();
+      completeInput();
       return;
     }
 
@@ -428,7 +483,6 @@ function buildUI(root) {
       const v = _inputEl.value;
       _inputEl.value = "";
       _histIdx = -1;
-
       execCommand(v);
       return;
     }
@@ -439,7 +493,8 @@ function buildUI(root) {
   appendLine('Type "help" to see commands.', "meta");
 }
 
-function initTerminal() {
+
+async function initTerminal() {
   const root = resolveEl("#terminal-root", { required: false, name: "Terminal: #terminal-root" });
   if (!root || root.dataset.initialised === "1") return;
 
@@ -447,12 +502,13 @@ function initTerminal() {
   if (_init) return;
   _init = true;
 
-  _root = root;
+  await mountTemplate(root, {
+    templateUrl: HTML,
+    cssUrl: CSS
+  });
 
-  mountTemplate(root, { cssUrl: CSS });
   _history = loadHistory();
-
-  buildUI(root);
+  wireUI(root);
 
   // Focus input when the pane becomes active
   bus.on("left:tab", (ev) => {
@@ -463,8 +519,6 @@ function initTerminal() {
       d.tabId === "tab-terminal";
 
     if (!isTerm) return;
-
-    // Give layout a beat
     setTimeout(() => _inputEl?.focus(), 0);
   });
 
@@ -479,6 +533,7 @@ function initTerminal() {
     execCommand(String(command));
   });
 }
+
 
 if (document.readyState === "loading") {
   window.addEventListener("DOMContentLoaded", initTerminal);
