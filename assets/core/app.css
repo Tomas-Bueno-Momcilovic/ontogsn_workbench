@@ -92,6 +92,10 @@ table.sparql thead th {
   pointer-events: none;
 }
 
+.pane-loading[hidden] {
+  display: none !important;
+}
+
 .pane-loading-inner {
   display: flex;
   align-items: center;

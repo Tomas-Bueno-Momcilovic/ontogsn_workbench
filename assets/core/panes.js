@@ -30,7 +30,7 @@ class PaneManager {
     this._paneDefs = { left: new Map(), right: new Map() };
     this._paneState = { left: new Map(), right: new Map() };
     this._activePaneId = { left: null, right: null };
-    this._activateSeq = 0;
+    this._activateSeq = { left: 0, right: 0 };
   }
 
   setContext(ctx) {
@@ -56,12 +56,12 @@ class PaneManager {
         await state.mod.suspend({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
       }
 
-      if (shouldUnmount && state.mod?.unmount) {
-        await state.mod.unmount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
-      }
-
-      if (shouldUnmount && typeof state.cleanup === "function") {
-        state.cleanup();
+      if (shouldUnmount) {
+        if (typeof state.cleanup === "function") {
+          state.cleanup();
+        } else if (state.mod?.unmount) {
+          await state.mod.unmount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
+        }
       }
     } catch (e) {
       console.warn(`[PaneManager] deactivate failed for ${slot}:${paneId}`, e);
@@ -81,7 +81,7 @@ class PaneManager {
   async _activatePane(slot, paneId, payload) {
     if (!paneId) return;
 
-    const seq = ++this._activateSeq;
+    const seq = ++this._activateSeq[slot];
 
     if (this._activePaneId[slot] === paneId) {
       const state = this._paneState[slot].get(paneId);
@@ -95,7 +95,7 @@ class PaneManager {
     this._activePaneId[slot] = paneId;
     await this._deactivatePane(slot, prev);
 
-    if (seq !== this._activateSeq) return;
+    if (seq !== this._activateSeq[slot]) return;
 
     const def = this._paneDefs[slot].get(paneId);
     if (!def?.loader) return;
@@ -134,29 +134,10 @@ class PaneManager {
       console.error(`[PaneManager] mount failed for ${slot}:${paneId}`, e);
 
     } finally {
-      if (seq === this._activateSeq && this._activePaneId[slot] === paneId) {
+      if (seq === this._activateSeq[slot] && this._activePaneId[slot] === paneId) {
         this._hideLoading(slot, seq);
       }
     }
-
-    const root = document.getElementById(paneId);
-    if (!root) {
-      console.warn(`[PaneManager] pane root #${paneId} not found`);
-      return;
-    }
-
-    try {
-      if (!state.mounted && state.mod?.mount) {
-        const cleanup = await state.mod.mount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload });
-        state.cleanup = (typeof cleanup === "function") ? cleanup : null;
-        state.mounted = true;
-      } else if (state.mod?.resume) {
-        await state.mod.resume({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload });
-      }
-    } catch (e) {
-      console.error(`[PaneManager] mount failed for ${slot}:${paneId}`, e);
-    }
-
     this._paneState[slot].set(paneId, state);
   }
 
@@ -316,7 +297,12 @@ class PaneManager {
       safeInvoke(this.bus, "emit", "pane:tab", payload);
 
       Promise.resolve(this._activatePane(slot, paneId, payload))
+        .then(() => {
+          safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
+          safeInvoke(this.bus, "emit", "pane:tab", payload);
+        })
         .catch((e) => console.error(`[PaneManager] activatePane failed ${slot}:${paneId}`, e));
+
 
     };
 
