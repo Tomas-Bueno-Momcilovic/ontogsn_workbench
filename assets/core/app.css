@@ -69,6 +69,58 @@ table.sparql thead th {
   min-width: 0;        /* allow inner content to overflow/scroll instead of stretching the flex item */
 }
 
+/* Make panes a positioning context for the overlay */
+#leftPane,
+#rightPane {
+  position: relative;
+}
+
+/* Loading overlay shown during lazy import + mount */
+.pane-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(1px);
+  z-index: 50;
+
+  /* allow tab clicks to still work if desired:
+     if you want to block interaction while loading, remove this */
+  pointer-events: none;
+}
+
+.pane-loading-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+
+  font-size: 13px;
+  opacity: 0.95;
+}
+
+.pane-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid #ccc;
+  border-top-color: #333;
+  animation: paneSpin 0.9s linear infinite;
+}
+
+@keyframes paneSpin {
+  to { transform: rotate(360deg); }
+}
+
+
 
 #results{
        max-height:520px;

@@ -21,11 +21,16 @@ class PaneManager {
     this._activateLeftTab = null;
     this._activateRightTab = null;
 
+    this._loadingUI = {
+      left: { wrap: null, text: null, seq: 0 },
+      right: { wrap: null, text: null, seq: 0 },
+    };
+
     this.ctx = {};
-    this._paneDefs = { left: new Map(), right: new Map() };        // paneId -> { loader, cache }
-    this._paneState = { left: new Map(), right: new Map() };       // paneId -> { mod, cleanup, mounted }
+    this._paneDefs = { left: new Map(), right: new Map() };
+    this._paneState = { left: new Map(), right: new Map() };
     this._activePaneId = { left: null, right: null };
-    this._activateSeq = 0; // guards against async race on fast clicks
+    this._activateSeq = 0;
   }
 
   setContext(ctx) {
@@ -42,23 +47,33 @@ class PaneManager {
     const state = this._paneState[slot].get(paneId);
     if (!state) return;
 
-    // Prefer explicit suspend/unmount, then fallback to cleanup function
+    const def = this._paneDefs[slot].get(paneId);
+
+    const shouldUnmount = (def && def.cache === false);
+
     try {
-      if (state.mod?.suspend) await state.mod.suspend({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
-      if (state.mod?.unmount) await state.mod.unmount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
-      if (typeof state.cleanup === "function") state.cleanup();
+      if (state.mod?.suspend) {
+        await state.mod.suspend({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
+      }
+
+      if (shouldUnmount && state.mod?.unmount) {
+        await state.mod.unmount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
+      }
+
+      if (shouldUnmount && typeof state.cleanup === "function") {
+        state.cleanup();
+      }
     } catch (e) {
       console.warn(`[PaneManager] deactivate failed for ${slot}:${paneId}`, e);
     }
 
-    state.cleanup = null;
-    state.mounted = false;
+    if (shouldUnmount) {
+      state.cleanup = null;
+      state.mounted = false;
 
-    const def = this._paneDefs[slot].get(paneId);
-    if (def && def.cache === false) {
-      // free memory / force re-import next time
       this._paneState[slot].delete(paneId);
     } else {
+
       this._paneState[slot].set(paneId, state);
     }
   }
@@ -68,34 +83,62 @@ class PaneManager {
 
     const seq = ++this._activateSeq;
 
-    // no-op if already active
     if (this._activePaneId[slot] === paneId) {
       const state = this._paneState[slot].get(paneId);
       if (state?.mod?.resume) {
-        try { await state.mod.resume({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, payload }); } catch {}
+        try { await state.mod.resume({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, payload }); } catch { }
       }
       return;
     }
 
-    // deactivate previous
     const prev = this._activePaneId[slot];
     this._activePaneId[slot] = paneId;
     await this._deactivatePane(slot, prev);
 
-    // if user clicked again quickly, abandon this activation
     if (seq !== this._activateSeq) return;
 
-    // load module (lazy)
     const def = this._paneDefs[slot].get(paneId);
-    if (!def?.loader) return; // static pane => only hide/show is enough
+    if (!def?.loader) return;
 
     let state = this._paneState[slot].get(paneId) || { mod: null, cleanup: null, mounted: false };
 
-    if (!state.mod) {
-      state.mod = await def.loader();
+    const label = payload?.label || payload?.view || paneId;
+    this._showLoading(slot, label, seq);
+
+    try {
+      if (!state.mod) {
+        state.mod = await def.loader();
+      }
+
+      const root = document.getElementById(paneId);
+      if (!root) {
+        console.warn(`[PaneManager] pane root #${paneId} not found`);
+        return;
+      }
+
+      if (!state.mounted && state.mod?.mount) {
+        const cleanup = await state.mod.mount({
+          ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload
+        });
+        state.cleanup = (typeof cleanup === "function") ? cleanup : null;
+        state.mounted = true;
+      } else if (state.mod?.resume) {
+        await state.mod.resume({
+          ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload
+        });
+      }
+
+      this._paneState[slot].set(paneId, state);
+
+    } catch (e) {
+      console.error(`[PaneManager] mount failed for ${slot}:${paneId}`, e);
+
+    } finally {
+      if (seq === this._activateSeq && this._activePaneId[slot] === paneId) {
+        this._hideLoading(slot, seq);
+      }
     }
 
-    // mount/resume
     const root = document.getElementById(paneId);
     if (!root) {
       console.warn(`[PaneManager] pane root #${paneId} not found`);
@@ -115,6 +158,60 @@ class PaneManager {
     }
 
     this._paneState[slot].set(paneId, state);
+  }
+
+  _ensureLoadingUI(slot) {
+    const ui = this._loadingUI?.[slot];
+    if (!ui) return null;
+
+    const host = (slot === "left") ? this.getLeftPane() : this.getRightPane();
+    if (!host) return null;
+
+    if (!ui.wrap || !host.contains(ui.wrap)) {
+      const wrap = document.createElement("div");
+      wrap.className = "pane-loading";
+      wrap.hidden = true;
+
+      const inner = document.createElement("div");
+      inner.className = "pane-loading-inner";
+
+      const spinner = document.createElement("div");
+      spinner.className = "pane-spinner";
+      spinner.setAttribute("aria-hidden", "true");
+
+      const text = document.createElement("div");
+      text.className = "pane-loading-text";
+      text.textContent = "Loading pane ...";
+
+      inner.appendChild(spinner);
+      inner.appendChild(text);
+      wrap.appendChild(inner);
+
+      host.appendChild(wrap);
+
+      ui.wrap = wrap;
+      ui.text = text;
+    }
+
+    return ui;
+  }
+
+  _showLoading(slot, label, seq) {
+    const ui = this._ensureLoadingUI(slot);
+    if (!ui) return;
+
+    ui.seq = seq;
+    if (ui.text) ui.text.textContent = `Loading ${label || "pane"} pane ...`;
+    ui.wrap.hidden = false;
+  }
+
+  _hideLoading(slot, seq) {
+    const ui = this._loadingUI?.[slot];
+    if (!ui?.wrap) return;
+
+    if (seq && ui.seq !== seq) return;
+
+    ui.wrap.hidden = true;
   }
 
   // --- DOM helpers -------------------------------------------------------
@@ -138,7 +235,6 @@ class PaneManager {
 
     if (!viewOrPaneId) return root;
 
-    // Try common conventions: `${view}-root` or direct id
     const tryIds = [
       `#${viewOrPaneId}`,
       `#${viewOrPaneId}-root`,
@@ -153,8 +249,8 @@ class PaneManager {
 
   // --- Shared tab wiring --------------------------------------------------
   _initTabGroup({
-    groupName,                 // e.g. "left-main"
-    slot,                      // "left" | "right"
+    groupName,
+    slot,
     paneDefaultSelector = null
   }) {
     const groupEl = document.querySelector(`[data-tab-group="${groupName}"]`);
@@ -162,13 +258,24 @@ class PaneManager {
 
     if (!tabs.length) {
       console.warn(`[PaneManager] No ${slot} tab buttons found.`);
-      return { tabs: [], panes: [], activate: () => {} };
+      return { tabs: [], panes: [], activate: () => { } };
     }
 
-    const paneIdOf = (btn) =>
-      btn.dataset.pane || btn.dataset.view || (paneDefaultSelector ? paneDefaultSelector(btn) : null);
+    const paneIdOf = (btn) => {
+      const raw =
+        btn.dataset.pane ||
+        btn.dataset.view ||
+        (paneDefaultSelector ? paneDefaultSelector(btn) : null);
 
-    // Collect panes that exist (if you have data-pane on the buttons)
+      if (!raw) return null;
+
+      if (document.getElementById(raw)) return raw;
+      const rootId = `${raw}-root`;
+      if (document.getElementById(rootId)) return rootId;
+
+      return raw;
+    };
+
     const paneIds = tabs.map(paneIdOf).filter(Boolean);
     const panes = paneIds
       .map(id => document.getElementById(id))
@@ -184,6 +291,7 @@ class PaneManager {
       tabId: btn.id || null,
       view: btn.dataset.view || null,
       paneId: paneId || null,
+      label: (btn.dataset.label || btn.textContent || "").trim() || paneId || null,
       query: btn.dataset.query || null,
       docQuery: btn.dataset.docQuery || null,
       docVar: btn.dataset.docVar || null,
