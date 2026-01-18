@@ -17,22 +17,22 @@ export const BASES = {
 // Paths to data files
 export const PATHS = {
   // Ontologies
-  onto    : "data/ontologies/ontogsn_lite.ttl",
-  example : "data/ontologies/example_ac.ttl",
-  car_ac  : "data/ontologies/car_assurance.ttl",
-  car     : "data/ontologies/car.ttl",
-  code    : "data/ontologies/example_python_code.ttl",
-  check   : "data/ontologies/example_checklist.ttl",
+  onto    : "./assets/data/ontologies/ontogsn_lite.ttl",
+  example : "./assets/data/ontologies/example_ac.ttl",
+  car_ac  : "./assets/data/ontologies/car_assurance.ttl",
+  car     : "./assets/data/ontologies/car.ttl",
+  code    : "./assets/data/ontologies/example_python_code.ttl",
+  check   : "./assets/data/ontologies/example_checklist.ttl",
 
   // Base queries
   q: {
-    nodes          : "data/queries/read_all_nodes.sparql",
-    rels           : "data/queries/read_all_relations.sparql",
-    visualize      : "data/queries/visualize_graph.sparql",
-    propCtx        : "data/queries/propagate_context.sparql",
-    propDef        : "data/queries/propagate_defeater.sparql",
-    listModules    : "data/queries/list_modules.sparql",
-    visualizeByMod : "data/queries/visualize_graph_by_module.sparql",
+    nodes          : "./assets/data/queries/read_all_nodes.sparql",
+    rels           : "./assets/data/queries/read_all_relations.sparql",
+    visualize      : "./assets/data/queries/visualize_graph.sparql",
+    propCtx        : "./assets/data/queries/propagate_context.sparql",
+    propDef        : "./assets/data/queries/propagate_defeater.sparql",
+    listModules    : "./assets/data/queries/list_modules.sparql",
+    visualizeByMod : "./assets/data/queries/visualize_graph_by_module.sparql",
   },
 };
 

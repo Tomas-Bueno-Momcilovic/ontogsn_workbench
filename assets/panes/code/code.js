@@ -14,7 +14,12 @@ const CODE_BASE_URL = "data/";
 const CODE_SOLUTION_QUERY = "data/queries/read_solutionWithCode.sparql";
 
 async function fetchCodeMeta(solutionIri) {
-  const raw = await fetchRepoText(CODE_SOLUTION_QUERY, { cache: "no-store", bust: true });
+  const raw = await fetchRepoText(CODE_SOLUTION_QUERY, { 
+    from: import.meta.url,
+    upLevels: 2,
+    cache: "no-store",
+    bust: true
+  });
   const query     = raw.replaceAll("${solutionIri}", solutionIri);
   const bindings  = await runSparql(query);
 
@@ -31,7 +36,10 @@ async function fetchCodeMeta(solutionIri) {
   const [relativePath, fragment] = filePathLiteral.split("#");
   if (!relativePath) { throw new Error(`Invalid py:filePath for ${solutionIri}: "${filePathLiteral}"`); }
 
-  const codeUrl = repoHref(CODE_BASE_URL + relativePath);
+  const codeUrl = repoHref(CODE_BASE_URL + relativePath, {
+    from: import.meta.url,
+    upLevels: 2
+  });
 
   return {
     codeLanguage: String(langLiteral).toLowerCase(),
