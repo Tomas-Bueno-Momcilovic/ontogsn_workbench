@@ -366,3 +366,21 @@ export function safeInvoke(obj, method, ...args) {
     console.warn(`[safeInvoke] ${method} failed:`, e);
   }
 }
+
+export function cleanRdfLiteral(x) {
+  const s = String(x ?? "").trim();
+
+  // matches: "Text"@en  OR  "Text"^^<datatype>
+  const m = s.match(/^"([\s\S]*)"(?:@[\w-]+|\^\^.+)?$/);
+  return m ? m[1] : s;
+}
+
+export function loadLocalBool(key, { defaultValue = true } = {}) {
+  const v = localStorage.getItem(String(key));
+  if (v == null) return !!defaultValue;
+  return v !== "0" && v !== "false";
+}
+
+export function saveLocalBool(key, value) {
+  localStorage.setItem(String(key), value ? "1" : "0");
+}

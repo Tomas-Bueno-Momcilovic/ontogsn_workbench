@@ -4,13 +4,17 @@ import app from "@core/queries.js";
 import {
   ensureCss,
   repoHref,
-  fetchRepoText,
+  fetchRepoTextCached,
   resolveEl,
   uid,
+  addToSetMap,
   bindingsToRows,
   shortenIri,
   labelWidthPx,
   inferGsnKind,
+  cleanRdfLiteral,
+  loadLocalBool,
+  saveLocalBool
 } from "@core/utils.js";
 import { bus } from "@core/events.js";
 
@@ -18,14 +22,7 @@ ensureCss(repoHref("panes/graph/graph.css", { from: import.meta.url, upLevels: 2
 
 const NODE_H = 26;
 
-function cleanRdfLiteral(x) {
-  const s = String(x ?? "").trim();
-
-  // matches: "Text"@en  OR  "Text"^^<datatype>
-  const m = s.match(/^"([\s\S]*)"(?:@[\w-]+|\^\^.+)?$/);
-  return m ? m[1] : s;
-}
-
+const K_SHOW_UNASSIGNED = "ontogsn_layers_show_unassigned_v1";
 
 // ============================================================================
 // Pure renderer (controller-style) — safe to call repeatedly
@@ -48,6 +45,7 @@ export function visualizeLayers(
     assignLayers = null,
 
     allowEmptyLanes = true,
+    dropUnassigned = false,
   } = {}
 ) {
 
@@ -95,21 +93,82 @@ export function visualizeLayers(
     });
   }
 
+  function laneTreeOrder(items, laneIdx) {
+    const ids = items.map(e => String(e.id));
+    const set = new Set(ids);
+
+    // pick ONE parent per node within this lane (tree requires single parent)
+    const parentId = new Map();
+
+    for (const id of ids) {
+      const ps = parents.get(id);
+      if (!ps) continue;
+
+      const inside = [...ps].filter(p => p && p !== id && set.has(p));
+      if (!inside.length) continue;
+
+      // prefer parent that is "higher" in the global BFS depth
+      inside.sort((a, b) => (depth.get(a) ?? 999) - (depth.get(b) ?? 999) || String(a).localeCompare(String(b)));
+      parentId.set(id, inside[0]);
+    }
+
+    const ROOT = `__lane_root__${laneIdx}`;
+
+    const data = [
+      { id: ROOT, parentId: null },
+      ...ids.map(id => ({
+        id,
+        parentId: parentId.get(id) || ROOT
+      }))
+    ];
+
+    try {
+      const strat = d3.stratify()
+        .id(d => d.id)
+        .parentId(d => d.parentId);
+
+      const root = strat(data);
+
+      // tree gives us a nice ordering even if we don't use its exact coordinates
+      d3.tree().size([1, 1])(root);
+
+      // pre-order traversal = parent before children, siblings grouped
+      const order = new Map();
+      let k = 0;
+      root.each(node => {
+        if (node.id === ROOT) return;
+        order.set(node.id, k++);
+      });
+
+      return order;
+    } catch {
+      // fallback: stable ordering
+      const order = new Map();
+      ids
+        .sort((a, b) => (depth.get(a) ?? 999) - (depth.get(b) ?? 999) || label(a).localeCompare(label(b)))
+        .forEach((id, i) => order.set(id, i));
+      return order;
+    }
+  }
+
 
   const rootEl = typeof mount === "string" ? document.querySelector(mount) : mount;
   if (!rootEl) throw new Error(`visualizeLayers: mount "${mount}" not found`);
 
   rootEl.innerHTML = `
-    <div class="gsn-legend">
-      <span><span class="gsn-badge"></span> supported by</span>
-      <span class="gsn-hint">scroll: zoom • drag: pan</span>
-      <span class="gsn-controls">
-        <button class="gsn-btn" data-act="fit">Fit</button>
-        <button class="gsn-btn" data-act="reset">Reset</button>
-      </span>
-    </div>
-    <svg class="gsn-svg"><g class="gsn-viewport"></g></svg>
-  `;
+  <div class="gsn-legend">
+    <span><span class="gsn-badge"></span> supported by</span>
+
+    <label class="gsn-toggle">
+      <input type="checkbox" data-act="toggle-unassigned" />
+      Show unassigned
+    </label>
+
+    <span class="gsn-hint">scroll: zoom • drag: pan</span>
+  </div>
+  <svg class="gsn-svg"><g class="gsn-viewport"></g></svg>
+`;
+
 
   const svgNode = rootEl.querySelector(".gsn-svg");
   if (!svgNode) throw new Error("visualizeLayers: internal error – svg root not found");
@@ -265,7 +324,12 @@ export function visualizeLayers(
         .sort((a, b) => a - b);
 
       // if no layers: fallback to lane 0
-      const lanes = uniq.length ? uniq : [0];
+      if (!uniq.length) {
+        if (dropUnassigned) continue;
+        uniq.push(0);
+      }
+
+      const lanes = uniq;
 
       lanes.forEach((laneIdx, i) => {
         const entry = {
@@ -383,9 +447,19 @@ export function visualizeLayers(
   const primaryPos = new Map();
   for (let i = 0; i < L; i++) {
     const items = laneItems[i] || [];
-    const step = items.length ? laneHeight / (items.length + 1) : laneHeight / 2;
 
-    items.forEach((e, idx) => {
+    // ✅ tree-derived ordering
+    const ord = laneTreeOrder(items, i);
+
+    const ordered = [...items].sort((a, b) => {
+      const oa = ord.get(String(a.id)) ?? 1e9;
+      const ob = ord.get(String(b.id)) ?? 1e9;
+      return oa - ob || String(a.id).localeCompare(String(b.id));
+    });
+
+    const step = ordered.length ? laneHeight / (ordered.length + 1) : laneHeight / 2;
+
+    ordered.forEach((e, idx) => {
       const x = colX(i);
       const y = PAD.t + (idx + 1) * step;
 
@@ -393,12 +467,12 @@ export function visualizeLayers(
 
       pos.set(e.key, { x, y, label: lbl, id: e.id, isGhost: !!e.isGhost });
 
-      // store primary position for links
       if (primaryKeyById.get(e.id) === e.key) {
         primaryPos.set(e.id, { x, y, label: lbl });
       }
     });
   }
+
 
   // --- Links (supportedBy only) --------------------------------------
 
@@ -548,11 +622,6 @@ export function visualizeLayers(
     svg.transition().duration(450).call(zoom.transform, t);
   }
 
-  function reset() {
-    svg.interrupt();
-    svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
-  }
-
   function destroy() {
     rootEl.innerHTML = "";
   }
@@ -627,7 +696,7 @@ export function visualizeLayers(
     const hubsByCtx = new Map();
 
     for (const [ctx, itemsSet] of grouped.entries()) {
-      const host = pos.get(ctx);
+      const host = primaryPos.get(ctx);
       if (!host) continue;
 
       const idx = hubsByCtx.get(ctx) ?? 0;
@@ -671,11 +740,9 @@ export function visualizeLayers(
     }
   }
 
-  rootEl.querySelector('[data-act="fit"]')?.addEventListener("click", fit);
-  rootEl.querySelector('[data-act="reset"]')?.addEventListener("click", reset);
   fit();
 
-  return { fit, reset, destroy, clearAll, highlightByIds, addCollections, clearCollections, svg: svgNode };
+  return { fit, destroy, clearAll, highlightByIds, addCollections, clearCollections, svg: svgNode };
 }
 
 // ============================================================================
@@ -693,7 +760,7 @@ const Q_LAYERS = "data/queries/visualize_layers.sparql";
 async function fetchQueryRows(queryPath) {
   if (!app.store) await app.init();
 
-  const query = await fetchRepoText(queryPath, {
+  const query = await fetchRepoTextCached(queryPath, {
     from: import.meta.url,
     upLevels: 2,
     cache: "no-store",
@@ -747,8 +814,7 @@ async function renderIntoRoot({ queryPath = null, renderOpts = {} } = {}) {
       const l = norm(val(r.l));
       if (!s || !l) continue;
 
-      if (!nodeToLayers.has(s)) nodeToLayers.set(s, new Set());
-      nodeToLayers.get(s).add(l);
+      addToSetMap(nodeToLayers, s, l);
 
       if (!layerInfo.has(l)) {
         // Try optional label/position vars (from improved query)
@@ -776,9 +842,20 @@ async function renderIntoRoot({ queryPath = null, renderOpts = {} } = {}) {
     // Lane labels from ontology
     const laneLabels = orderedLayerIds.map((id) => layerInfo.get(id)?.label ?? shortenIri(id));
 
+    const showUnassigned =
+      (renderOpts.showUnassigned != null)
+        ? !!renderOpts.showUnassigned
+        : loadLocalBool(K_SHOW_UNASSIGNED, { defaultValue: true });
+
+
+
     // Add an optional "Unassigned" lane at the end
-    laneLabels.push("Unassigned");
-    const unassignedLane = laneLabels.length - 1;
+    let unassignedLane = -1;
+
+    if (showUnassigned) {
+      laneLabels.push("Unassigned");
+      unassignedLane = laneLabels.length - 1;
+    }
 
     // layerIri -> laneIndex
     const layerIndex = new Map(orderedLayerIds.map((id, i) => [id, i]));
@@ -788,14 +865,14 @@ async function renderIntoRoot({ queryPath = null, renderOpts = {} } = {}) {
     // - if none exist: send to Unassigned lane
     const assignLayers = (nodeId /*, depth */) => {
       const set = nodeToLayers.get(String(nodeId));
-      if (!set || set.size === 0) return [unassignedLane];
+      if (!set || set.size === 0) return showUnassigned ? [unassignedLane] : [];
 
       const idxs = [];
       for (const lid of set) {
         const idx = layerIndex.get(lid);
         if (idx != null) idxs.push(idx);
       }
-      if (!idxs.length) return [unassignedLane];
+      if (!idxs.length) return showUnassigned ? [unassignedLane] : [];
 
       // primary = smallest lane index
       idxs.sort((a, b) => a - b);
@@ -815,9 +892,26 @@ async function renderIntoRoot({ queryPath = null, renderOpts = {} } = {}) {
 
       // removes "Unassigned" lane if empty (and any empty layer lanes)
       allowEmptyLanes: false,
+      dropUnassigned: !showUnassigned,
 
       ...renderOpts,
     });
+
+    const cb = _root.querySelector('input[data-act="toggle-unassigned"]');
+    if (cb) {
+      cb.checked = showUnassigned;
+
+      cb.onchange = () => {
+        const v = !!cb.checked;
+        saveLocalBool(K_SHOW_UNASSIGNED, v);
+
+        // rerender with the new setting
+        renderIntoRoot({
+          queryPath: qPath,
+          renderOpts: { ...renderOpts, showUnassigned: v },
+        }).catch(console.warn);
+      };
+    }
 
   } catch (err) {
     console.warn("[layers] render failed:", err);

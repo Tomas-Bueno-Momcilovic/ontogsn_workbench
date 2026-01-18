@@ -1,15 +1,29 @@
+PREFIX gsn:    <https://w3id.org/OntoGSN/ontology#>
 PREFIX did:    <http://www.fortiss-demo.org/ontologies/defence-in-depth/>
 PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX schema: <https://schema.org/>
+PREFIX xsd:    <http://www.w3.org/2001/XMLSchema#>
 
-SELECT ?s ?l ?lbl ?pos
+SELECT DISTINCT ?s ?l ?lbl ?pos
 WHERE {
-  ?s did:covers ?l .
+  # 1) Direct layer membership
+  {
+    ?s did:covers ?l .
+  }
+  UNION
+  # 2) Inherited membership: parent covers -> child inherits
+  {
+    ?p did:covers ?l .
+    ?p gsn:supportedBy+ ?s .
+    FILTER(?p != ?s)
+  }
+
+  # Ensure lane universe is actual layers
   ?l a did:Layer .
 
   OPTIONAL { ?l rdfs:label ?lbl0 }
-  OPTIONAL { ?l schema:position ?pos }
-
   BIND(STR(?lbl0) AS ?lbl)
+
+  OPTIONAL { ?l schema:position ?pos }
 }
-ORDER BY COALESCE(?pos, 9999) LCASE(?lbl) STR(?l)
+ORDER BY COALESCE(xsd:integer(?pos), 9999) LCASE(STR(?lbl)) STR(?l) STR(?s)
