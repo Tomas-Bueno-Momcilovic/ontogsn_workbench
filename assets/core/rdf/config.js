@@ -18,6 +18,7 @@ export const BASES = {
 export const PATHS = {
   // Ontologies
   onto    : "./assets/data/ontologies/ontogsn_lite.ttl",
+  did     : "./assets/data/ontologies/defence_in_depth.ttl",
   example : "./assets/data/ontologies/example_ac.ttl",
   car_ac  : "./assets/data/ontologies/car_assurance.ttl",
   car     : "./assets/data/ontologies/car.ttl",
@@ -60,6 +61,7 @@ function _deepMergeStrings(target, src) {
 function _buildDefaultDatasets() {
   return [
     { path: PATHS.onto,    base: BASES.onto },
+    { path: PATHS.did,     base: BASES.onto },
     { path: PATHS.example, base: BASES.case },
     { path: PATHS.car_ac,  base: BASES.car  },
     { path: PATHS.car,     base: BASES.car  },

@@ -1,8 +1,15 @@
-PREFIX gsn:   <https://w3id.org/OntoGSN/ontology#>
-PREFIX did: <http://www.fortiss-demo.org/ontologies/defence-in-depth/>
+PREFIX did:    <http://www.fortiss-demo.org/ontologies/defence-in-depth/>
+PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX schema: <https://schema.org/>
 
-SELECT  ?s ?l
+SELECT ?s ?l ?lbl ?pos
 WHERE {
-    ?s did:covers ?l.
-    ?l a did:Layer.
+  ?s did:covers ?l .
+  ?l a did:Layer .
+
+  OPTIONAL { ?l rdfs:label ?lbl0 }
+  OPTIONAL { ?l schema:position ?pos }
+
+  BIND(STR(?lbl0) AS ?lbl)
 }
+ORDER BY COALESCE(?pos, 9999) LCASE(?lbl) STR(?l)

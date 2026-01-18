@@ -18,6 +18,15 @@ ensureCss(repoHref("panes/graph/graph.css", { from: import.meta.url, upLevels: 2
 
 const NODE_H = 26;
 
+function cleanRdfLiteral(x) {
+  const s = String(x ?? "").trim();
+
+  // matches: "Text"@en  OR  "Text"^^<datatype>
+  const m = s.match(/^"([\s\S]*)"(?:@[\w-]+|\^\^.+)?$/);
+  return m ? m[1] : s;
+}
+
+
 // ============================================================================
 // Pure renderer (controller-style) — safe to call repeatedly
 // ============================================================================
@@ -31,16 +40,61 @@ export function visualizeLayers(
     label = shortenIri,
     laneLabels = null,
     laneCount = null,
+
+    // single lane
     assignLayer = null,
+
+    // multiple lanes per node (for ghost nodes)
+    assignLayers = null,
+
     allowEmptyLanes = true,
   } = {}
 ) {
+
   // --- Helpers ---------------------------------------------------------
 
   const val = (x) => (x && typeof x === "object" && "value" in x ? x.value : x);
   const norm = (x) => String(x ?? "").trim();
 
   // --- Resolve mount & bootstrap container ----------------------------
+
+  function wrapSvgText(textSel, width, lineHeightEm = 1.05) {
+    textSel.each(function () {
+      const text = d3.select(this);
+      const words = (text.text() || "").split(/\s+/).filter(Boolean);
+
+      const x = text.attr("x");
+      const y = text.attr("y");
+
+      text.text(null);
+
+      let line = [];
+      let lineNumber = 0;
+
+      let tspan = text.append("tspan")
+        .attr("x", x)
+        .attr("y", y)
+        .attr("dy", "0em");
+
+      for (const w of words) {
+        line.push(w);
+        tspan.text(line.join(" "));
+
+        if (tspan.node().getComputedTextLength() > width && line.length > 1) {
+          line.pop();
+          tspan.text(line.join(" "));
+          line = [w];
+
+          tspan = text.append("tspan")
+            .attr("x", x)
+            .attr("y", y)
+            .attr("dy", `${++lineNumber * lineHeightEm}em`)
+            .text(w);
+        }
+      }
+    });
+  }
+
 
   const rootEl = typeof mount === "string" ? document.querySelector(mount) : mount;
   if (!rootEl) throw new Error(`visualizeLayers: mount "${mount}" not found`);
@@ -167,38 +221,104 @@ export function visualizeLayers(
     }
   }
 
-  // --- Build lanes array ---------------------------------------------
+  // --- Build lanes array (supports ghost multi-placement) --------------
 
-  let lanesArr = layers.map((a) => [...a]);
+  /**
+   * laneItems: Array<Array<{ key, id, lane, isGhost }>>
+   * - id = base node IRI
+   * - key = unique per lane instance (id@@lane)
+   */
+  let laneItems = layers.map((a, li) =>
+    [...a].map((id) => ({
+      key: `${id}@@${li}`,
+      id,
+      lane: li,
+      isGhost: false,
+    }))
+  );
 
-  if (assignLayer) {
+  // primary instance key per base node id (for link routing)
+  const primaryKeyById = new Map();
+
+  function recordPrimary(entry) {
+    if (!primaryKeyById.has(entry.id)) primaryKeyById.set(entry.id, entry.key);
+  }
+
+  for (const lane of laneItems) for (const e of lane) recordPrimary(e);
+
+  // ✅ Multi-lane placement: assignLayers(id) => [laneIdx...]
+  if (assignLayers) {
     const N = laneCount ?? (Array.isArray(laneLabels) ? laneLabels.length : layers.length);
-    lanesArr = Array.from({ length: Math.max(1, N) }, () => []);
+    laneItems = Array.from({ length: Math.max(1, N) }, (_, li) => []);
+
+    for (const id of nodesAll) {
+      const d = depth.get(id) ?? 0;
+      let ks = assignLayers(id, d);
+
+      // normalize
+      if (ks == null) ks = [];
+      if (!Array.isArray(ks)) ks = [ks];
+
+      // clamp + sort + unique
+      const uniq = [...new Set(ks.map((x) => Number(x)).filter((x) => Number.isFinite(x)))]
+        .map((k) => Math.max(0, Math.min(N - 1, k)))
+        .sort((a, b) => a - b);
+
+      // if no layers: fallback to lane 0
+      const lanes = uniq.length ? uniq : [0];
+
+      lanes.forEach((laneIdx, i) => {
+        const entry = {
+          key: `${id}@@${laneIdx}`,
+          id,
+          lane: laneIdx,
+          isGhost: i > 0, // everything after the first is a ghost
+        };
+
+        laneItems[laneIdx].push(entry);
+
+        // primary instance is first lane in sorted list
+        if (i === 0) primaryKeyById.set(id, entry.key);
+      });
+    }
+  }
+
+  // ✅ Single-lane placement (existing behavior)
+  else if (assignLayer) {
+    const N = laneCount ?? (Array.isArray(laneLabels) ? laneLabels.length : layers.length);
+    laneItems = Array.from({ length: Math.max(1, N) }, (_, li) => []);
 
     for (const id of nodesAll) {
       const d = depth.get(id) ?? 0;
       const kRaw = assignLayer(id, d);
       const k = Math.max(0, Math.min(N - 1, Number(kRaw) || 0));
-      lanesArr[k].push(id);
+
+      const entry = { key: `${id}@@${k}`, id, lane: k, isGhost: false };
+      laneItems[k].push(entry);
+      primaryKeyById.set(id, entry.key);
     }
-  } else if (laneCount != null && laneCount > 0) {
-    const N = laneCount;
-    lanesArr =
-      layers.length >= N
-        ? layers.slice(0, N).map((a) => [...a])
-        : layers.concat(Array.from({ length: N - layers.length }, () => []));
   }
 
-  // ✅ Correct: filter empty lanes BEFORE layout
+  // LaneCount override without assignLayer(s)
+  else if (laneCount != null && laneCount > 0) {
+    const N = laneCount;
+
+    laneItems =
+      laneItems.length >= N
+        ? laneItems.slice(0, N)
+        : laneItems.concat(Array.from({ length: N - laneItems.length }, (_, li) => []));
+  }
+
+  // Filter empty lanes BEFORE layout
   if (allowEmptyLanes === false) {
     const newLanes = [];
     const newLabels = [];
 
-    for (let i = 0; i < lanesArr.length; i++) {
-      const ids = lanesArr[i] || [];
-      if (!ids.length) continue;
+    for (let i = 0; i < laneItems.length; i++) {
+      const items = laneItems[i] || [];
+      if (!items.length) continue;
 
-      newLanes.push(ids);
+      newLanes.push(items);
       newLabels.push(
         Array.isArray(laneLabels)
           ? laneLabels[i] ?? `Layer ${newLanes.length}`
@@ -206,9 +326,10 @@ export function visualizeLayers(
       );
     }
 
-    lanesArr = newLanes.length ? newLanes : lanesArr;
+    laneItems = newLanes.length ? newLanes : laneItems;
     laneLabels = newLabels.length ? newLabels : laneLabels;
   }
+
 
   // --- Layout geometry -----------------------------------------------
 
@@ -217,7 +338,7 @@ export function visualizeLayers(
   const W = svgNode.clientWidth || pixelWidth || 900;
   const H = svgNode.clientHeight || height;
 
-  const L = Math.max(1, lanesArr.length);
+  const L = Math.max(1, laneItems.length);
   const laneW = Math.max(160, (W - PAD.l - PAD.r) / L);
   const colX = (i) => PAD.l + i * laneW + laneW / 2;
   const laneHeight = Math.max(60, H - PAD.t - PAD.b);
@@ -242,28 +363,40 @@ export function visualizeLayers(
       .attr("ry", 10)
       .attr("fill-opacity", i % 2 ? 0.05 : 0.09);
 
-    const lbl = Array.isArray(laneLabels) ? laneLabels[i] ?? `Layer ${i + 1}` : `Layer ${i + 1}`;
+    const lblRaw = Array.isArray(laneLabels) ? laneLabels[i] ?? `Layer ${i + 1}` : `Layer ${i + 1}`;
+    const lbl = cleanRdfLiteral(lblRaw);
 
     lane
       .append("text")
       .attr("class", "gsn-lane-label")
       .attr("x", laneW / 2)
-      .attr("y", -8)
+      .attr("y", -10)
       .attr("text-anchor", "middle")
-      .text(lbl);
+      .text(lbl)
+      .call(wrapSvgText, laneW - 12);
+
   }
 
   // --- Compute node positions ----------------------------------------
 
   const pos = new Map(); // id -> { x, y, label }
+  const primaryPos = new Map();
   for (let i = 0; i < L; i++) {
-    const ids = lanesArr[i] || [];
-    const step = ids.length ? laneHeight / (ids.length + 1) : laneHeight / 2;
+    const items = laneItems[i] || [];
+    const step = items.length ? laneHeight / (items.length + 1) : laneHeight / 2;
 
-    ids.forEach((id, idx) => {
+    items.forEach((e, idx) => {
       const x = colX(i);
       const y = PAD.t + (idx + 1) * step;
-      pos.set(id, { x, y, label: label(id) });
+
+      const lbl = label(e.id);
+
+      pos.set(e.key, { x, y, label: lbl, id: e.id, isGhost: !!e.isGhost });
+
+      // store primary position for links
+      if (primaryKeyById.get(e.id) === e.key) {
+        primaryPos.set(e.id, { x, y, label: lbl });
+      }
     });
   }
 
@@ -273,11 +406,11 @@ export function visualizeLayers(
   const links = [];
 
   for (const [p, kids] of children.entries()) {
-    const source = pos.get(p);
+    const source = primaryPos.get(p);
     if (!source) continue;
 
     for (const c of kids) {
-      const target = pos.get(c);
+      const target = primaryPos.get(c);
       if (!target) continue;
       links.push({ source, target });
     }
@@ -299,29 +432,35 @@ export function visualizeLayers(
 
   // --- Nodes ----------------------------------------------------------
 
-  const nodes = [...pos.entries()].map(([id, v]) => {
+  const nodes = [...pos.entries()].map(([key, v]) => {
+    const baseId = v.id;
     const lbl = v.label;
-    const typeIri = nodeType.get(id) || null;
+    const typeIri = nodeType.get(baseId) || null;
 
     return {
-      id,
+      key,         // unique per lane instance
+      id: baseId,  // base node id (IRI)
       label: lbl,
       x: v.x,
       y: v.y,
       w: labelWidthPx(lbl),
       h: NODE_H,
-      kind: inferGsnKind(id, lbl, typeIri),
+      kind: inferGsnKind(baseId, lbl, typeIri),
       typeIri,
+      isGhost: !!v.isGhost,
     };
   });
 
+
   const nodeG = g
     .selectAll("g.gsn-node")
-    .data(nodes, (d) => d.id)
+    .data(nodes, (d) => d.key)
     .join("g")
-    .attr("class", (d) => `gsn-node ${d.kind}`)
+    .attr("class", (d) => `gsn-node ${d.kind}${d.isGhost ? " ghost" : ""}`)
     .attr("data-id", (d) => d.id)
+    .attr("data-key", (d) => d.key)
     .attr("transform", (d) => `translate(${d.x},${d.y})`);
+
 
   const shapeG = nodeG.append("g").attr("class", "gsn-node-shape");
 
@@ -449,9 +588,10 @@ export function visualizeLayers(
   }
 
   function clearAll() {
-    nodeG.attr("class", (d) => `gsn-node ${d.kind}`);
+    nodeG.attr("class", (d) => `gsn-node ${d.kind}${d.isGhost ? " ghost" : ""}`);
     d3.select(rootEl).select("svg.gsn-svg").selectAll("path.undev-diamond").remove();
   }
+
 
   function highlightByIds(ids, klass = "overlay") {
     const S = new Set(ids.map(String));
@@ -547,7 +687,10 @@ let _ctl = null;
 let _offRightTab = null;
 let _suspended = false;
 
-async function fetchGraphRows(queryPath = "data/queries/visualize_graph.sparql") {
+const Q_GRAPH = "data/queries/visualize_graph.sparql";
+const Q_LAYERS = "data/queries/visualize_layers.sparql";
+
+async function fetchQueryRows(queryPath) {
   if (!app.store) await app.init();
 
   const query = await fetchRepoText(queryPath, {
@@ -561,6 +704,15 @@ async function fetchGraphRows(queryPath = "data/queries/visualize_graph.sparql")
   return bindingsToRows(res);
 }
 
+async function fetchGraphRows(queryPath = Q_GRAPH) {
+  return fetchQueryRows(queryPath);
+}
+
+async function fetchLayerRows(queryPath = Q_LAYERS) {
+  return fetchQueryRows(queryPath);
+}
+
+
 let _renderSeq = 0;
 
 async function renderIntoRoot({ queryPath = null, renderOpts = {} } = {}) {
@@ -570,20 +722,100 @@ async function renderIntoRoot({ queryPath = null, renderOpts = {} } = {}) {
   const qPath = queryPath || "data/queries/visualize_graph.sparql";
 
   try {
-    const rows = await fetchGraphRows(qPath);
+    const graphRows = await fetchGraphRows(qPath);
+    const layerRows = await fetchLayerRows(Q_LAYERS);
 
     // Abort if a newer render started, or pane got unmounted
     if (seq !== _renderSeq || !_root || !_root.isConnected) return;
 
-    try { _ctl?.destroy?.(); } catch {}
+    try { _ctl?.destroy?.(); } catch { }
     _ctl = null;
 
-    _ctl = visualizeLayers(rows, {
+    // --- Build ontology-driven layer membership ----------------------------
+
+    const val = (x) => (x && typeof x === "object" && "value" in x ? x.value : x);
+    const norm = (x) => String(x ?? "").trim();
+
+    // node -> Set(layerIri)
+    const nodeToLayers = new Map();
+
+    // layerIri -> { label, pos }
+    const layerInfo = new Map();
+
+    for (const r of layerRows || []) {
+      const s = norm(val(r.s));
+      const l = norm(val(r.l));
+      if (!s || !l) continue;
+
+      if (!nodeToLayers.has(s)) nodeToLayers.set(s, new Set());
+      nodeToLayers.get(s).add(l);
+
+      if (!layerInfo.has(l)) {
+        // Try optional label/position vars (from improved query)
+        const lbl = norm(val(r.lbl)) || shortenIri(l);
+
+        let pos = val(r.pos);
+        pos = pos != null && pos !== "" ? Number(pos) : null;
+        if (!Number.isFinite(pos)) pos = null;
+
+        layerInfo.set(l, { label: lbl, pos });
+      }
+    }
+
+    // Order layers (pos first, then label)
+    const orderedLayerIds = [...layerInfo.entries()]
+      .sort((a, b) => {
+        const A = a[1], B = b[1];
+        const pa = (A.pos == null ? 9999 : A.pos);
+        const pb = (B.pos == null ? 9999 : B.pos);
+        if (pa !== pb) return pa - pb;
+        return String(A.label).localeCompare(String(B.label));
+      })
+      .map(([id]) => id);
+
+    // Lane labels from ontology
+    const laneLabels = orderedLayerIds.map((id) => layerInfo.get(id)?.label ?? shortenIri(id));
+
+    // Add an optional "Unassigned" lane at the end
+    laneLabels.push("Unassigned");
+    const unassignedLane = laneLabels.length - 1;
+
+    // layerIri -> laneIndex
+    const layerIndex = new Map(orderedLayerIds.map((id, i) => [id, i]));
+
+    // Assign lane index for each node ID
+    // - if multiple did:covers layers exist: choose the *lowest index* layer
+    // - if none exist: send to Unassigned lane
+    const assignLayers = (nodeId /*, depth */) => {
+      const set = nodeToLayers.get(String(nodeId));
+      if (!set || set.size === 0) return [unassignedLane];
+
+      const idxs = [];
+      for (const lid of set) {
+        const idx = layerIndex.get(lid);
+        if (idx != null) idxs.push(idx);
+      }
+      if (!idxs.length) return [unassignedLane];
+
+      // primary = smallest lane index
+      idxs.sort((a, b) => a - b);
+      return [...new Set(idxs)];
+    };
+
+
+    _ctl = visualizeLayers(graphRows, {
       mount: _root,
       height: 520,
       label: shortenIri,
-      laneLabels: ["Upstream", "Input", "Model", "Output", "Downstream", "Learn", "xyz"],
-      laneCount: 7,
+
+      // ontology-driven lanes
+      laneLabels,
+      laneCount: laneLabels.length,
+      assignLayers,
+
+      // removes "Unassigned" lane if empty (and any empty layer lanes)
+      allowEmptyLanes: false,
+
       ...renderOpts,
     });
 
@@ -649,7 +881,7 @@ export async function resume({ root, payload } = {}) {
   }
 
   // Otherwise just fit (fast path)
-  try { _ctl?.fit?.(); } catch {}
+  try { _ctl?.fit?.(); } catch { }
 }
 
 
@@ -663,13 +895,13 @@ export async function unmount() {
   // remove listener
   try {
     _offRightTab?.();
-  } catch {}
+  } catch { }
   _offRightTab = null;
 
   // destroy controller
   try {
     _ctl?.destroy?.();
-  } catch {}
+  } catch { }
   _ctl = null;
 
   _root = null;
