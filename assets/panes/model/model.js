@@ -944,43 +944,30 @@ function exportCarSnapshotToTTL() {
   });
 }
 
-// Wire up the "Download TTL" button
-function setupDownloadButton() {
-  const btn    = document.getElementById("download-ttl");
-  const output = document.getElementById("ttl-output");
-  if (!btn) return;
-
-  btn.addEventListener("click", async () => {
-    try {
-      const ttl = await exportCarSnapshotToTTL();
-      if (output) output.textContent = ttl;
-
-      // Download as file
-      downloadText("car-snapshot.ttl", ttl, { mime: "text/turtle" });
-    } catch (err) {
-      console.error("TTL export failed:", err);
-      if (output) {output.textContent = "TTL export failed: " + err;}
-    }
-  });
-}
-
 // --- MAIN / INTEGRATION WITH OntoGSN UI ---------------------------------
 
 // Load carConfig once (from TTL if available, otherwise fallback)
-async function ensureCarConfig() {
+async function ensureCarConfig({ root = document } = {}) {
   if (carConfig) return carConfig;
 
   try {
-    carConfig = await loadCarConfigFromTTL(new URL("../../data/ontologies/car.ttl", import.meta.url));
+    carConfig = await loadCarConfigFromTTL(
+      new URL("../../data/ontologies/car.ttl", import.meta.url)
+    );
     console.log("Loaded car config from TTL:", carConfig);
   } catch (err) {
     console.error("Failed to load car config from TTL:", err);
-    const msg = document.getElementById("status-message");
-    if (msg) {msg.textContent = "Could not load car.ttl – check console/logs.";}
+
+    const msg =
+      resolveEl("#status-message", { root, required: false, name: "Model view: #status-message" }) ||
+      document.getElementById("status-message");
+
+    if (msg) msg.textContent = "Could not load car.ttl – check console/logs.";
   }
 
   return carConfig;
 }
+
 
 export async function renderModelView({
   mount  = null,
@@ -996,14 +983,13 @@ export async function renderModelView({
 
   if (!rootEl) throw new Error(`Model view: mount host not found`);
 
-  panes.clearRightPane();
-
   if (app?.graphCtl && typeof app.graphCtl.destroy === "function") {
     app.graphCtl.destroy();
     app.graphCtl = null;
   }
 
   await mountTemplate(rootEl, { templateUrl: HTML, cssUrl: CSS });
+  ensureModelQueriesCached();
 
   // set dynamic height (used to be in the inline style)
   const wrapper = rootEl.querySelector("#scene-wrapper");
@@ -1022,10 +1008,9 @@ export async function renderModelView({
   // Reset clickable meshes for a fresh scene
   clickable.length = 0;
 
-  const cfg = await ensureCarConfig();
+  const cfg = await ensureCarConfig({ root: rootEl });
   const sceneCtl = createCarScene(cfg, { root: rootEl });
   currentSceneCtl = sceneCtl;
-  setupDownloadButton();
   await refreshLoadInfo();
 
   // Register the model controller with PaneManager & app
@@ -1182,19 +1167,92 @@ export async function renderModelView({
   }
 }
 
-const overloadedQueryTextPromise =
-  fetchText(new URL("../../data/queries/propagate_overloadedCar.sparql", import.meta.url),
-            { cache: "force-cache" });
+let overloadedQueryTextPromise = null;
+let carLoadWeightQueryTextPromise = null;
 
-const carLoadWeightQueryTextPromise =
-  fetchText(new URL("../../data/queries/read_carLoadWeight.sparql", import.meta.url),
-            { cache: "force-cache" });
+function ensureModelQueriesCached() {
+  if (!overloadedQueryTextPromise) {
+    overloadedQueryTextPromise = fetchText(
+      new URL("../../data/queries/propagate_overloadedCar.sparql", import.meta.url),
+      { cache: "force-cache" }
+    );
+  }
+  if (!carLoadWeightQueryTextPromise) {
+    carLoadWeightQueryTextPromise = fetchText(
+      new URL("../../data/queries/read_carLoadWeight.sparql", import.meta.url),
+      { cache: "force-cache" }
+    );
+  }
+}
 
-// Wire the “Model View” button
-bus.on("right:tab", async (ev) => {
+// ---------------------------------------------------------------------------
+// PaneManager lifecycle (lazy-load safe)
+// ---------------------------------------------------------------------------
+
+let _offRightTab = null;
+let _mountedRoot = null;
+let _suspended = false;
+
+function onRightTab(ev) {
+  if (_suspended) return;
+
   const d = ev?.detail || {};
   if (d.view !== "model") return;
-  await renderModelView();
-});
 
-ensureCarConfig();
+  // allow tab payload to override default height if desired
+  const height = d.height ?? 520;
+
+  renderModelView({ mount: _mountedRoot, height }).catch((err) =>
+    console.warn("[model] right:tab render failed:", err)
+  );
+}
+
+export async function mount({ root } = {}) {
+  // root is passed by PaneManager (usually #model-root)
+  _mountedRoot = root ?? resolveEl("#model-root", { required: true, name: "Model pane root" });
+
+  // attach right:tab listener only while mounted
+  if (!_offRightTab) {
+    _offRightTab = bus.on("right:tab", onRightTab);
+  }
+
+  // initial render
+  await renderModelView({ mount: _mountedRoot, height: 520 });
+
+  // cleanup callback
+  return () => unmount();
+}
+
+export async function resume() {
+  _suspended = false;
+  try {
+    currentSceneCtl?.fit?.();
+  } catch {}
+}
+
+export async function suspend() {
+  // optional: stop reacting while hidden
+  _suspended = true;
+}
+
+export async function unmount() {
+  _suspended = true;
+
+  try { _offRightTab?.(); } catch {}
+  _offRightTab = null;
+
+  // destroy current scene controller (removes resize + raycast + bus listener via wrapper destroy)
+  try { currentSceneCtl?.destroy?.(); } catch {}
+  currentSceneCtl = null;
+
+  // extra safety: remove overload subscription if it still exists
+  try { offOverload?.(); } catch {}
+  offOverload = null;
+
+  overloadEventListener = null;
+  clickable.length = 0;
+
+  _mountedRoot = null;
+}
+
+export default { mount, resume, suspend, unmount, renderModelView };

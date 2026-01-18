@@ -1,11 +1,17 @@
-import panes from "@core/panes.js";
-import { mountTemplate, downloadText, resolveEl, readFileText, turtleEscapeLiteral, turtleEscapeMultilineLiteral } from "@core/utils.js";
+import {
+  mountTemplate,
+  downloadText,
+  resolveEl,
+  readFileText,
+  turtleEscapeLiteral,
+  turtleEscapeMultilineLiteral
+} from "@core/utils.js";
 
 // module-relative URLs (works on localhost + GH Pages)
 const HTML = new URL("./converter.html", import.meta.url);
 const CSS  = new URL("./converter.css",  import.meta.url);
 
-// --- XML → ASCE instance Turtle -------------------------------------
+// --- XML → ASCE instance Turtle -------------------------------------------
 
 function xmlToAsceTurtle(xmlText, options = {}) {
   const baseIri = options.baseIri || "https://example.org/kettle#";
@@ -40,16 +46,15 @@ function xmlToAsceTurtle(xmlText, options = {}) {
     return child ? child.textContent.trim() : null;
   };
 
-  // --- Map nodes ----------------------------------------------------
+  // --- Map nodes ----------------------------------------------------------
   const nodeElements = Array.from(xmlDoc.querySelectorAll(nodeSelector));
   nodeElements.forEach((el) => {
-    // Try several ways to get a stable node identifier
     const id =
       el.getAttribute("id") ||
       el.getAttribute("reference") ||
       getChildText(el, "reference");
 
-    if (!id) return; // skip nodes we can't identify
+    if (!id) return;
 
     const typeStr =
       el.getAttribute("type") ||
@@ -65,11 +70,9 @@ function xmlToAsceTurtle(xmlText, options = {}) {
 
     let statement = null;
 
-    // Prefer an explicit user-title if it has content
     if (rawUserTitle && rawUserTitle.trim() !== "") {
       statement = rawUserTitle.trim();
     } else {
-      // very simple fallback: look for generic text/text-like children
       statement =
         getChildText(el, "Text") ||
         getChildText(el, "text") ||
@@ -79,26 +82,21 @@ function xmlToAsceTurtle(xmlText, options = {}) {
     const nodeIri = `<${baseIri}node/${encodeURIComponent(id)}>`;
     const lines = [];
 
-    // Class
     lines.push(`${nodeIri} a asce:Node`);
 
-    // Optional: userId
     if (userId) {
       lines.push(`  ; asce:userId "${turtleEscapeLiteral(userId)}"`);
     }
 
-    // Node type as asce:type (aligned with asce.ttl)
     if (typeStr != null && typeStr !== "") {
       const n = Number(typeStr);
       if (Number.isInteger(n) && n >= 0) {
         lines.push(`  ; asce:type "${n}"^^xsd:nonNegativeInteger`);
       } else {
-        // fallback if the XML has non-numeric type values
         lines.push(`  ; asce:type "${turtleEscapeLiteral(typeStr)}"`);
       }
     }
 
-    // Node label / statement as asce:userTitle (subproperty of gsn:statement)
     if (statement) {
       lines.push(
         `  ; asce:userTitle """${turtleEscapeMultilineLiteral(statement)}"""`
@@ -109,10 +107,9 @@ function xmlToAsceTurtle(xmlText, options = {}) {
     body += lines.join("\n") + "\n\n";
   });
 
-  // --- Map links ----------------------------------------------------
+  // --- Map links ----------------------------------------------------------
   const linkElements = Array.from(xmlDoc.querySelectorAll(linkSelector));
   linkElements.forEach((el) => {
-    // Source/target: support both attribute form and ASCE child element form
     const source =
       el.getAttribute("source") ||
       getChildText(el, "source-reference");
@@ -127,7 +124,6 @@ function xmlToAsceTurtle(xmlText, options = {}) {
       el.getAttribute("type") ||
       getChildText(el, "type");
 
-    // Link ID: use id/reference/reference child, or generate one
     let linkId =
       el.getAttribute("id") ||
       el.getAttribute("reference") ||
@@ -142,7 +138,6 @@ function xmlToAsceTurtle(xmlText, options = {}) {
     const linkIri = `<${baseIri}link/${encodeURIComponent(linkId)}>`;
     const lines   = [];
 
-    // Reified link: also mark as gsn:Relationship for convenience
     lines.push(`${linkIri} a asce:Link, gsn:Relationship`);
     lines.push(`  ; asce:startReference ${srcIri}`);
     lines.push(`  ; asce:endReference ${tgtIri}`);
@@ -161,16 +156,10 @@ function xmlToAsceTurtle(xmlText, options = {}) {
     lines.push("  .");
     body += lines.join("\n") + "\n\n";
 
-    // --- Materialize direct GSN edges between nodes -----------------
-    // Interpretation:
-    //   source-reference     = supporting/child node
-    //   destination-reference = supported/parent node
-
+    // Materialize direct GSN edges between nodes
     if (typeNum === 1) {
-      // Supported-by link: parent supportedBy child
       body += `${tgtIri} gsn:supportedBy ${srcIri} .\n\n`;
     } else if (typeNum === 2) {
-      // Context link: parent inContextOf context
       body += `${tgtIri} gsn:inContextOf ${srcIri} .\n\n`;
     }
   });
@@ -178,59 +167,134 @@ function xmlToAsceTurtle(xmlText, options = {}) {
   return header + body;
 }
 
-// --- high-level conversion for a single XML file -------------------
+// --- high-level conversion for a single XML file --------------------------
 
 async function convertXmlFile(file, { baseIri } = {}) {
   const xmlText = await readFileText(file);
   return xmlToAsceTurtle(xmlText, { baseIri });
 }
 
-// --- Converter panel wiring ----------------------------------------
+// --- module state / lifecycle ---------------------------------------------
 
-let lastConvertedTtl = null;
+let _root = null;
 
-async function setupConverterPanel() {
-  const root = resolveEl("#converter-root", { required: false });
-  if (!root) return;
+let _fileInput = null;
+let _convertBtn = null;
+let _downloadBtn = null;
+let _logEl = null;
 
-  await mountTemplate(root, { templateUrl: HTML, cssUrl: CSS });
+let _baseIri = "https://example.org/kettle#";
+let _lastConvertedTtl = null;
 
-  const fileInput   = root.querySelector("#kettle-axml-input");
-  const convertBtn  = root.querySelector("#kettle-convert-btn");
-  const downloadBtn = root.querySelector("#kettle-download-btn");
-  const logEl       = root.querySelector("#kettle-log");
+let _onConvert = null;
+let _onDownload = null;
 
-  const log = (msg) => { if (logEl) logEl.textContent = msg; };
+let _cleanup = null;
 
-  convertBtn?.addEventListener("click", async () => {
-    const file = fileInput?.files?.[0];
-    if (!file) { log("Please select an .axml/.xml file first."); return; }
+function log(msg) {
+  if (_logEl) _logEl.textContent = String(msg ?? "");
+}
 
-    convertBtn.disabled  = true;
-    downloadBtn.disabled = true;
+function updateDownloadEnabled() {
+  if (_downloadBtn) _downloadBtn.disabled = !_lastConvertedTtl;
+}
+
+// --- PaneManager lifecycle exports ----------------------------------------
+
+export async function mount({ root, payload }) {
+  _root = root;
+
+  // optional: allow caller to override baseIri
+  _baseIri = String(payload?.baseIri || _baseIri);
+
+  await mountTemplate(root, {
+    templateUrl: HTML,
+    cssUrl: CSS,
+    cache: "no-store",
+    bust: true,
+    replace: true
+  });
+
+  _fileInput    = root.querySelector("#kettle-axml-input");
+  _convertBtn   = root.querySelector("#kettle-convert-btn");
+  _downloadBtn  = root.querySelector("#kettle-download-btn");
+  _logEl        = root.querySelector("#kettle-log");
+
+  if (_downloadBtn) _downloadBtn.disabled = true;
+  log("Ready.");
+
+  _onConvert = async (ev) => {
+    ev?.preventDefault?.();
+
+    const file = _fileInput?.files?.[0] || null;
+    if (!file) {
+      log("Please select an .axml/.xml file first.");
+      return;
+    }
+
+    _convertBtn && (_convertBtn.disabled = true);
+    _downloadBtn && (_downloadBtn.disabled = true);
     log("Converting…");
 
     try {
-      lastConvertedTtl = await convertXmlFile(file, { baseIri: "https://example.org/kettle#" });
-      log(`Conversion succeeded. TTL size: ${lastConvertedTtl.length.toLocaleString()} characters.` );
-      downloadBtn.disabled = false;
+      _lastConvertedTtl = await convertXmlFile(file, { baseIri: _baseIri });
+      log(`Conversion succeeded. TTL size: ${_lastConvertedTtl.length.toLocaleString()} characters.`);
+      updateDownloadEnabled();
     } catch (err) {
       console.error("[converter] Conversion failed:", err);
-      log("Conversion failed: " + (err.message || err));
+      _lastConvertedTtl = null;
+      log("Conversion failed: " + (err?.message || String(err)));
+      updateDownloadEnabled();
     } finally {
-      convertBtn.disabled = false;
+      _convertBtn && (_convertBtn.disabled = false);
     }
-  });
+  };
 
-  downloadBtn?.addEventListener("click", () => {
-    if (!lastConvertedTtl) return;
-    const originalName = fileInput?.files?.[0]?.name || "kettle.axml";
+  _onDownload = (ev) => {
+    ev?.preventDefault?.();
+    if (!_lastConvertedTtl) return;
+
+    const originalName = _fileInput?.files?.[0]?.name || "kettle.axml";
     const ttlName = originalName.replace(/\.[^.]+$/, "") + ".ttl";
-    downloadText(ttlName, lastConvertedTtl, { mime: "text/turtle;charset=utf-8" });
-  });
+    downloadText(ttlName, _lastConvertedTtl, { mime: "text/turtle;charset=utf-8" });
+  };
+
+  _convertBtn?.addEventListener("click", _onConvert);
+  _downloadBtn?.addEventListener("click", _onDownload);
+
+  _cleanup = () => {
+    try { _convertBtn?.removeEventListener("click", _onConvert); } catch {}
+    try { _downloadBtn?.removeEventListener("click", _onDownload); } catch {}
+
+    _root = null;
+
+    _fileInput = null;
+    _convertBtn = null;
+    _downloadBtn = null;
+    _logEl = null;
+
+    _onConvert = null;
+    _onDownload = null;
+  };
+
+  return _cleanup;
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  panes.initLeftTabs();
-  setupConverterPanel();
-});
+export async function resume() {
+  // keep whatever the user last did
+  if (_lastConvertedTtl) {
+    log(`Conversion ready. TTL size: ${_lastConvertedTtl.length.toLocaleString()} characters.`);
+  } else {
+    log("Ready.");
+  }
+  updateDownloadEnabled();
+}
+
+export async function suspend() {
+  // nothing special to stop
+}
+
+export async function unmount() {
+  try { _cleanup?.(); } catch {}
+  _cleanup = null;
+}

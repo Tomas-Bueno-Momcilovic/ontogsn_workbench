@@ -1,6 +1,5 @@
 import app from "@core/queries.js";
-import panes from "@core/panes.js";
-import { bus } from "@core/events.js";
+import { bus as coreBus } from "@core/events.js";
 
 import {
   mountTemplate,
@@ -24,8 +23,14 @@ const Q_NEIGH   = "data/queries/chat_neighborhood.sparql";
 const KEY_K   = "openrouter_api_key";
 const MODEL_K = "openrouter_model";
 
-let _init = false;
+// ---- module state ------------------------------------------------------
+
 let _root = null;
+let _cleanup = null;
+
+let _onSubmit = null;
+let _offLeftTab = null;
+let _offChatAsk = null;
 
 // ---- helpers -------------------------------------------------------------
 
@@ -154,7 +159,6 @@ function appendMsg(root, role, html) {
   const el = document.createElement("div");
   el.className = role === "user" ? "msg user" : "msg bot";
 
-  // keep the minimal styling, but ideally your chat.css handles this
   el.style.cssText =
     "margin:.25rem 0;padding:.35rem .5rem;border-radius:.5rem;background:#f7f7f7;";
 
@@ -170,7 +174,13 @@ function setBusy(root, on) {
   if (inputEl) inputEl.disabled = !!on;
 }
 
-async function onChatSubmit(ev) {
+function focusInput(root) {
+  resolveEl("#chat-input", { root, required: false })?.focus();
+}
+
+// ---- submit handler ----------------------------------------------------
+
+async function handleSubmit(ev) {
   ev.preventDefault();
   if (!_root) return;
 
@@ -233,23 +243,28 @@ ${triples.slice(0, 120).map(t => `${t.s}  ${t.p}  ${t.o}`).join("\n")}`;
   }
 }
 
-async function initChatPane() {
-  if (_init) return;
-  _init = true;
+// ---- bus helper (safe unsubscribe) ------------------------------------
 
-  panes.initLeftTabs?.();
+function onBus(theBus, eventName, fn) {
+  // If your bus.on returns an "off" function, we keep it.
+  const off = safeInvoke(theBus, "on", eventName, fn);
+  if (typeof off === "function") return off;
 
-  const root = resolveEl("#chat-root", { name: "chat.js: #chat-root", required: false });
-  if (!root || root.dataset.initialised === "1") return;
-  root.dataset.initialised = "1";
+  // Otherwise try bus.off(fn) on cleanup.
+  return () => safeInvoke(theBus, "off", eventName, fn);
+}
 
+// ---- PaneManager lifecycle exports -------------------------------------
+
+export async function mount({ root, bus }) {
   _root = root;
 
   await mountTemplate(root, {
     templateUrl: HTML,
     cssUrl: CSS,
     cache: "no-store",
-    bust: true
+    bust: true,
+    replace: true
   });
 
   // restore key/model
@@ -260,10 +275,14 @@ async function initChatPane() {
   if (modelEl) modelEl.value = localStorage.getItem(MODEL_K) || modelEl.value;
 
   const formEl = resolveEl("#chat-form", { root, required: false });
-  formEl?.addEventListener("submit", onChatSubmit);
 
-  // focus input when the pane becomes active
-  bus.on("left:tab", (ev) => {
+  _onSubmit = (ev) => handleSubmit(ev);
+  formEl?.addEventListener("submit", _onSubmit);
+
+  const theBus = bus || coreBus;
+
+  // focus input when tab becomes active
+  _offLeftTab = onBus(theBus, "left:tab", (ev) => {
     const d = ev?.detail || {};
     const isChat =
       d.view === "chat" ||
@@ -272,13 +291,11 @@ async function initChatPane() {
 
     if (!isChat) return;
 
-    setTimeout(() => {
-      resolveEl("#chat-input", { root, required: false })?.focus();
-    }, 0);
+    setTimeout(() => focusInput(root), 0);
   });
 
-  // optional: external panes can auto-run a question
-  bus.on("chat:ask", async (ev) => {
+  // external panes can trigger a chat question
+  _offChatAsk = onBus(theBus, "chat:ask", (ev) => {
     const q = String(ev?.detail?.question ?? "").trim();
     if (!q) return;
 
@@ -288,11 +305,33 @@ async function initChatPane() {
     // submit programmatically
     safeInvoke(formEl, "dispatchEvent", new Event("submit", { bubbles: true, cancelable: true }));
   });
+
+  _cleanup = () => {
+    try { formEl?.removeEventListener("submit", _onSubmit); } catch {}
+    _onSubmit = null;
+
+    try { _offLeftTab?.(); } catch {}
+    try { _offChatAsk?.(); } catch {}
+    _offLeftTab = null;
+    _offChatAsk = null;
+
+    _root = null;
+  };
+
+  return _cleanup;
 }
 
-// boot
-if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", initChatPane);
-} else {
-  initChatPane();
+export async function resume({ root }) {
+  // a gentle UX win: focus the input when returning
+  setTimeout(() => focusInput(root || _root), 0);
+}
+
+export async function suspend() {
+  // nothing heavy to stop, but we *could* disable busy state if desired
+  // setBusy(_root, false);
+}
+
+export async function unmount() {
+  try { _cleanup?.(); } catch {}
+  _cleanup = null;
 }

@@ -1,6 +1,6 @@
 import app from "@core/queries.js";
-import panes from "@core/panes.js";
-import { bus } from "@core/events.js";
+import { bus as coreBus } from "@core/events.js";
+
 import {
   mountTemplate,
   resolveEl,
@@ -43,6 +43,30 @@ function saveCollapsed(set) {
   } catch { /* ignore */ }
 }
 
+// --- module state ----------------------------------------------------------
+let _root = null;
+let _bus = null;
+
+let _listEl = null;
+let _emptyEl = null;
+let _statsEl = null;
+
+let _searchEl = null;
+let _refreshEl = null;
+let _clearEl = null;
+
+let _items = [];
+let _state = {};
+
+let _collapsed = new Set();
+let _parentOf = new Map();
+let _childrenOf = new Map();
+
+let _rerender = null;
+let _refresh = null;
+
+let _cleanup = null;
+
 // --- data normalization ----------------------------------------------------
 function normalizeItem(row) {
   const goal = pickBindingValue(row, "goal", "");
@@ -56,7 +80,7 @@ function normalizeItem(row) {
   const modules     = pickBindingValue(row, "modules", "");
 
   const doneRaw = pickBindingValue(row, "done", null);
-  const done    = asBool(doneRaw) ?? false; // default false if absent
+  const done    = asBool(doneRaw) ?? false;
 
   const displayId = `${(modules && modules.trim()) ? modules.trim() : "—"}: ${id}`;
 
@@ -83,7 +107,6 @@ async function updateDoneInStore(goalIri, doneBool) {
     : `"false"^^<http://www.w3.org/2001/XMLSchema#boolean>`;
 
   const tpl = await getUpdateDoneTemplate();
-
   const update = applyTemplate(tpl, { SUBJ: subj, LIT: lit }).trim();
 
   await app.store.update(update);
@@ -105,7 +128,7 @@ function matchesFilter(item, q) {
 
 // --- selection -------------------------------------------------------------
 function emitSelect(goalIri) {
-  safeInvoke(bus, "emit", "checklist:select", { iri: goalIri });
+  safeInvoke(_bus, "emit", "checklist:select", { iri: goalIri });
   window.dispatchEvent(new CustomEvent("checklist:select", { detail: { iri: goalIri } }));
 }
 
@@ -225,11 +248,7 @@ function applyHierarchy(rawItems, parentsByChild) {
     ordered.push(it);
   }
 
-  return {
-    ordered,
-    parentOf: primaryParent,
-    childrenOf
-  };
+  return { ordered, parentOf: primaryParent, childrenOf };
 }
 
 // --- collapse helpers ------------------------------------------------------
@@ -243,10 +262,8 @@ function isHiddenByCollapse(goalIri, parentOf = new Map(), collapsed = new Set()
 }
 
 function computeTriState(items, childrenOf, state) {
-  // iri -> { all:boolean, some:boolean }
   const tri = new Map();
 
-  // reverse order so children are processed before parents
   for (let i = (items?.length ?? 0) - 1; i >= 0; i--) {
     const iri = items[i]?.goal;
     if (!iri) continue;
@@ -291,8 +308,6 @@ function collectDescendants(rootIri, childrenOf) {
   return out;
 }
 
-
-
 // --- rendering -------------------------------------------------------------
 function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
   collapsed,
@@ -304,16 +319,15 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
   const visible = (items || []).filter(it => {
     if (!matchesFilter(it, q)) return false;
 
-    // In “normal” mode, collapse actually hides descendants.
-    // In filter mode, show matches regardless of collapse so search “finds” things.
-    if (!q) {
-      return !isHiddenByCollapse(it.goal, parentOf, collapsed);
-    }
+    // normal mode: collapse hides descendants
+    // filter mode: show matches regardless of collapse
+    if (!q) return !isHiddenByCollapse(it.goal, parentOf, collapsed);
     return true;
   });
 
   const tri = computeTriState(items, childrenOf, state);
   const isLeaf = (iri) => ((childrenOf?.get?.(iri) || []).length === 0);
+
   const leafTotal = visible.reduce((n, it) => n + (isLeaf(it.goal) ? 1 : 0), 0);
   const leafDone  = visible.reduce((n, it) => n + (isLeaf(it.goal) && state[it.goal] ? 1 : 0), 0);
   const fullDone  = visible.reduce((n, it) => n + (tri.get(it.goal)?.all ? 1 : 0), 0);
@@ -379,6 +393,7 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
 
     cb.checked = !!t.all;
     cb.indeterminate = !t.all && !!t.some;
+
     cb.addEventListener("change", async () => {
       const next = cb.checked;
       cb.disabled = true;
@@ -386,15 +401,12 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
       const targets = hasKids ? collectDescendants(it.goal, childrenOf) : [it.goal];
 
       try {
-        // simple version (sequential). Later you can replace with ONE bulk UPDATE using VALUES.
         for (const iri of targets) {
           await updateDoneInStore(iri, next);
           state[iri] = next;
         }
       } catch (e) {
         console.error("[Checklist] failed to update xyz:done:", e);
-        // no perfect rollback without reading store; easiest is refresh
-        await Promise.resolve(); // keep structure
       } finally {
         cb.disabled = false;
         renderList(listEl, emptyEl, statsEl, items, state, q, { collapsed, parentOf, childrenOf });
@@ -421,7 +433,6 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
       b.textContent = `kind: ${it.kind}`;
       meta.appendChild(b);
     }
-
     if (it.valid) {
       const b = document.createElement("span");
       b.className = "chk-badge";
@@ -445,13 +456,11 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
     main.insertBefore(stmt, meta.childNodes.length ? meta : null);
 
     row.addEventListener("click", (ev) => {
-      // don’t treat twisty/checkbox clicks as row selection
       if (ev.target === cb) return;
       if (twisty && twisty.contains(ev.target)) return;
       emitSelect(it.goal);
     });
 
-    // IMPORTANT: order matches CSS grid columns: twisty | checkbox | id | main
     row.appendChild(twisty);
     row.appendChild(cb);
     row.appendChild(id);
@@ -463,39 +472,44 @@ function renderList(listEl, emptyEl, statsEl, items, state, filterText, {
   listEl.appendChild(frag);
 }
 
-// --- init ------------------------------------------------------------------
-async function initChecklistView() {
-  panes.initLeftTabs?.();
+// --- PaneManager lifecycle exports ----------------------------------------
 
-  const root = resolveEl("#checklist-root", { required: false, name: "Checklist: #checklist-root" });
-  if (!root) return;
+export async function mount({ root, bus }) {
+  _root = root;
+  _bus = bus || coreBus;
 
-  await mountTemplate(root, { templateUrl: HTML, cssUrl: CSS });
+  await mountTemplate(root, {
+    templateUrl: HTML,
+    cssUrl: CSS,
+    cache: "no-store",
+    bust: true,
+    replace: true
+  });
 
-  const listEl  = resolveEl("#checklist-list",  { root, required: false });
-  const emptyEl = resolveEl("#checklist-empty", { root, required: false });
-  const statsEl = resolveEl("#checklist-stats", { root, required: false });
+  _listEl  = resolveEl("#checklist-list",  { root, required: false });
+  _emptyEl = resolveEl("#checklist-empty", { root, required: false });
+  _statsEl = resolveEl("#checklist-stats", { root, required: false });
 
-  const searchEl  = resolveEl("#checklist-search",  { root, required: false });
-  const refreshEl = resolveEl("#checklist-refresh", { root, required: false });
-  const clearEl   = resolveEl("#checklist-clear",   { root, required: false });
+  _searchEl  = resolveEl("#checklist-search",  { root, required: false });
+  _refreshEl = resolveEl("#checklist-refresh", { root, required: false });
+  _clearEl   = resolveEl("#checklist-clear",   { root, required: false });
 
-  let items = [];
-  let state = {};
+  _collapsed = loadCollapsed();
+  _items = [];
+  _state = {};
+  _parentOf = new Map();
+  _childrenOf = new Map();
 
-  // collapse state (persisted)
-  let collapsed = loadCollapsed();
-
-  // hierarchy maps needed for hiding
-  let parentOf = new Map();
-  let childrenOf = new Map();
-
-  const rerender = () => {
-    const q = (searchEl?.value ?? "").trim();
-    renderList(listEl, emptyEl, statsEl, items, state, q, { collapsed, parentOf, childrenOf });
+  _rerender = () => {
+    const q = (_searchEl?.value ?? "").trim();
+    renderList(_listEl, _emptyEl, _statsEl, _items, _state, q, {
+      collapsed: _collapsed,
+      parentOf: _parentOf,
+      childrenOf: _childrenOf
+    });
   };
 
-  const refresh = async () => {
+  _refresh = async () => {
     try {
       getUpdateDoneTemplate().catch(() => {});
 
@@ -505,54 +519,80 @@ async function initChecklistView() {
       ]);
 
       const h = applyHierarchy(raw, parentsByChild);
-      items = h.ordered;
-      parentOf = h.parentOf;
-      childrenOf = h.childrenOf;
+      _items = h.ordered;
+      _parentOf = h.parentOf;
+      _childrenOf = h.childrenOf;
 
       // prune collapsed items that no longer exist
-      const present = new Set(items.map(it => it.goal));
-      collapsed = new Set(Array.from(collapsed).filter(iri => present.has(iri)));
-      saveCollapsed(collapsed);
+      const present = new Set(_items.map(it => it.goal));
+      _collapsed = new Set(Array.from(_collapsed).filter(iri => present.has(iri)));
+      saveCollapsed(_collapsed);
 
-      state = {};
-      for (const it of items) state[it.goal] = !!it.done;
+      _state = {};
+      for (const it of _items) _state[it.goal] = !!it.done;
 
-      rerender();
+      _rerender();
     } catch (e) {
       console.error("[Checklist] refresh failed:", e);
-      if (statsEl) statsEl.textContent = `Error: ${e?.message || String(e)}`;
-      if (listEl) listEl.replaceChildren();
-      if (emptyEl) emptyEl.hidden = true;
+      if (_statsEl) _statsEl.textContent = `Error: ${e?.message || String(e)}`;
+      if (_listEl) _listEl.replaceChildren();
+      if (_emptyEl) _emptyEl.hidden = true;
     }
   };
 
-  refreshEl?.addEventListener("click", (ev) => {
+  const onRefreshClick = (ev) => {
     ev.preventDefault();
-    refresh();
-  });
+    _refresh?.();
+  };
 
-  clearEl?.addEventListener("click", async (ev) => {
+  const onClearClick = async (ev) => {
     ev.preventDefault();
 
-    for (const it of items) {
+    for (const it of _items) {
       try { await updateDoneInStore(it.goal, false); }
       catch (e) { console.warn("[Checklist] clear failed for", it.goal, e); }
 
-      state[it.goal] = false;
+      _state[it.goal] = false;
       it.done = false;
     }
+    _rerender?.();
+  };
 
-    rerender();
-  });
+  const onSearchInput = () => _rerender?.();
 
-  searchEl?.addEventListener("input", () => rerender());
+  _refreshEl?.addEventListener("click", onRefreshClick);
+  _clearEl?.addEventListener("click", onClearClick);
+  _searchEl?.addEventListener("input", onSearchInput);
 
-  bus.on("left:tab", (e) => {
-    const paneId = e?.detail?.paneId;
-    if (paneId === "checklist-root") refresh();
-  });
+  // initial load (important because left:tab happens *before* mount in PaneManager)
+  await _refresh();
 
-  refresh();
+  _cleanup = () => {
+    try { _refreshEl?.removeEventListener("click", onRefreshClick); } catch {}
+    try { _clearEl?.removeEventListener("click", onClearClick); } catch {}
+    try { _searchEl?.removeEventListener("input", onSearchInput); } catch {}
+
+    _root = null;
+    _listEl = _emptyEl = _statsEl = null;
+    _searchEl = _refreshEl = _clearEl = null;
+
+    _rerender = null;
+    _refresh = null;
+  };
+
+  return _cleanup;
 }
 
-window.addEventListener("DOMContentLoaded", initChecklistView);
+export async function resume() {
+  // old behavior: refresh whenever user comes back to the checklist pane
+  await _refresh?.();
+}
+
+export async function suspend() {
+  // nothing long-running to stop here
+}
+
+export async function unmount() {
+  try { _cleanup?.(); } catch {}
+  _cleanup = null;
+}
