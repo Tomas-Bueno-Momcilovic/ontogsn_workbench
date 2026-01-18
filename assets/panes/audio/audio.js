@@ -1,9 +1,9 @@
-import { mountTemplate, resolveEl } from "@core/utils.js";
-import { bus } from "@core/events.js";
+import { mountTemplate } from "@core/utils.js";
 
 const HTML = new URL("./audio.html", import.meta.url);
 const CSS  = new URL("./audio.css",  import.meta.url);
 
+// --- module state ------------------------------------------------------
 let audioRoot = null;
 
 let mediaRecorder = null;
@@ -43,12 +43,10 @@ let txLiveToggle = null;
 // --- Live STT (mic PCM -> downsample -> Worker ASR) --------------------
 const TARGET_SR = 16000;
 
-// latency/accuracy knobs
-const LIVE_SEG_S  = 2.6;     // segment length
-const LIVE_OVER_S = 0.25;    // overlap
-const LIVE_TICK_MS = 1400;   // how often to try to transcribe
-
-const MAX_QUEUE_SEC = 12;    // don't lag forever
+const LIVE_SEG_S  = 2.6;
+const LIVE_OVER_S = 0.25;
+const LIVE_TICK_MS = 1400;
+const MAX_QUEUE_SEC = 12;
 
 let sttActive = false;
 
@@ -57,7 +55,7 @@ let sttSrc = null;
 let sttTap = null;
 let sttZero = null;
 
-let sttQueue = [];          // Float32Array chunks
+let sttQueue = [];
 let sttQueueLen = 0;
 let sttTail = new Float32Array(0);
 
@@ -68,14 +66,13 @@ let sttWorker = null;
 let sttWorkerReady = false;
 let sttWorkerModel = "";
 let sttReqId = 1;
-const sttPending = new Map(); // id -> {resolve,reject}
+const sttPending = new Map();
 
 let sttInitPromise = null;
 let sttInitResolve = null;
 let sttInitReject = null;
 
 // --- helpers -----------------------------------------------------------
-
 function setStatus(msg, kind = "") {
   if (!statusEl) return;
   statusEl.textContent = msg;
@@ -119,6 +116,18 @@ function clearAudioState() {
 }
 
 // --- waveform drawing --------------------------------------------------
+function resizeCanvas() {
+  if (!canvas || !ctx2d) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 600;
+  const cssH = canvas.clientHeight || 160;
+
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+
+  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
 
 function drawEmptyWave(label = "") {
   if (!canvas || !ctx2d) return;
@@ -144,19 +153,6 @@ function drawEmptyWave(label = "") {
     ctx2d.fillStyle = "#666";
     ctx2d.fillText(label, 10, 18);
   }
-}
-
-function resizeCanvas() {
-  if (!canvas || !ctx2d) return;
-
-  const dpr = window.devicePixelRatio || 1;
-  const cssW = canvas.clientWidth || 600;
-  const cssH = canvas.clientHeight || 160;
-
-  canvas.width = Math.round(cssW * dpr);
-  canvas.height = Math.round(cssH * dpr);
-
-  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
 function computePeaks(audioBuffer, widthPx) {
@@ -240,7 +236,6 @@ function drawWave(peaks) {
 }
 
 // --- WAV conversion + decoding ----------------------------------------
-
 function audioBufferToWavArrayBuffer(buffer) {
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
@@ -308,7 +303,6 @@ async function decodeToBuffer(arrayBuffer) {
 }
 
 // --- Transformers.js offline ASR --------------------------------------
-
 const HF_TRANSFORMERS_URL =
   "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.0/dist/transformers.min.js";
 
@@ -338,7 +332,6 @@ async function pickDevice() {
 async function getTranscriber(modelId, device) {
   const key = `${modelId}@@${device}`;
   if (_asr && _asrKey === key) return _asr;
-
   if (_asrLoading) return _asrLoading;
 
   _asrLoading = (async () => {
@@ -418,7 +411,7 @@ async function transcribeCurrentAudio() {
 
   const modelId = txModelSel?.value || "Xenova/whisper-tiny";
   const isEnglishOnly = /\.en$/i.test(modelId);
-  const lang = "en"; // only used for multilingual models
+  const lang = "en";
 
   if (txBtn) txBtn.disabled = true;
   if (txModelSel) txModelSel.disabled = true;
@@ -469,7 +462,6 @@ async function transcribeCurrentAudio() {
 }
 
 // --- load blob into view ----------------------------------------------
-
 async function loadBlobAsCurrent(blob, label = "audio") {
   clearCurrentUrl();
 
@@ -509,7 +501,6 @@ async function handleFile(file) {
 }
 
 // --- recording ---------------------------------------------------------
-
 function pickBestRecorderMime() {
   const candidates = [
     "audio/webm;codecs=opus",
@@ -554,7 +545,6 @@ async function startLiveWave(stream) {
   if (!AC) return;
 
   liveAc = new AC();
-
   try { await liveAc.resume(); } catch {}
 
   liveSrc = liveAc.createMediaStreamSource(stream);
@@ -564,7 +554,6 @@ async function startLiveWave(stream) {
   liveAnalyser.smoothingTimeConstant = 0.0;
 
   liveSrc.connect(liveAnalyser);
-
   liveData = new Uint8Array(liveAnalyser.fftSize);
 
   const tick = () => {
@@ -599,16 +588,13 @@ async function startLiveWave(stream) {
     ctx2d.beginPath();
 
     const n = liveData.length;
-
     for (let i = 0; i < n; i++) {
       const x = (i / (n - 1)) * w;
       const v = liveData[i] / 255;
       const y = v * h;
-
       if (i === 0) ctx2d.moveTo(x, y);
       else ctx2d.lineTo(x, y);
     }
-
     ctx2d.stroke();
 
     ctx2d.font = "12px system-ui, sans-serif";
@@ -632,7 +618,7 @@ async function startRecording() {
     recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     await startLiveWave(recStream);
 
-    // ✅ Start Live STT only if toggle is enabled
+    // Start Live STT only if toggle is enabled
     if (txLiveToggle?.checked) {
       startLiveStt(recStream).catch(console.warn);
     }
@@ -666,13 +652,10 @@ async function startRecording() {
   };
 
   mediaRecorder.onstop = async () => {
-    // stop live STT + waveform
     await stopLiveStt({ flush: true }).catch(() => {});
     stopLiveWave();
 
-    try {
-      recStream?.getTracks()?.forEach(t => t.stop());
-    } catch {}
+    try { recStream?.getTracks()?.forEach(t => t.stop()); } catch {}
     recStream = null;
 
     const rawBlob = new Blob(recChunks, { type: mediaRecorder?.mimeType || "audio/webm" });
@@ -702,7 +685,7 @@ async function startRecording() {
   };
 
   recStartTs = performance.now();
-  mediaRecorder.start(); // no timeslice needed
+  mediaRecorder.start();
   setStatus("Recording… (press Stop to finish)");
 }
 
@@ -1132,7 +1115,6 @@ async function stopLiveStt({ flush = true } = {}) {
 }
 
 // --- UI wiring ---------------------------------------------------------
-
 function wireUi(root) {
   const btnRec = root.querySelector("#audio-rec");
   const btnStop = root.querySelector("#audio-stop");
@@ -1203,12 +1185,6 @@ function wireUi(root) {
     fileInput.value = "";
   });
 
-  window.addEventListener("resize", () => {
-    if (!canvas) return;
-    if (lastPeaks) drawWave(lastPeaks);
-    else drawEmptyWave("No audio loaded");
-  });
-
   btnCopy?.addEventListener("click", async () => {
     const txt = (txOutEl?.value || "").trim();
     if (!txt) return;
@@ -1225,7 +1201,7 @@ function wireUi(root) {
     setTxStatus("Cleared.");
   });
 
-  // ✅ toggle live STT while recording
+  // toggle live STT while recording
   txLiveToggle?.addEventListener("change", () => {
     if (!isRecording() || !recStream) return;
 
@@ -1237,7 +1213,7 @@ function wireUi(root) {
     }
   });
 
-  // ✅ switching model during recording restarts live STT
+  // switching model during recording restarts live STT
   txModelSel?.addEventListener("change", () => {
     if (!isRecording() || !recStream) return;
     if (!txLiveToggle?.checked) return;
@@ -1248,13 +1224,14 @@ function wireUi(root) {
   });
 }
 
-// --- init --------------------------------------------------------------
+// --- PaneManager lifecycle exports -------------------------------------
 
-async function initAudioView() {
-  const root = resolveEl("#audio-root", { required: false, name: "Audio view: #audio-root" });
-  if (!root || root.dataset.initialised === "1") return;
+let _cleanup = null;
+let _onResize = null;
+let _onCanvasClick = null;
+let _onTimeUpdate = null;
 
-  root.dataset.initialised = "1";
+export async function mount({ root }) {
   audioRoot = root;
 
   await mountTemplate(root, {
@@ -1266,7 +1243,7 @@ async function initAudioView() {
   });
 
   canvas   = root.querySelector("#audio-wave");
-  ctx2d    = canvas.getContext("2d");
+  ctx2d    = canvas?.getContext?.("2d") || null;
   audioEl  = root.querySelector("#audio-player");
   statusEl = root.querySelector("#audio-status");
 
@@ -1284,35 +1261,64 @@ async function initAudioView() {
   setStatus("Ready.");
 
   // seek by click
-  canvas.addEventListener("click", (ev) => {
+  _onCanvasClick = (ev) => {
     if (!audioEl || !lastDuration) return;
     const r = canvas.getBoundingClientRect();
     const x = ev.clientX - r.left;
     const pct = Math.max(0, Math.min(1, x / Math.max(1, r.width)));
     audioEl.currentTime = pct * lastDuration;
     if (lastPeaks) drawWave(lastPeaks);
-  });
+  };
+  canvas?.addEventListener("click", _onCanvasClick);
 
-  audioEl.addEventListener("timeupdate", () => {
+  _onTimeUpdate = () => {
     if (lastPeaks) drawWave(lastPeaks);
-  });
+  };
+  audioEl?.addEventListener("timeupdate", _onTimeUpdate);
+
+  _onResize = () => {
+    if (!canvas) return;
+    if (lastPeaks) drawWave(lastPeaks);
+    else drawEmptyWave("No audio loaded");
+  };
+  window.addEventListener("resize", _onResize);
 
   wireUi(root);
 
-  bus.on("pane:tab", (ev) => {
-    const d = ev?.detail || {};
-    const isAudio = (d.paneId === "audio-root" || d.view === "audio");
-    if (!isAudio) {
-      try { audioEl?.pause?.(); } catch {}
-      if (isRecording()) stopRecording();
-      stopLiveStt({ flush: false }).catch(console.warn);
-      stopLiveWave();
-    }
-  });
+  _cleanup = () => {
+    try { audioEl?.pause?.(); } catch {}
+    if (isRecording()) stopRecording();
+    stopLiveStt({ flush: false }).catch(() => {});
+    stopLiveWave();
+
+    try { window.removeEventListener("resize", _onResize); } catch {}
+    try { canvas?.removeEventListener("click", _onCanvasClick); } catch {}
+    try { audioEl?.removeEventListener("timeupdate", _onTimeUpdate); } catch {}
+
+    _onResize = null;
+    _onCanvasClick = null;
+    _onTimeUpdate = null;
+  };
+
+  return _cleanup;
 }
 
-if (document.readyState === "loading") {
-  window.addEventListener("DOMContentLoaded", () => initAudioView().catch(console.error), { once: true });
-} else {
-  initAudioView().catch(console.error);
+export async function resume() {
+  // redraw if needed
+  if (lastPeaks) drawWave(lastPeaks);
+  else drawEmptyWave(currentBlob ? "Audio loaded" : "No audio loaded");
+}
+
+export async function suspend() {
+  // stop anything "active", keep loaded audio state
+  try { audioEl?.pause?.(); } catch {}
+  if (isRecording()) stopRecording();
+  stopLiveStt({ flush: false }).catch(() => {});
+  stopLiveWave();
+}
+
+export async function unmount() {
+  // hard cleanup
+  try { _cleanup?.(); } catch {}
+  _cleanup = null;
 }
