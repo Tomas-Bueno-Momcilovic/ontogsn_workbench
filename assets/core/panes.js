@@ -20,6 +20,179 @@ class PaneManager {
 
     this._activateLeftTab = null;
     this._activateRightTab = null;
+
+    this._loadingUI = {
+      left: { wrap: null, text: null, seq: 0 },
+      right: { wrap: null, text: null, seq: 0 },
+    };
+
+    this.ctx = {};
+    this._paneDefs = { left: new Map(), right: new Map() };
+    this._paneState = { left: new Map(), right: new Map() };
+    this._activePaneId = { left: null, right: null };
+    this._activateSeq = { left: 0, right: 0 };
+  }
+
+  setContext(ctx) {
+    this.ctx = { ...(this.ctx || {}), ...(ctx || {}) };
+  }
+
+  registerPane(slot, paneId, loader, { cache = true } = {}) {
+    this._paneDefs[slot]?.set(paneId, { loader, cache });
+  }
+
+  async _deactivatePane(slot, paneId) {
+    if (!paneId) return;
+
+    const state = this._paneState[slot].get(paneId);
+    if (!state) return;
+
+    const def = this._paneDefs[slot].get(paneId);
+
+    const shouldUnmount = (def && def.cache === false);
+
+    try {
+      if (state.mod?.suspend) {
+        await state.mod.suspend({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
+      }
+
+      if (shouldUnmount) {
+        if (typeof state.cleanup === "function") {
+          state.cleanup();
+        } else if (state.mod?.unmount) {
+          await state.mod.unmount({ ...this.ctx, bus: this.bus, panes: this, slot, paneId });
+        }
+      }
+    } catch (e) {
+      console.warn(`[PaneManager] deactivate failed for ${slot}:${paneId}`, e);
+    }
+
+    if (shouldUnmount) {
+      state.cleanup = null;
+      state.mounted = false;
+
+      this._paneState[slot].delete(paneId);
+    } else {
+
+      this._paneState[slot].set(paneId, state);
+    }
+  }
+
+  async _activatePane(slot, paneId, payload) {
+    if (!paneId) return;
+
+    const seq = ++this._activateSeq[slot];
+
+    if (this._activePaneId[slot] === paneId) {
+      const state = this._paneState[slot].get(paneId);
+      if (state?.mod?.resume) {
+        try { await state.mod.resume({ ...this.ctx, bus: this.bus, panes: this, slot, paneId, payload }); } catch { }
+      }
+      return;
+    }
+
+    const prev = this._activePaneId[slot];
+    this._activePaneId[slot] = paneId;
+    await this._deactivatePane(slot, prev);
+
+    if (seq !== this._activateSeq[slot]) return;
+
+    const def = this._paneDefs[slot].get(paneId);
+    if (!def?.loader) return;
+
+    let state = this._paneState[slot].get(paneId) || { mod: null, cleanup: null, mounted: false };
+
+    const label = payload?.label || payload?.view || paneId;
+    this._showLoading(slot, label, seq);
+
+    try {
+      if (!state.mod) {
+        state.mod = await def.loader();
+      }
+
+      const root = document.getElementById(paneId);
+      if (!root) {
+        console.warn(`[PaneManager] pane root #${paneId} not found`);
+        return;
+      }
+
+      if (!state.mounted && state.mod?.mount) {
+        const cleanup = await state.mod.mount({
+          ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload
+        });
+        state.cleanup = (typeof cleanup === "function") ? cleanup : null;
+        state.mounted = true;
+      } else if (state.mod?.resume) {
+        await state.mod.resume({
+          ...this.ctx, bus: this.bus, panes: this, slot, paneId, root, payload
+        });
+      }
+
+      this._paneState[slot].set(paneId, state);
+
+    } catch (e) {
+      console.error(`[PaneManager] mount failed for ${slot}:${paneId}`, e);
+
+    } finally {
+      if (seq === this._activateSeq[slot] && this._activePaneId[slot] === paneId) {
+        this._hideLoading(slot, seq);
+      }
+    }
+    this._paneState[slot].set(paneId, state);
+  }
+
+  _ensureLoadingUI(slot) {
+    const ui = this._loadingUI?.[slot];
+    if (!ui) return null;
+
+    const host = (slot === "left") ? this.getLeftPane() : this.getRightPane();
+    if (!host) return null;
+
+    if (!ui.wrap || !host.contains(ui.wrap)) {
+      const wrap = document.createElement("div");
+      wrap.className = "pane-loading";
+      wrap.hidden = true;
+
+      const inner = document.createElement("div");
+      inner.className = "pane-loading-inner";
+
+      const spinner = document.createElement("div");
+      spinner.className = "pane-spinner";
+      spinner.setAttribute("aria-hidden", "true");
+
+      const text = document.createElement("div");
+      text.className = "pane-loading-text";
+      text.textContent = "Loading pane ...";
+
+      inner.appendChild(spinner);
+      inner.appendChild(text);
+      wrap.appendChild(inner);
+
+      host.appendChild(wrap);
+
+      ui.wrap = wrap;
+      ui.text = text;
+    }
+
+    return ui;
+  }
+
+  _showLoading(slot, label, seq) {
+    const ui = this._ensureLoadingUI(slot);
+    if (!ui) return;
+
+    ui.seq = seq;
+    if (ui.text) ui.text.textContent = `Loading ${label || "pane"} pane ...`;
+    ui.wrap.hidden = false;
+  }
+
+  _hideLoading(slot, seq) {
+    const ui = this._loadingUI?.[slot];
+    if (!ui?.wrap) return;
+
+    if (seq && ui.seq !== seq) return;
+
+    ui.wrap.hidden = true;
   }
 
   // --- DOM helpers -------------------------------------------------------
@@ -43,7 +216,6 @@ class PaneManager {
 
     if (!viewOrPaneId) return root;
 
-    // Try common conventions: `${view}-root` or direct id
     const tryIds = [
       `#${viewOrPaneId}`,
       `#${viewOrPaneId}-root`,
@@ -58,8 +230,8 @@ class PaneManager {
 
   // --- Shared tab wiring --------------------------------------------------
   _initTabGroup({
-    groupName,                 // e.g. "left-main"
-    slot,                      // "left" | "right"
+    groupName,
+    slot,
     paneDefaultSelector = null
   }) {
     const groupEl = document.querySelector(`[data-tab-group="${groupName}"]`);
@@ -67,13 +239,24 @@ class PaneManager {
 
     if (!tabs.length) {
       console.warn(`[PaneManager] No ${slot} tab buttons found.`);
-      return { tabs: [], panes: [], activate: () => {} };
+      return { tabs: [], panes: [], activate: () => { } };
     }
 
-    const paneIdOf = (btn) =>
-      btn.dataset.pane || btn.dataset.view || (paneDefaultSelector ? paneDefaultSelector(btn) : null);
+    const paneIdOf = (btn) => {
+      const raw =
+        btn.dataset.pane ||
+        btn.dataset.view ||
+        (paneDefaultSelector ? paneDefaultSelector(btn) : null);
 
-    // Collect panes that exist (if you have data-pane on the buttons)
+      if (!raw) return null;
+
+      if (document.getElementById(raw)) return raw;
+      const rootId = `${raw}-root`;
+      if (document.getElementById(rootId)) return rootId;
+
+      return raw;
+    };
+
     const paneIds = tabs.map(paneIdOf).filter(Boolean);
     const panes = paneIds
       .map(id => document.getElementById(id))
@@ -89,6 +272,7 @@ class PaneManager {
       tabId: btn.id || null,
       view: btn.dataset.view || null,
       paneId: paneId || null,
+      label: (btn.dataset.label || btn.textContent || "").trim() || paneId || null,
       query: btn.dataset.query || null,
       docQuery: btn.dataset.docQuery || null,
       docVar: btn.dataset.docVar || null,
@@ -107,11 +291,19 @@ class PaneManager {
       const paneId = paneIdOf(b);
       showOnlyPaneId(paneId);
 
-      // Standardized emits:
-      // - slot-specific (backwards/explicit)
-      // - generic (future-proof)
-      safeInvoke(this.bus, "emit", `${slot}:tab`, emitPayload(b, paneId));
-      safeInvoke(this.bus, "emit", "pane:tab", emitPayload(b, paneId));
+      const payload = emitPayload(b, paneId);
+
+      safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
+      safeInvoke(this.bus, "emit", "pane:tab", payload);
+
+      Promise.resolve(this._activatePane(slot, paneId, payload))
+        .then(() => {
+          safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
+          safeInvoke(this.bus, "emit", "pane:tab", payload);
+        })
+        .catch((e) => console.error(`[PaneManager] activatePane failed ${slot}:${paneId}`, e));
+
+
     };
 
     tabs.forEach(btn => {

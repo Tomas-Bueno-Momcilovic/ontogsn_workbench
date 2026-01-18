@@ -11,7 +11,11 @@ import {
 import { resolveEl, escapeHtml, downloadText, mountTemplate } from "@core/utils.js";
 
 const HTML = new URL("./settings.html", import.meta.url);
-const CSS  = new URL("./settings.css", import.meta.url);
+const CSS  = new URL("./settings.css",  import.meta.url);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function _flattenPaths(obj, prefix = "") {
   const out = [];
@@ -63,10 +67,10 @@ function _readDatasetsFromUI(root) {
     const path    = String(tr.querySelector('[data-ds-path]')?.value ?? "").trim();
     const base    = String(tr.querySelector('[data-ds-base]')?.value ?? "").trim();
 
-    // If it's disabled, ignore it in the overrides (this makes "On" meaningful)
+    // disabled rows do not appear in overrides (so "On" is meaningful)
     if (!enabled) return;
 
-    // Skip empty rows
+    // skip empty rows
     if (!path) return;
 
     out.push({ path, base });
@@ -76,7 +80,7 @@ function _readDatasetsFromUI(root) {
 }
 
 function _renderDynamicBits(root) {
-  const snap = getConfigSnapshot();
+  const snap  = getConfigSnapshot();
   const saved = loadConfigOverrides() || {};
 
   // runtime key
@@ -93,7 +97,8 @@ function _renderDynamicBits(root) {
     basesGrid.innerHTML = ["onto", "case", "car", "code"].map(k => `
       <label class="cfg-field">
         <span class="cfg-label">BASES.${escapeHtml(k)}</span>
-        <input class="cfg-input" type="text" data-bases-key="${escapeHtml(k)}" value="${escapeHtml(snap.BASES?.[k] || "")}">
+        <input class="cfg-input" type="text" data-bases-key="${escapeHtml(k)}"
+               value="${escapeHtml(snap.BASES?.[k] || "")}">
       </label>
     `).join("");
   }
@@ -105,7 +110,8 @@ function _renderDynamicBits(root) {
     pathsGrid.innerHTML = flatPaths.map(({ key, value }) => `
       <label class="cfg-field">
         <span class="cfg-label">PATHS.${escapeHtml(key)}</span>
-        <input class="cfg-input" type="text" data-path-key="${escapeHtml(key)}" value="${escapeHtml(value)}">
+        <input class="cfg-input" type="text" data-path-key="${escapeHtml(key)}"
+               value="${escapeHtml(value)}">
       </label>
     `).join("");
   }
@@ -124,7 +130,7 @@ function _renderDynamicBits(root) {
   }
 }
 
-function _wireEvents(root) {
+function _wireEvents(root, { signal } = {}) {
   const statusEl = root.querySelector("#settings-status");
   const setStatus = (msg, kind = "ok") => {
     if (!statusEl) return;
@@ -152,7 +158,7 @@ function _wireEvents(root) {
       <td><button type="button" class="cfg-link" data-ds-del="new">remove</button></td>
     `;
     body.appendChild(tr);
-  });
+  }, { signal });
 
   // Remove dataset row (delegated)
   root.addEventListener("click", (ev) => {
@@ -160,7 +166,7 @@ function _wireEvents(root) {
     if (!btn) return;
     ev.preventDefault();
     btn.closest("tr")?.remove();
-  });
+  }, { signal });
 
   // Save & reload
   root.querySelector("#settings-apply-reload")?.addEventListener("click", () => {
@@ -168,21 +174,21 @@ function _wireEvents(root) {
     const ok = saveConfigOverrides(overrides);
     if (!ok) return setStatus("Could not save overrides (localStorage unavailable?).", "err");
     location.reload();
-  });
+  }, { signal });
 
   // Apply now (no reload)
   root.querySelector("#settings-apply-now")?.addEventListener("click", () => {
     const overrides = buildOverridesFromUI();
     applyConfigOverrides(overrides);
     setStatus("Applied in-memory. Reload required for dataset loading to reflect changes.", "ok");
-  });
+  }, { signal });
 
   // Reset overrides
   root.querySelector("#settings-reset")?.addEventListener("click", () => {
     clearConfigOverrides();
     setStatus("Overrides cleared. Reloading…", "ok");
     location.reload();
-  });
+  }, { signal });
 
   // Export
   root.querySelector("#settings-export")?.addEventListener("click", () => {
@@ -193,7 +199,7 @@ function _wireEvents(root) {
       { mime: "application/json" }
     );
     setStatus("Exported overrides JSON.", "ok");
-  });
+  }, { signal });
 
   // Import
   root.querySelector("#settings-import")?.addEventListener("change", async (ev) => {
@@ -211,14 +217,12 @@ function _wireEvents(root) {
     } finally {
       ev.target.value = "";
     }
-  });
+  }, { signal });
 }
 
-async function renderSettingsPane() {
-  const root = resolveEl("#settings-root", { required: false });
+async function renderSettingsPane(root) {
   if (!root) return;
 
-  // mount skeleton + css
   await mountTemplate(root, {
     templateUrl: HTML,
     cssUrl: CSS,
@@ -226,12 +230,57 @@ async function renderSettingsPane() {
     bust: true
   });
 
-  // fill dynamic parts + wire events
   _renderDynamicBits(root);
-  _wireEvents(root);
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  panes.initLeftTabs();
-  renderSettingsPane();
-});
+// ---------------------------------------------------------------------------
+// PaneManager lifecycle (lazy-load safe)
+// ---------------------------------------------------------------------------
+
+let _rootEl = null;
+let _ac = null;
+let _suspended = false;
+let _tabsInitDone = false;
+
+export async function mount({ root } = {}) {
+  _rootEl = root ?? resolveEl("#settings-root", { required: true, name: "Settings pane root" });
+
+  // Optional: if Settings is a "left pane" module, keep this behavior,
+  // but do it only when mounted.
+  if (!_tabsInitDone) {
+    try { panes.initLeftTabs?.(); } catch {}
+    _tabsInitDone = true;
+  }
+
+  // fresh abort controller per mount (for clean listener cleanup)
+  _ac?.abort?.();
+  _ac = new AbortController();
+
+  await renderSettingsPane(_rootEl);
+  _wireEvents(_rootEl, { signal: _ac.signal });
+
+  return () => unmount();
+}
+
+export async function resume() {
+  _suspended = false;
+}
+
+export async function suspend() {
+  _suspended = true;
+}
+
+export async function unmount() {
+  _suspended = true;
+
+  try { _ac?.abort?.(); } catch {}
+  _ac = null;
+
+  try {
+    if (_rootEl) _rootEl.innerHTML = "";
+  } catch {}
+
+  _rootEl = null;
+}
+
+export default { mount, resume, suspend, unmount };

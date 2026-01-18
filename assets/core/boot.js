@@ -1,24 +1,28 @@
 import queries from "@core/queries.js";
 import panes from "@core/panes.js";
 
-import "@panes/document/welcome.js"
-import "@panes/checklist/checklist.js"
-import "@panes/settings/settings.js"
-import "@panes/graph/graph.js"
-import "@panes/layers/layers.js"
-import "@panes/model/model.js"
-import "@panes/editor/editor.js"
-import "@panes/table/table.js"
-import "@panes/document/document.js"
-import "@panes/converter/converter.js"
-import "@panes/audio/audio.js"
-import "@panes/code/code.js"
-import "@panes/terminal/terminal.js"
-import "@panes/chat/chat.js"
-
 async function boot() {
   try {
     await queries.init();
+
+    panes.setContext({ queries });
+
+    panes.registerPane("left", "welcome-root",    () => import("@panes/document/welcome.js"));
+    panes.registerPane("left", "checklist-root",  () => import("@panes/checklist/checklist.js"));
+    panes.registerPane("left", "settings-root",   () => import("@panes/settings/settings.js"));
+    panes.registerPane("left", "editor-root",     () => import("@panes/editor/editor.js"));
+    panes.registerPane("left", "results",         () => import("@panes/table/table.js"));
+    panes.registerPane("left", "doc-root",        () => import("@panes/document/document.js"));
+    panes.registerPane("left", "converter-root",  () => import("@panes/converter/converter.js"));
+    panes.registerPane("left", "code-root",       () => import("@panes/code/code.js"));
+    panes.registerPane("left", "terminal-root",   () => import("@panes/terminal/terminal.js"));
+    panes.registerPane("left", "chat-root",       () => import("@panes/chat/chat.js"));
+
+    panes.registerPane("right", "audio-root",      () => import("@panes/audio/audio.js"));
+    panes.registerPane("right", "graph-root",     () => import("@panes/graph/graph.js"), { cache: false });
+    panes.registerPane("right", "layers-root",   () => import("@panes/layers/layers.js"));
+    panes.registerPane("right", "model-root",     () => import("@panes/model/model.js"));
+
     panes.initLeftTabs();
     panes.initRightTabs();
   } catch (e) {

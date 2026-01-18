@@ -1,0 +1,36 @@
+.code-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.code-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.code-status {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.code-box {
+  width: 100%;
+}
+
+.code-block {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 10px;
+  overflow: auto;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.code-panel-error {
+  color: #b00020;
+}

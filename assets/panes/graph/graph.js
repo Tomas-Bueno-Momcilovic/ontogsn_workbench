@@ -65,6 +65,7 @@ export async function visualizeSPO(rows, {
 
   const svg = d3.select(svgNode);
   const g = svg.select(".gsn-viewport");
+  if (g.empty()) throw new Error("graph.html is missing .gsn-viewport");
   const defs = svg.append("defs");
   const gOverCollections = g.append("g").attr("class", "gsn-overlay-collections");
 
@@ -690,10 +691,7 @@ export async function visualizeSPO(rows, {
       .on("end interrupt", () => { svg.call(zoom); disableDblZoom(); });
   }
   function destroy() {
-    rootEl.innerHTML = "";
-    rootEl.querySelector(".gsn-graph-ui")?.remove();
-    rootEl.querySelector(".gsn-graph-hud")?.remove();
-    rootEl.querySelector("svg.gsn-svg")?.remove();
+    rootEl.replaceChildren();
   }
 
   function clearCollections() {
@@ -904,17 +902,15 @@ class GraphApp {
     };
   }
 
-  async init({ qs } = {}) {
+  async init({ qs, rootEl } = {}) {
 
-    this.rootEl = resolveEl("#graph-root", { required: true, name: "GraphApp root" });
+    this.rootEl = rootEl || resolveEl("#graph-root", { required: true, name: "GraphApp root" });
 
     if (qs) this.qs = qs;
     if (!this.qs) throw new Error("GraphApp.init: qs is required");
 
     if (this._wired) return;
     this._wired = true;
-
-    await this.run(this.paths.q.visualize);
 
     this._wireGraphBus();
     this._attachUI();
@@ -932,6 +928,10 @@ class GraphApp {
       this.rootEl?.removeEventListener("change", this._onDocChange);
       this._onDocChange = null;
     }
+
+    try { this.graphCtl?.destroy?.(); } catch {}
+    this.graphCtl = null;
+    this.overlays.clear();
   }
 
   async run(queryPath, overlayClass = null) {
@@ -1268,44 +1268,79 @@ class GraphApp {
 }
 
 // ---------------------------------------------------------------------------
-// Graph pane wiring (self-contained, like layers.js / model.js)
+// PaneManager lifecycle (lazy-load safe)
 // ---------------------------------------------------------------------------
 
-let _graphPaneApp = null;
-let _graphPaneInitPromise = null;
+let _app = null;
+let _offRightTab = null;
 
-async function ensureGraphPaneApp() {
-  if (_graphPaneInitPromise) return _graphPaneInitPromise;
+async function ensureApp(rootEl = null) {
+  if (_app) return _app;
 
-  _graphPaneInitPromise = (async () => {
-    await queries.init();
+  await queries.init();
 
-    _graphPaneApp = createGraphApp({
-      panes,
-      bus,
-      qs: queries.qs,
-      paths: PATHS,
-      labelFn: shortenIri,
-    });
+  _app = createGraphApp({
+    panes,
+    bus,
+    qs: queries.qs,
+    paths: PATHS,
+    labelFn: shortenIri,
+  });
 
-    await _graphPaneApp.init(); // wires UI + click propagation
-    return _graphPaneApp;
-  })();
-
-  return _graphPaneInitPromise;
+  // GraphApp.init() currently resolves #graph-root itself
+  await _app.init({ rootEl });
+  return _app;
 }
 
-// Listen like other panes do
-bus.on("right:tab", async (ev) => {
+function onRightTab(ev) {
   const d = ev?.detail || {};
   if (d.view !== "graph") return;
 
-  const app = await ensureGraphPaneApp();
-
-  // Prefer query from the tab; otherwise default
+  // run requested query or default
   const q = d.query || PATHS?.q?.visualize || "data/queries/visualize_graph.sparql";
-  await app.run(q);
 
-  // Optional: helpful debug once
-  console.log("[graph] rendered via right:tab", d);
-});
+  ensureApp()
+    .then(app => app.run(q))
+    .catch(err => console.warn("[graph] right:tab render failed:", err));
+}
+
+export async function mount({ root }) {
+
+  await ensureApp(root);
+
+  if (!_offRightTab) {
+    _offRightTab = bus.on("right:tab", onRightTab);
+  }
+
+  // initial render (default visualize)
+  const q = PATHS?.q?.visualize || "data/queries/visualize_graph.sparql";
+  await _app.run(q);
+
+  // cleanup
+  return () => {
+    try { _offRightTab?.(); } catch {}
+    _offRightTab = null;
+
+    try { _app?.destroy?.(); } catch {}
+    _app = null;
+  };
+}
+
+export async function resume() {
+  // optional: refit after coming back
+  try { _app?.graphCtl?.fit?.(); } catch {}
+}
+
+export async function suspend() {
+  // optional: stop reacting while hidden (if you want)
+  // (You can leave it active too; both are fine.)
+}
+
+export async function unmount() {
+  // hard cleanup (in case PaneManager calls unmount directly)
+  try { _offRightTab?.(); } catch {}
+  _offRightTab = null;
+
+  try { _app?.destroy?.(); } catch {}
+  _app = null;
+}
