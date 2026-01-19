@@ -601,3 +601,9 @@
 
 .gsn-toggle { display:inline-flex; gap:6px; align-items:center; font-size:12px; opacity:.9; }
 .gsn-toggle input { transform: translateY(1px); }
+
+.gsn-link {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

@@ -93,61 +93,63 @@ export function visualizeLayers(
     });
   }
 
-  function laneTreeOrder(items, laneIdx) {
+  function laneTreeX(items, laneIdx, depth, parents) {
     const ids = items.map(e => String(e.id));
-    const set = new Set(ids);
-
-    // pick ONE parent per node within this lane (tree requires single parent)
-    const parentId = new Map();
-
-    for (const id of ids) {
-      const ps = parents.get(id);
-      if (!ps) continue;
-
-      const inside = [...ps].filter(p => p && p !== id && set.has(p));
-      if (!inside.length) continue;
-
-      // prefer parent that is "higher" in the global BFS depth
-      inside.sort((a, b) => (depth.get(a) ?? 999) - (depth.get(b) ?? 999) || String(a).localeCompare(String(b)));
-      parentId.set(id, inside[0]);
-    }
+    const laneSet = new Set(ids);
 
     const ROOT = `__lane_root__${laneIdx}`;
 
-    const data = [
-      { id: ROOT, parentId: null },
-      ...ids.map(id => ({
-        id,
-        parentId: parentId.get(id) || ROOT
-      }))
-    ];
+    // pick ONE parent per node (tree needs single parent)
+    // but only if parent is also in this lane AND is "higher" in global supportedBy depth
+    const rows = [{ id: ROOT, parentId: null }];
+
+    for (const id of ids) {
+      const ps = parents.get(id);
+      const dChild = depth.get(id) ?? 0;
+
+      let chosen = null;
+
+      if (ps && ps.size) {
+        const inside = [...ps].filter(p =>
+          p && p !== id &&
+          laneSet.has(p) &&
+          ((depth.get(p) ?? -1) < dChild)   // prevents cycles / weirdness
+        );
+
+        if (inside.length) {
+          inside.sort((a, b) =>
+            (depth.get(a) ?? 999) - (depth.get(b) ?? 999) ||
+            String(a).localeCompare(String(b))
+          );
+          chosen = inside[0];
+        }
+      }
+
+      rows.push({ id, parentId: chosen ?? ROOT });
+    }
 
     try {
       const strat = d3.stratify()
         .id(d => d.id)
         .parentId(d => d.parentId);
 
-      const root = strat(data);
+      const root = strat(rows);
 
-      // tree gives us a nice ordering even if we don't use its exact coordinates
-      d3.tree().size([1, 1])(root);
+      // unit layout → we scale it later to lane width
+      d3.tree().nodeSize([1, 1])(root);
 
-      // pre-order traversal = parent before children, siblings grouped
-      const order = new Map();
-      let k = 0;
-      root.each(node => {
-        if (node.id === ROOT) return;
-        order.set(node.id, k++);
-      });
+      const xMap = new Map();
+      for (const n of root.descendants()) {
+        if (n.id === ROOT) continue;
+        xMap.set(n.id, n.x);
+      }
+      return xMap;
 
-      return order;
-    } catch {
-      // fallback: stable ordering
-      const order = new Map();
-      ids
-        .sort((a, b) => (depth.get(a) ?? 999) - (depth.get(b) ?? 999) || label(a).localeCompare(label(b)))
-        .forEach((id, i) => order.set(id, i));
-      return order;
+    } catch (e) {
+      // fallback: stable order
+      const xMap = new Map();
+      ids.forEach((id, i) => xMap.set(id, i));
+      return xMap;
     }
   }
 
@@ -403,7 +405,7 @@ export function visualizeLayers(
   const H = svgNode.clientHeight || height;
 
   const L = Math.max(1, laneItems.length);
-  const laneW = Math.max(160, (W - PAD.l - PAD.r) / L);
+  const laneW = Math.max(260, (W - PAD.l - PAD.r) / L);
   const colX = (i) => PAD.l + i * laneW + laneW / 2;
   const laneHeight = Math.max(60, H - PAD.t - PAD.b);
 
@@ -445,64 +447,105 @@ export function visualizeLayers(
 
   const pos = new Map(); // id -> { x, y, label }
   const primaryPos = new Map();
+  // global supportedBy levels (align rows across lanes)
+  const maxLevel = Math.max(0, ...depth.values());
+  const levelStep = laneHeight / (maxLevel + 2);
+
+  // padding inside each lane box
+  const INPAD_X = 12;
+
   for (let i = 0; i < L; i++) {
     const items = laneItems[i] || [];
 
-    // ✅ tree-derived ordering
-    const ord = laneTreeOrder(items, i);
+    const laneLeft = PAD.l + i * laneW;
+    const laneRight = laneLeft + laneW;
 
-    const ordered = [...items].sort((a, b) => {
-      const oa = ord.get(String(a.id)) ?? 1e9;
-      const ob = ord.get(String(b.id)) ?? 1e9;
-      return oa - ob || String(a.id).localeCompare(String(b.id));
-    });
+    // tree-ish spread for X inside this lane
+    const xMap = laneTreeX(items, i, depth, parents);
+    const xs = [...xMap.values()];
 
-    const step = ordered.length ? laneHeight / (ordered.length + 1) : laneHeight / 2;
+    const minX = xs.length ? Math.min(...xs) : 0;
+    const maxX = xs.length ? Math.max(...xs) : 0;
+    const midX = (minX + maxX) / 2;
 
-    ordered.forEach((e, idx) => {
-      const x = colX(i);
-      const y = PAD.t + (idx + 1) * step;
+    const usableW = Math.max(10, laneW - INPAD_X * 2);
+    const scaleX = (maxX > minX) ? (usableW / (maxX - minX)) : 0;
 
-      const lbl = label(e.id);
+    for (const e of items) {
+      const id = e.id;
 
-      pos.set(e.key, { x, y, label: lbl, id: e.id, isGhost: !!e.isGhost });
+      const lbl = label(id);
+      const w = labelWidthPx(lbl);
+
+      //X: center of lane + scaled tree offset
+      const x0 = laneLeft + laneW / 2;
+      const tx = xMap.get(String(id)) ?? 0;
+      let x = x0 + (scaleX ? (tx - midX) * scaleX : 0);
+
+      //Y: fixed by supportedBy level (leveled like graph pane)
+      const lvl = depth.get(id) ?? 0;
+      const y = PAD.t + (lvl + 1) * levelStep;
+
+      // keep node fully inside lane
+      const minAllowed = laneLeft + INPAD_X + w / 2;
+      const maxAllowed = laneRight - INPAD_X - w / 2;
+      x = Math.max(minAllowed, Math.min(maxAllowed, x));
+
+      pos.set(e.key, {
+        x, y,
+        label: lbl,
+        id: e.id,
+        lane: e.lane,
+        level: depth.get(e.id) ?? 0,
+        isGhost: !!e.isGhost
+      });
+
 
       if (primaryKeyById.get(e.id) === e.key) {
         primaryPos.set(e.id, { x, y, label: lbl });
       }
-    });
-  }
-
-
-  // --- Links (supportedBy only) --------------------------------------
-
-  const linkH = d3.linkHorizontal().x((d) => d.x).y((d) => d.y);
-  const links = [];
-
-  for (const [p, kids] of children.entries()) {
-    const source = primaryPos.get(p);
-    if (!source) continue;
-
-    for (const c of kids) {
-      const target = primaryPos.get(c);
-      if (!target) continue;
-      links.push({ source, target });
     }
   }
 
-  g.selectAll("path.gsn-link")
-    .data(links)
-    .join("path")
-    .attr("class", "gsn-link")
-    .attr("d", (d) =>
-      linkH({
-        source: { x: d.source.x + labelWidthPx(d.source.label) / 2, y: d.source.y },
-        target: { x: d.target.x - labelWidthPx(d.target.label) / 2, y: d.target.y },
-      })
-    )
-    .attr("marker-end", `url(#${idArrow})`)
-    .append("title")
-    .text("supported by");
+
+  const LINK_PAD = 3; // tiny gap between arrowhead and node outline
+
+  function nodeHalfW(n) {
+    // circles use r = max(w,h)/2 in your renderer
+    if (n.kind === "solution") return Math.max(n.w, n.h) / 2;
+    return n.w / 2;
+  }
+  function nodeHalfH(n) {
+    if (n.kind === "solution") return Math.max(n.w, n.h) / 2;
+    return n.h / 2;
+  }
+
+  // --- Links (supportedBy only) --------------------------------------
+
+  const linkV = d3.linkVertical().x(d => d.x).y(d => d.y);
+  const linkH = d3.linkHorizontal().x(d => d.x).y(d => d.y);
+
+  function edgePath(src, tgt) {
+    const sameLane = (src.lane === tgt.lane);
+
+    // ✅ Within a lane: draw like a tree (top -> bottom)
+    if (sameLane) {
+      return linkV({
+        source: { x: src.x, y: src.y + nodeHalfH(src) + LINK_PAD },
+        target: { x: tgt.x, y: tgt.y - nodeHalfH(tgt) - LINK_PAD },
+      });
+    }
+
+    // ✅ Across lanes: draw left->right (or right->left) cleanly
+    const right = tgt.x >= src.x;
+    const sx = src.x + (right ? nodeHalfW(src) : -nodeHalfW(src)) + (right ? LINK_PAD : -LINK_PAD);
+    const tx = tgt.x - (right ? nodeHalfW(tgt) : -nodeHalfW(tgt)) - (right ? LINK_PAD : -LINK_PAD);
+
+    return linkH({
+      source: { x: sx, y: src.y },
+      target: { x: tx, y: tgt.y },
+    });
+  }
 
   // --- Nodes ----------------------------------------------------------
 
@@ -517,6 +560,8 @@ export function visualizeLayers(
       label: lbl,
       x: v.x,
       y: v.y,
+      lane: v.lane,
+      level: v.level,
       w: labelWidthPx(lbl),
       h: NODE_H,
       kind: inferGsnKind(baseId, lbl, typeIri),
@@ -525,6 +570,91 @@ export function visualizeLayers(
     };
   });
 
+  function spreadLaneLevels(nodes, {
+    laneLeft,
+    laneRight,
+    gap = 14,
+    pad = 10,
+  } = {}) {
+    const left = laneLeft + pad;
+    const right = laneRight - pad;
+
+    // group by level (tree depth)
+    const groups = d3.group(nodes, d => d.level);
+
+    for (const arr of groups.values()) {
+      arr.sort((a, b) => a.x - b.x);
+
+      // forward pass: enforce min spacing
+      for (let i = 1; i < arr.length; i++) {
+        const prev = arr[i - 1];
+        const cur = arr[i];
+        const need = prev.x + nodeHalfW(prev) + gap + nodeHalfW(cur);
+        if (cur.x < need) cur.x = need;
+      }
+
+      // clamp right
+      const last = arr[arr.length - 1];
+      const overR = (last.x + nodeHalfW(last)) - right;
+      if (overR > 0) arr.forEach(n => n.x -= overR);
+
+      // clamp left
+      const first = arr[0];
+      const overL = left - (first.x - nodeHalfW(first));
+      if (overL > 0) arr.forEach(n => n.x += overL);
+
+      // second pass after clamping
+      for (let i = 1; i < arr.length; i++) {
+        const prev = arr[i - 1];
+        const cur = arr[i];
+        const need = prev.x + nodeHalfW(prev) + gap + nodeHalfW(cur);
+        if (cur.x < need) cur.x = need;
+      }
+    }
+  }
+
+  for (let lane = 0; lane < L; lane++) {
+    const laneLeft = PAD.l + lane * laneW;
+    const laneRight = laneLeft + laneW;
+
+    const inLane = nodes.filter(n => n.lane === lane);
+    spreadLaneLevels(inLane, { laneLeft, laneRight, gap: 16 });
+  }
+
+  // ---------------------------------------------------------------------
+  // Links (supportedBy) — MUST be built AFTER nodes are spread
+  // ---------------------------------------------------------------------
+
+  // Primary node instance per base id (used for routing)
+  const primaryNodeById = new Map();
+  for (const n of nodes) {
+    if (primaryKeyById.get(n.id) === n.key) primaryNodeById.set(n.id, n);
+  }
+
+  // Build supportedBy links using node objects (not {x,y,label})
+  const links = [];
+  for (const [p, kids] of children.entries()) {
+    const source = primaryNodeById.get(p);
+    if (!source) continue;
+
+    for (const c of kids) {
+      const target = primaryNodeById.get(c);
+      if (!target) continue;
+      links.push({ source, target });
+    }
+  }
+
+  // Render links BEHIND nodes (separate group)
+  const gLinks = g.append("g").attr("class", "gsn-links");
+
+  gLinks.selectAll("path.gsn-link")
+    .data(links)
+    .join("path")
+    .attr("class", "gsn-link")
+    .attr("d", d => edgePath(d.source, d.target))
+    .attr("marker-end", `url(#${idArrow})`)
+    .append("title")
+    .text("supported by");
 
   const nodeG = g
     .selectAll("g.gsn-node")
@@ -534,7 +664,6 @@ export function visualizeLayers(
     .attr("data-id", (d) => d.id)
     .attr("data-key", (d) => d.key)
     .attr("transform", (d) => `translate(${d.x},${d.y})`);
-
 
   const shapeG = nodeG.append("g").attr("class", "gsn-node-shape");
 
@@ -696,7 +825,7 @@ export function visualizeLayers(
     const hubsByCtx = new Map();
 
     for (const [ctx, itemsSet] of grouped.entries()) {
-      const host = primaryPos.get(ctx);
+      const host = primaryNodeById.get(ctx);
       if (!host) continue;
 
       const idx = hubsByCtx.get(ctx) ?? 0;
