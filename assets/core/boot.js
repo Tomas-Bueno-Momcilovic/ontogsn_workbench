@@ -7,7 +7,6 @@ async function boot() {
 
     panes.setContext({ queries });
 
-    panes.registerPane("left", "welcome-root",    () => import("@panes/document/welcome.js"));
     panes.registerPane("left", "checklist-root",  () => import("@panes/checklist/checklist.js"));
     panes.registerPane("left", "settings-root",   () => import("@panes/settings/settings.js"));
     panes.registerPane("left", "editor-root",     () => import("@panes/editor/editor.js"));

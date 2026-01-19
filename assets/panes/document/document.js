@@ -375,9 +375,6 @@ export async function mount({ root }) {
 
     const varHint = el.getAttribute("data-doc-var") || "";
 
-    // bring doc pane to front (optional)
-    panes.activateLeftTab?.("tab-doc");
-
     runDocQueryInto(root, queryPath, varHint).catch((err) => {
       console.error("[DocView] error loading document", err);
       root.innerHTML =
