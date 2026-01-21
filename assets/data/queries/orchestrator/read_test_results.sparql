@@ -1,0 +1,11 @@
+PREFIX tap: <https://example.org/tap#>
+
+SELECT ?case ?prompt ?output ?verdict ?timestamp WHERE {
+  ?run a tap:TestExecution ;
+       tap:case ?case .
+  OPTIONAL { ?run tap:prompt ?prompt . }
+  OPTIONAL { ?run tap:output ?output . }
+  OPTIONAL { ?run tap:judgeVerdict ?verdict . }
+  OPTIONAL { ?run tap:timestamp ?timestamp . }
+}
+ORDER BY DESC(?timestamp)

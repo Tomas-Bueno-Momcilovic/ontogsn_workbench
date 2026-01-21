@@ -1,0 +1,11 @@
+PREFIX tap: <https://example.org/tap#>
+
+SELECT ?case ?risk ?label ?prob ?timestamp WHERE {
+  ?cls a tap:RiskClassification ;
+       tap:case ?case ;
+       tap:risk ?risk ;
+       tap:label ?label ;
+       tap:probability ?prob .
+  OPTIONAL { ?cls tap:timestamp ?timestamp . }
+}
+ORDER BY DESC(?timestamp) ?case ?risk

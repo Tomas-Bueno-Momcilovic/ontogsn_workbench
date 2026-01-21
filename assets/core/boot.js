@@ -21,6 +21,8 @@ async function boot() {
     panes.registerPane("right", "graph-root",     () => import("@panes/graph/graph.js"), { cache: false });
     panes.registerPane("right", "layers-root",   () => import("@panes/layers/layers.js"));
     panes.registerPane("right", "model-root",     () => import("@panes/model/model.js"));
+    panes.registerPane("right", "orchestrator-root", () => import("@panes/orchestrator/orchestrator.js"));
+
 
     panes.initLeftTabs();
     panes.initRightTabs();

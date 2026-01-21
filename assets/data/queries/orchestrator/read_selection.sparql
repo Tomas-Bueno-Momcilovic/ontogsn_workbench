@@ -1,0 +1,10 @@
+PREFIX tap: <https://example.org/tap#>
+
+SELECT ?risk ?case ?order ?timestamp WHERE {
+  ?sel a tap:Selection ;
+       tap:risk ?risk ;
+       tap:case ?case .
+  OPTIONAL { ?sel tap:order ?order . }
+  OPTIONAL { ?sel tap:timestamp ?timestamp . }
+}
+ORDER BY ?risk ?order

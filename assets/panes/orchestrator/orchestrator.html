@@ -1,0 +1,42 @@
+<div class="orc">
+  <header class="orc-bar">
+    <div class="orc-title">
+      <div class="orc-title-row">
+        <h2>Orchestrator</h2>
+        <span class="orc-pill" data-el="stagePill">evidence</span>
+      </div>
+      <div class="orc-sub" data-el="summary">Loading…</div>
+    </div>
+
+    <div class="orc-actions">
+      <select class="orc-select" data-el="riskFilter" title="Filter by risk"></select>
+      <input class="orc-search" data-el="caseFilter" type="search" placeholder="Filter cases…" />
+      <button class="orc-btn" data-el="refreshBtn" title="Refresh">Refresh</button>
+      <button class="orc-btn" data-el="exportBtn" title="Export filtered evidence JSON">Export</button>
+    </div>
+  </header>
+
+  <main class="orc-main">
+    <aside class="orc-side">
+      <section class="orc-panel">
+        <div class="orc-panel-head">
+          <h3>Selection</h3>
+          <span class="orc-muted" data-el="selCount">–</span>
+        </div>
+        <div class="orc-panel-body" data-el="selection"></div>
+      </section>
+
+      <section class="orc-panel">
+        <div class="orc-panel-head">
+          <h3>Coverage</h3>
+          <span class="orc-muted" data-el="riskCount">–</span>
+        </div>
+        <div class="orc-panel-body" data-el="coverage"></div>
+      </section>
+    </aside>
+
+    <section class="orc-cards" data-el="cards">
+      <!-- Evidence cards render here -->
+    </section>
+  </main>
+</div>

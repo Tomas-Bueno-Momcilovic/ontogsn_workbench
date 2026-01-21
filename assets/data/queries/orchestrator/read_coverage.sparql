@@ -1,0 +1,9 @@
+PREFIX tap: <https://example.org/tap#>
+
+SELECT ?risk (AVG(?prob) AS ?avgProb) WHERE {
+  ?cls a tap:RiskClassification ;
+       tap:risk ?risk ;
+       tap:probability ?prob .
+}
+GROUP BY ?risk
+ORDER BY DESC(?avgProb)
