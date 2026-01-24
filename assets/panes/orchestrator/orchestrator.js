@@ -21,7 +21,6 @@ const CSS = new URL("./orchestrator.css", import.meta.url);
 /**
  * IMPORTANT:
  * These URLs must resolve to /assets/data/queries/...
- * From /assets/panes/orchestrator/orchestrator.js -> ../../../ goes to /assets/
  */
 const Q_SELECTION = new URL("../../data/queries/orchestrator/read_selection.sparql", import.meta.url);
 const Q_TEST_RESULTS = new URL("../../data/queries/orchestrator/read_test_results.sparql", import.meta.url);
