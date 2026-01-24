@@ -16,8 +16,8 @@ const HTML = new URL("./chat.html", import.meta.url);
 const CSS  = new URL("./chat.css",  import.meta.url);
 
 // repo paths (resolved via fetchRepoTextCached + from/upLevels)
-const Q_CONTEXT = "data/queries/chat_context.sparql";
-const Q_NEIGH   = "data/queries/chat_neighborhood.sparql";
+const Q_CONTEXT = "./data/queries/read_chatContext.sparql";
+const Q_NEIGH   = "./data/queries/read_chatNeighborhood.sparql";
 
 // localStorage keys
 const KEY_K   = "openrouter_api_key";
