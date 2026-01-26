@@ -32,14 +32,15 @@
 
 .terminal-topbar button {
   padding: 6px 10px;
-  border: 1px solid #d0d0d0;
+  border: 1px solid var(--term-border);
   border-radius: 6px;
-  background: white;
+  background: var(--term-bg);
+  color: var(--term-fg);
   cursor: pointer;
 }
 
 .terminal-topbar button:hover {
-  background: #f5f5f5;
+  background: var(--term-hover);
 }
 
 .terminal-out {
@@ -77,8 +78,26 @@
   --term-meta: #666666;
 
   --term-prompt: #0a7a00;
+
+  --term-hover: #f5f5f5;
+  --term-focus: #b7d4ff;
 }
 
+html[data-theme="dark"] .terminal {
+  --term-bg: #111216;
+  --term-fg: #e8e8e8;
+  --term-border: #3a3b44;
+
+  --term-in: #8ab4f8;
+  --term-ok: #7cff8a;
+  --term-err: #ff6b6b;
+  --term-meta: #aaaaaa;
+
+  --term-prompt: #7cff8a;
+
+  --term-hover: #1c1d23;
+  --term-focus: #4c8dff;
+}
 
 .terminal-line.in   { color: var(--term-in); }
 .terminal-line.ok   { color: var(--term-ok); }
@@ -102,17 +121,14 @@
   min-width: 120px;
   padding: 8px 10px;
 
-  border: 1px solid #d0d0d0;
+  border: 1px solid var(--term-border);
   border-radius: 8px;
+
+  background: var(--term-bg);
+  color: var(--term-fg);
 
   font: inherit;
 }
-
-.terminal-input {
-  background: #ffffff;
-  color: #111111;
-}
-
 
 .terminal-hint {
   font-size: 12px;
@@ -121,7 +137,7 @@
 
 .terminal-topbar button:focus-visible,
 .terminal-input:focus-visible {
-  outline: 2px solid #b7d4ff;
+  outline: 2px solid var(--term-focus);
   outline-offset: 2px;
 }
 

@@ -12,4 +12,7 @@
   padding: .5rem;
   min-height: 120px;
   white-space: pre-wrap;
+  border-color: var(--border);
+  background: var(--panel-bg);
+  color: var(--fg);
 }

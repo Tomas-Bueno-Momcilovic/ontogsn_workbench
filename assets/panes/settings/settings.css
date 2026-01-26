@@ -228,3 +228,62 @@
 }
 
 .cfg-error{ color: #c44; }
+
+html[data-theme="dark"] .cfg-panel{
+  --cfg-border:  #2b2c32;
+  --cfg-border2: #3a3b44;
+  --cfg-soft:    #15161a;
+  --cfg-soft2:   #111216;
+  --cfg-accent:  #8ab4f8;
+}
+
+html[data-theme="dark"] .cfg-panel .cfg-btn{
+  background: var(--cfg-soft2);
+  border-color: var(--cfg-border);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .cfg-panel .cfg-btn:hover{
+  background: #1c1d23;
+}
+
+/* “Card” surfaces */
+html[data-theme="dark"] .cfg-section,
+html[data-theme="dark"] .cfg-tablewrap{
+  background: #111216;
+  border-color: var(--cfg-border);
+}
+
+/* Inputs */
+html[data-theme="dark"] .cfg-input,
+html[data-theme="dark"] .cfg-textarea{
+  background: #0e0f11;
+  color: var(--fg);
+  border-color: var(--cfg-border2);
+}
+
+/* Status block */
+html[data-theme="dark"] .cfg-status{
+  background: #111216;
+  border-color: var(--cfg-border);
+}
+
+html[data-theme="dark"] .cfg-status[data-kind="err"]{
+  background: rgba(198,40,40,0.14);
+  border-color: rgba(198,40,40,0.55);
+}
+
+/* Code-ish inline blocks */
+html[data-theme="dark"] .cfg-subtitle code{
+  background: #15161a;
+  border-color: var(--cfg-border);
+}
+
+/* Table header + stripes */
+html[data-theme="dark"] .cfg-table thead th{
+  background: #16171c;
+}
+
+html[data-theme="dark"] .cfg-table tbody tr:nth-child(2n){
+  background: #15161a;
+}

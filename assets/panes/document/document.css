@@ -7,3 +7,7 @@
 mark.doc-hit {
   padding: 0 .1em;
 }
+
+html[data-theme="dark"] .doc-hit {
+  background: rgba(138, 180, 248, 0.18);
+}
