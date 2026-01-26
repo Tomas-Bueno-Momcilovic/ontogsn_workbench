@@ -1,75 +1,29 @@
 import queries from "@core/queries.js";
-import { bus } from "@core/events.js";
-import {
-  mountTemplate,
-  bindingsToRows,
-  shortenIri,
-  cleanRdfLiteral,
-  downloadText,
-  fetchText
-} from "@core/utils.js";
+import { bus as coreBus } from "@core/events.js";
+import { mountTemplate, shortenIri, cleanRdfLiteral, downloadText, fetchText, escapeHtml } from "@core/utils.js";
+import { MIME_TTL } from "@rdf/config.js";
 
 import { getOrchestratorOntologyUrls } from "./config.js";
 
 const app = queries;
 
 let _ontoLoadPromise = null;
+let _ontoBaseKey = null;
 
 const HTML = new URL("./orchestrator.html", import.meta.url);
 const CSS = new URL("./orchestrator.css", import.meta.url);
 
-/**
- * IMPORTANT:
- * These URLs must resolve to /assets/data/queries/...
- */
 const Q_SELECTION = new URL("../../data/queries/orchestrator/read_selection.sparql", import.meta.url);
 const Q_TEST_RESULTS = new URL("../../data/queries/orchestrator/read_test_results.sparql", import.meta.url);
 const Q_CLASSIFY = new URL("../../data/queries/orchestrator/read_classifications.sparql", import.meta.url);
 const Q_COVERAGE = new URL("../../data/queries/orchestrator/read_coverage.sparql", import.meta.url);
 const Q_CASE_TO_SOL = new URL("../../data/queries/orchestrator/read_case_to_solution.sparql", import.meta.url); // optional
 
-async function ensureOrchestratorOntologiesLoaded({ bust = false, base } = {}) {
-  if (_ontoLoadPromise && !bust) return _ontoLoadPromise;
-  if (bust) _ontoLoadPromise = null;
-
-  _ontoLoadPromise = (async () => {
-    await app.init();
-
-    const store = app.store;
-    if (!store) throw new Error("[orchestrator] app.store not initialized");
-
-    const parser = new N3.Parser();
-
-    // ✅ only pass base if it's actually provided
-    const urls = (base == null)
-      ? getOrchestratorOntologyUrls()
-      : getOrchestratorOntologyUrls({ base });
-
-    const loaded = [];
-
-    for (const url of urls) {
-      try {
-        const ttl = await fetchText(url, { cache: bust ? "no-store" : "force-cache", bust });
-        const quads = parser.parse(ttl);
-
-        if (typeof store.addQuads === "function") store.addQuads(quads);
-        else if (typeof store.addQuad === "function") quads.forEach(q => store.addQuad(q));
-        else if (typeof store.add === "function") quads.forEach(q => store.add(q));
-        else throw new Error("Store does not support addQuads/addQuad/add");
-
-        loaded.push({ url, quads: quads.length });
-      } catch (e) {
-        console.warn("[orchestrator] failed to load ontology:", url, e);
-      }
-    }
-
-    return loaded;
-  })();
-
-  return _ontoLoadPromise;
-}
-
-
+// --- module state ----------------------------------------------------------
+let _root = null;
+let _bus = null;
+let _cleanup = null;
+let _refresh = null;
 
 function $(root, sel) {
   return root.querySelector(sel);
@@ -78,6 +32,10 @@ function $(root, sel) {
 function text(v) {
   if (v == null) return "";
   return String(v);
+}
+
+function esc(v) {
+  return escapeHtml(text(v));
 }
 
 function normLit(v) {
@@ -93,23 +51,67 @@ function fmtProb(v) {
 function badgeForLabel(label, prob) {
   const L = (label || "").toLowerCase();
   const p = Number(prob);
-  if (L === "yes" || L === "unsafe") return { cls: "bad", txt: `unsafe ${fmtProb(p)}` };
-  if (L === "no" || L === "safe") return { cls: "good", txt: `safe ${fmtProb(p)}` };
+  if (L === "yes" || L === "unsafe") return { cls: "bad", txt: `unsafe ${fmtProb(p)}`.trim() };
+  if (L === "no" || L === "safe") return { cls: "good", txt: `safe ${fmtProb(p)}`.trim() };
   if (L === "failed") return { cls: "warn", txt: `failed` };
   return { cls: "", txt: `${label ?? "?"} ${fmtProb(p)}`.trim() };
 }
 
 async function runQuery(pathUrl) {
-  // queries.runPath() returns whatever your QueryService returns.
-  // In your codebase, bindingsToRows expects an *iterable* of bindings.
-  // Many of your panes use QueryService objects that are iterable.
-  const res = await queries.runPath(pathUrl, { cache: "no-store", bust: true });
-
-  // Make it robust for either: iterable OR { rows: iterable }
-  const iter = res?.rows ?? res;
-  return bindingsToRows(iter ?? []);
+  // QueriesApp.runPath -> QueryService.runPath -> QueryResult { kind:"rows", rows:[...] }
+  const res = await app.runPath(String(pathUrl), { cache: "no-store", bust: true });
+  return Array.isArray(res) ? res : (res?.rows ?? []);
 }
 
+// Load additional orchestrator ontologies into the existing Oxigraph store.
+async function ensureOrchestratorOntologiesLoaded({ bust = false, base } = {}) {
+  const baseKey = String(base ?? "");
+  if (_ontoBaseKey !== baseKey) {
+    _ontoBaseKey = baseKey;
+    _ontoLoadPromise = null;
+  }
+
+  if (_ontoLoadPromise && !bust) return _ontoLoadPromise;
+  if (bust) _ontoLoadPromise = null;
+
+  _ontoLoadPromise = (async () => {
+    await app.init();
+
+    const store = app.store;
+    if (!store) throw new Error("[orchestrator] app.store not initialized");
+
+    const urls = (base == null)
+      ? getOrchestratorOntologyUrls()
+      : getOrchestratorOntologyUrls({ base });
+
+    const loaded = [];
+
+    for (const url of urls) {
+      try {
+        const ttl = await fetchText(url, {
+          cache: bust ? "no-store" : "force-cache",
+          bust
+        });
+
+        // Oxigraph Store supports .load(text, mime, baseIri)
+        store.load(ttl, {
+          format: MIME_TTL,
+          base_iri: String(url),
+        });
+
+        loaded.push({ url });
+      } catch (e) {
+        console.warn("[orchestrator] failed to load ontology:", url, e);
+      }
+    }
+
+    return loaded;
+  })();
+
+  return _ontoLoadPromise;
+}
+
+// --- helpers ---------------------------------------------------------------
 function groupBy(arr, keyFn) {
   const m = new Map();
   for (const x of arr) {
@@ -200,14 +202,16 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
   return Array.from(byCase.values()).filter(e => e.caseId);
 }
 
+// --- rendering -------------------------------------------------------------
 function renderRiskFilter(selEl, risks, selectedRisk) {
   const opts = [{ v: "__all__", label: "All risks" }, ...risks.map(r => ({ v: r, label: r }))];
-  selEl.innerHTML = "";
+  selEl.replaceChildren();
+
   for (const o of opts) {
     const opt = document.createElement("option");
     opt.value = o.v;
     opt.textContent = o.label;
-    if (o.v === selectedRisk) opt.selected = true;
+    opt.selected = (o.v === selectedRisk);
     selEl.appendChild(opt);
   }
 }
@@ -215,19 +219,27 @@ function renderRiskFilter(selEl, risks, selectedRisk) {
 function renderSelection(el, selectionRows, onPickCase) {
   const byRisk = groupBy(selectionRows || [], r => text(r.risk || "unknown"));
   const risks = Array.from(byRisk.keys()).sort();
-  el.innerHTML = "";
+  el.replaceChildren();
 
   for (const risk of risks) {
     const rows = byRisk.get(risk) || [];
+
     const wrap = document.createElement("div");
     wrap.className = "sel-risk";
 
     const head = document.createElement("div");
     head.className = "sel-risk-head";
-    head.innerHTML = `
-      <div class="sel-risk-name">${risk}</div>
-      <div class="orc-muted">${rows.length}</div>
-    `;
+
+    const nameEl = document.createElement("div");
+    nameEl.className = "sel-risk-name";
+    nameEl.textContent = risk;
+
+    const cntEl = document.createElement("div");
+    cntEl.className = "orc-muted";
+    cntEl.textContent = String(rows.length);
+
+    head.appendChild(nameEl);
+    head.appendChild(cntEl);
     wrap.appendChild(head);
 
     rows.sort((a, b) => {
@@ -253,24 +265,38 @@ function renderSelection(el, selectionRows, onPickCase) {
 }
 
 function renderCoverage(el, coverageRows) {
-  const rows = (coverageRows || []).map(r => {
-    const risk = text(r.risk || "");
-    const prob = Number(r.avgProb ?? r.prob ?? r.probability ?? 0);
-    return { risk, prob };
-  }).filter(x => x.risk);
+  const rows = (coverageRows || [])
+    .map(r => {
+      const risk = text(r.risk || "");
+      const prob = Number(r.avgProb ?? r.prob ?? r.probability ?? 0);
+      return { risk, prob };
+    })
+    .filter(x => x.risk);
 
   rows.sort((a, b) => b.prob - a.prob);
 
-  el.innerHTML = "";
+  el.replaceChildren();
+
   for (const r of rows) {
     const row = document.createElement("div");
     row.className = "cov-row";
 
     const left = document.createElement("div");
-    left.innerHTML = `
-      <div style="font-weight:700">${r.risk}</div>
-      <div class="cov-bar"><i style="width:${Math.max(0, Math.min(1, r.prob)) * 100}%"></i></div>
-    `;
+
+    const title = document.createElement("div");
+    title.style.fontWeight = "700";
+    title.textContent = r.risk;
+
+    const bar = document.createElement("div");
+    bar.className = "cov-bar";
+
+    const fill = document.createElement("i");
+    const pct = Math.max(0, Math.min(1, Number(r.prob))) * 100;
+    fill.style.width = `${pct}%`;
+
+    bar.appendChild(fill);
+    left.appendChild(title);
+    left.appendChild(bar);
 
     const right = document.createElement("div");
     right.className = "cov-val";
@@ -281,7 +307,12 @@ function renderCoverage(el, coverageRows) {
     el.appendChild(row);
   }
 
-  if (!rows.length) el.innerHTML = `<div class="orc-muted">No coverage data.</div>`;
+  if (!rows.length) {
+    const empty = document.createElement("div");
+    empty.className = "orc-muted";
+    empty.textContent = "No coverage data.";
+    el.appendChild(empty);
+  }
 }
 
 function cardHtml(ev) {
@@ -300,7 +331,7 @@ function cardHtml(ev) {
   }
 
   const badgeLine = [
-    ...(headline ? [`<span class="badge ${headline.cls}">${headline.risk}: ${headline.txt}</span>`] : []),
+    ...(headline ? [`<span class="badge ${esc(headline.cls)}">${esc(headline.risk)}: ${esc(headline.txt)}</span>`] : []),
     ...(tests.length ? [`<span class="badge">tests: ${tests.length}</span>`] : []),
     ...(cls.length ? [`<span class="badge">risks: ${cls.length}</span>`] : []),
   ].join("");
@@ -309,23 +340,31 @@ function cardHtml(ev) {
     const b = badgeForLabel(c.label, c.prob);
     return `
       <tr>
-        <td>${c.risk}</td>
-        <td><span class="badge ${b.cls}">${b.txt}</span></td>
-        <td>${fmtProb(c.prob)}</td>
+        <td>${esc(c.risk)}</td>
+        <td><span class="badge ${esc(b.cls)}">${esc(b.txt)}</span></td>
+        <td>${esc(fmtProb(c.prob))}</td>
       </tr>
     `;
   }).join("");
 
   const firstTest = tests[0] || { prompt: "", output: "", verdict: "" };
+  const prompt = esc(firstTest.prompt || "(none)");
+  const output = esc(firstTest.output || "(none)");
+  const verdict = esc(firstTest.verdict || "(none)");
+
+  const caseIdEsc = esc(ev.caseId);
+  const solShort = sol ? esc(shortenIri(sol)) : "no mapped Solution IRI";
+  const solLabel = esc(ev.solutionLabel || "");
+  const iriAttr = esc(sol || "");
 
   return `
-    <article class="ev-card" data-case="${ev.caseId}">
+    <article class="ev-card" data-case="${caseIdEsc}">
       <div class="ev-head">
         <div>
-          <div class="ev-case">${ev.caseId}</div>
-          <div class="orc-muted">${sol ? shortenIri(sol) : "no mapped Solution IRI"}</div>
+          <div class="ev-case">${caseIdEsc}</div>
+          <div class="orc-muted">${solShort}</div>
         </div>
-        <div class="ev-meta">${ev.solutionLabel || ""}</div>
+        <div class="ev-meta">${solLabel}</div>
       </div>
 
       <div class="ev-badges">${badgeLine}</div>
@@ -344,26 +383,26 @@ function cardHtml(ev) {
       <div class="ev-block">
         <details>
           <summary>Adversarial prompt</summary>
-          <pre class="ev-pre">${firstTest.prompt || "(none)"}</pre>
+          <pre class="ev-pre">${prompt}</pre>
         </details>
       </div>
 
       <div class="ev-block">
         <details>
           <summary>Target output</summary>
-          <pre class="ev-pre">${firstTest.output || "(none)"}</pre>
+          <pre class="ev-pre">${output}</pre>
         </details>
       </div>
 
       <div class="ev-block">
         <details>
           <summary>Judge verdict</summary>
-          <pre class="ev-pre">${firstTest.verdict || "(none)"}</pre>
+          <pre class="ev-pre">${verdict}</pre>
         </details>
       </div>
 
       <div class="ev-foot">
-        <button class="ev-btn" data-action="focus" data-iri="${sol || ""}">Focus</button>
+        <button class="ev-btn" data-action="focus" data-iri="${iriAttr}">Focus</button>
         <button class="ev-btn" data-action="copyPrompt">Copy prompt</button>
         <button class="ev-btn" data-action="copyOutput">Copy output</button>
       </div>
@@ -379,20 +418,26 @@ function filterEvidence(evidence, { risk, q }) {
   const term = (q || "").trim().toLowerCase();
   const wantRisk = (risk && risk !== "__all__") ? risk : null;
 
-  return evidence.filter(ev => {
+  return (evidence || []).filter(ev => {
+    const cls = ev.classifications || [];
+    const tests = ev.tests || [];
+
     if (wantRisk) {
-      const hasRisk = ev.classifications.some(c => c.risk === wantRisk);
+      const hasRisk = cls.some(c => c.risk === wantRisk);
       if (!hasRisk) return false;
     }
+
     if (term) {
       const hay = [
         ev.caseId,
         ev.solutionIri,
-        ...(ev.classifications.map(c => `${c.risk} ${c.label} ${c.prob}`)),
-        ...(ev.tests.map(t => `${t.prompt} ${t.output} ${t.verdict}`)),
+        ...(cls.map(c => `${c.risk} ${c.label} ${c.prob}`)),
+        ...(tests.map(t => `${t.prompt} ${t.output} ${t.verdict}`)),
       ].join(" ").toLowerCase();
+
       if (!hay.includes(term)) return false;
     }
+
     return true;
   });
 }
@@ -400,10 +445,14 @@ function filterEvidence(evidence, { risk, q }) {
 async function copyToClipboard(textVal) {
   const t = textVal || "";
   if (!t) return;
-  try { await navigator.clipboard.writeText(t); } catch { }
+  try { await navigator.clipboard.writeText(t); } catch { /* ignore */ }
 }
 
-export async function mount({ root, payload }) {
+// --- PaneManager lifecycle exports ----------------------------------------
+export async function mount({ root, bus, payload }) {
+  _root = root;
+  _bus = bus || coreBus;
+
   const base = payload?.base ?? payload?.orcBase ?? null;
 
   await mountTemplate(root, {
@@ -441,11 +490,16 @@ export async function mount({ root, payload }) {
     q: "",
   };
 
-  async function refresh() {
+  function rerender() {
+    const filtered = filterEvidence(state.evidenceAll, { risk: state.risk, q: state.q });
+    renderCards(els.cards, filtered);
+  }
+
+  async function refresh({ bustOntos = false } = {}) {
     els.summary.textContent = "Loading Orchestrator ontologies…";
 
-    // Load STC ontologies dynamically (once per session)
-    const loaded = await ensureOrchestratorOntologiesLoaded({ bust: true, base });
+    // once per session (unless Shift+Refresh or explicit bust)
+    const loaded = await ensureOrchestratorOntologiesLoaded({ bust: bustOntos, base });
 
     els.summary.textContent = `Loaded ${loaded.length} ontologies. Querying store…`;
 
@@ -470,16 +524,22 @@ export async function mount({ root, payload }) {
       caseToSolRows: map,
     });
 
+    // IMPORTANT: union risks from BOTH selection + classifications
     const risks = new Set();
     for (const r of cls) if (r.risk) risks.add(text(r.risk));
+    for (const r of sel) if (r.risk) risks.add(text(r.risk));
+
     const riskList = Array.from(risks).sort();
     renderRiskFilter(els.riskFilter, riskList, state.risk);
 
     renderSelection(els.selection, state.selectionRows, (caseId, risk) => {
       state.q = caseId;
       els.caseFilter.value = caseId;
+
+      // if selection picks a risk not currently in dropdown, include it
       state.risk = risk || state.risk;
       els.riskFilter.value = state.risk;
+
       rerender();
     });
 
@@ -496,51 +556,93 @@ export async function mount({ root, payload }) {
     rerender();
   }
 
-  function rerender() {
-    const filtered = filterEvidence(state.evidenceAll, { risk: state.risk, q: state.q });
-    renderCards(els.cards, filtered);
-  }
+  _refresh = refresh;
 
-  els.refreshBtn.addEventListener("click", refresh);
+  // --- events (with cleanup) ----------------------------------------------
+  const onRefreshClick = (ev) => {
+    // Shift+Refresh -> force reload of ontologies (dev / hot changes)
+    const bustOntos = !!ev?.shiftKey;
+    refresh({ bustOntos }).catch(console.error);
+  };
 
-  els.riskFilter.addEventListener("change", (e) => {
+  const onRiskChange = (e) => {
     state.risk = e.target.value;
     rerender();
-  });
+  };
 
-  els.caseFilter.addEventListener("input", (e) => {
+  const onCaseInput = (e) => {
     state.q = e.target.value;
     rerender();
-  });
+  };
 
-  els.exportBtn.addEventListener("click", () => {
+  const onExportClick = () => {
     const filtered = filterEvidence(state.evidenceAll, { risk: state.risk, q: state.q });
     downloadText(
       `ontogsn-orchestrator-evidence-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
-      JSON.stringify({ exportedAt: new Date().toISOString(), ...state, evidence: filtered }, null, 2)
+      JSON.stringify(
+        { exportedAt: new Date().toISOString(), ...state, evidence: filtered },
+        null,
+        2
+      )
     );
-  });
+  };
 
-  els.cards.addEventListener("click", async (e) => {
+  const onCardsClick = async (e) => {
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
 
     const action = btn.getAttribute("data-action");
     const card = btn.closest(".ev-card");
     const caseId = card?.getAttribute("data-case") || null;
-    const ev = state.evidenceAll.find(x => x.caseId === caseId);
-    if (!ev) return;
+    const evObj = (state.evidenceAll || []).find(x => x.caseId === caseId);
+    if (!evObj) return;
 
     if (action === "focus") {
-      const iri = btn.getAttribute("data-iri") || ev.solutionIri;
+      const iri = btn.getAttribute("data-iri") || evObj.solutionIri;
       if (!iri) return;
-      bus.emit("graph:focus", { iri, caseId });
+
+      _bus?.emit?.("graph:focus", { iri, caseId });
       return;
     }
 
-    if (action === "copyPrompt") await copyToClipboard(ev.tests?.[0]?.prompt || "");
-    if (action === "copyOutput") await copyToClipboard(ev.tests?.[0]?.output || "");
-  });
+    if (action === "copyPrompt") await copyToClipboard(evObj.tests?.[0]?.prompt || "");
+    if (action === "copyOutput") await copyToClipboard(evObj.tests?.[0]?.output || "");
+  };
 
-  await refresh();
+  els.refreshBtn.addEventListener("click", onRefreshClick);
+  els.riskFilter.addEventListener("change", onRiskChange);
+  els.caseFilter.addEventListener("input", onCaseInput);
+  els.exportBtn.addEventListener("click", onExportClick);
+  els.cards.addEventListener("click", onCardsClick);
+
+  // initial load
+  await refresh({ bustOntos: false });
+
+  _cleanup = () => {
+    try { els.refreshBtn.removeEventListener("click", onRefreshClick); } catch { }
+    try { els.riskFilter.removeEventListener("change", onRiskChange); } catch { }
+    try { els.caseFilter.removeEventListener("input", onCaseInput); } catch { }
+    try { els.exportBtn.removeEventListener("click", onExportClick); } catch { }
+    try { els.cards.removeEventListener("click", onCardsClick); } catch { }
+
+    _refresh = null;
+    _cleanup = null;
+    _root = null;
+    _bus = null;
+  };
+
+  return _cleanup;
+}
+
+export async function resume() {
+  // refresh on re-open (cheap and consistent with checklist behavior)
+  await _refresh?.({ bustOntos: false });
+}
+
+export async function suspend() {
+  // nothing long-running to stop
+}
+
+export async function unmount() {
+  try { _cleanup?.(); } catch { }
 }
