@@ -1,9 +1,23 @@
 import queries from "@core/queries.js";
 import { bus as coreBus } from "@core/events.js";
-import { mountTemplate, shortenIri, cleanRdfLiteral, downloadText, fetchText, escapeHtml } from "@core/utils.js";
 import { MIME_TTL } from "@rdf/config.js";
-
 import { getOrchestratorOntologyUrls } from "./config.js";
+import {
+  mountTemplate,
+  shortenIri,
+  downloadText,
+  fetchText,
+  qs,
+  toText,
+  escText,
+  fmtProb,
+  groupBy,
+  maxTimestamp,
+  copyToClipboard,
+  normRdfLiteral,
+  safeInvoke
+} from "@core/utils.js";
+
 
 const app = queries;
 
@@ -24,29 +38,6 @@ let _root = null;
 let _bus = null;
 let _cleanup = null;
 let _refresh = null;
-
-function $(root, sel) {
-  return root.querySelector(sel);
-}
-
-function text(v) {
-  if (v == null) return "";
-  return String(v);
-}
-
-function esc(v) {
-  return escapeHtml(text(v));
-}
-
-function normLit(v) {
-  try { return cleanRdfLiteral(v); } catch { return text(v); }
-}
-
-function fmtProb(v) {
-  const n = Number(v);
-  if (Number.isFinite(n)) return n.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
-  return text(v);
-}
 
 function badgeForLabel(label, prob) {
   const L = (label || "").toLowerCase();
@@ -112,33 +103,11 @@ async function ensureOrchestratorOntologiesLoaded({ bust = false, base } = {}) {
 }
 
 // --- helpers ---------------------------------------------------------------
-function groupBy(arr, keyFn) {
-  const m = new Map();
-  for (const x of arr) {
-    const k = keyFn(x);
-    if (!m.has(k)) m.set(k, []);
-    m.get(k).push(x);
-  }
-  return m;
-}
-
-function maxTimestamp(...rowSets) {
-  let best = null;
-  for (const rows of rowSets) {
-    for (const r of rows) {
-      const ts = r.timestamp || r.time || r.ts;
-      if (!ts) continue;
-      if (!best || String(ts) > String(best)) best = ts;
-    }
-  }
-  return best;
-}
-
 function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
   const byCase = new Map();
 
   const ensure = (caseId) => {
-    const k = text(caseId);
+    const k = toText(caseId);
     if (!byCase.has(k)) {
       byCase.set(k, {
         caseId: k,
@@ -157,8 +126,8 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
     const sol = r.solution || r.solutionIri || r.solution_node;
     if (!caseId || !sol) continue;
     const ev = ensure(caseId);
-    ev.solutionIri = text(sol);
-    ev.solutionLabel = shortenIri(text(sol));
+    ev.solutionIri = toText(sol);
+    ev.solutionLabel = shortenIri(toText(sol));
   }
 
   for (const r of (selectionRows || [])) {
@@ -167,7 +136,7 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
     const order = r.order ?? r.rank ?? r.k;
     if (!caseId || caseId === "None") continue;
     const ev = ensure(caseId);
-    ev.selectedForRisks.push({ risk: text(risk), order: text(order) });
+    ev.selectedForRisks.push({ risk: toText(risk), order: toText(order) });
   }
 
   for (const r of (testRows || [])) {
@@ -175,9 +144,9 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
     if (!caseId) continue;
     const ev = ensure(caseId);
     ev.tests.push({
-      prompt: normLit(r.prompt || r.attack_prompt || r.final_prompt || r.input || ""),
-      output: normLit(r.output || r.response || r.final_prompt_response || ""),
-      verdict: normLit(r.verdict || r.improvement || r.judge || ""),
+      prompt: normRdfLiteral(r.prompt || r.attack_prompt || r.final_prompt || r.input || ""),
+      output: normRdfLiteral(r.output || r.response || r.final_prompt_response || ""),
+      verdict: normRdfLiteral(r.verdict || r.improvement || r.judge || ""),
       timestamp: r.timestamp || null,
     });
   }
@@ -187,8 +156,8 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
     if (!caseId) continue;
     const ev = ensure(caseId);
     ev.classifications.push({
-      risk: text(r.risk || ""),
-      label: text(r.label || ""),
+      risk: toText(r.risk || ""),
+      label: toText(r.label || ""),
       prob: r.prob ?? r.probability ?? r.p ?? "",
       timestamp: r.timestamp || null,
     });
@@ -217,7 +186,7 @@ function renderRiskFilter(selEl, risks, selectedRisk) {
 }
 
 function renderSelection(el, selectionRows, onPickCase) {
-  const byRisk = groupBy(selectionRows || [], r => text(r.risk || "unknown"));
+  const byRisk = groupBy(selectionRows || [], r => toText(r.risk || "unknown"));
   const risks = Array.from(byRisk.keys()).sort();
   el.replaceChildren();
 
@@ -246,7 +215,7 @@ function renderSelection(el, selectionRows, onPickCase) {
       const oa = Number(a.order ?? 9999);
       const ob = Number(b.order ?? 9999);
       if (oa !== ob) return oa - ob;
-      return text(a.case || "").localeCompare(text(b.case || ""));
+      return toText(a.case || "").localeCompare(toText(b.case || ""));
     });
 
     for (const r of rows) {
@@ -267,7 +236,7 @@ function renderSelection(el, selectionRows, onPickCase) {
 function renderCoverage(el, coverageRows) {
   const rows = (coverageRows || [])
     .map(r => {
-      const risk = text(r.risk || "");
+      const risk = toText(r.risk || "");
       const prob = Number(r.avgProb ?? r.prob ?? r.probability ?? 0);
       return { risk, prob };
     })
@@ -331,7 +300,7 @@ function cardHtml(ev) {
   }
 
   const badgeLine = [
-    ...(headline ? [`<span class="badge ${esc(headline.cls)}">${esc(headline.risk)}: ${esc(headline.txt)}</span>`] : []),
+    ...(headline ? [`<span class="badge ${escText(headline.cls)}">${escText(headline.risk)}: ${escText(headline.txt)}</span>`] : []),
     ...(tests.length ? [`<span class="badge">tests: ${tests.length}</span>`] : []),
     ...(cls.length ? [`<span class="badge">risks: ${cls.length}</span>`] : []),
   ].join("");
@@ -340,22 +309,22 @@ function cardHtml(ev) {
     const b = badgeForLabel(c.label, c.prob);
     return `
       <tr>
-        <td>${esc(c.risk)}</td>
-        <td><span class="badge ${esc(b.cls)}">${esc(b.txt)}</span></td>
-        <td>${esc(fmtProb(c.prob))}</td>
+        <td>${escText(c.risk)}</td>
+        <td><span class="badge ${escText(b.cls)}">${escText(b.txt)}</span></td>
+        <td>${escText(fmtProb(c.prob))}</td>
       </tr>
     `;
   }).join("");
 
   const firstTest = tests[0] || { prompt: "", output: "", verdict: "" };
-  const prompt = esc(firstTest.prompt || "(none)");
-  const output = esc(firstTest.output || "(none)");
-  const verdict = esc(firstTest.verdict || "(none)");
+  const prompt = escText(firstTest.prompt || "(none)");
+  const output = escText(firstTest.output || "(none)");
+  const verdict = escText(firstTest.verdict || "(none)");
 
-  const caseIdEsc = esc(ev.caseId);
-  const solShort = sol ? esc(shortenIri(sol)) : "no mapped Solution IRI";
-  const solLabel = esc(ev.solutionLabel || "");
-  const iriAttr = esc(sol || "");
+  const caseIdEsc = escText(ev.caseId);
+  const solShort = sol ? escText(shortenIri(sol)) : "no mapped Solution IRI";
+  const solLabel = escText(ev.solutionLabel || "");
+  const iriAttr = escText(sol || "");
 
   return `
     <article class="ev-card" data-case="${caseIdEsc}">
@@ -442,12 +411,6 @@ function filterEvidence(evidence, { risk, q }) {
   });
 }
 
-async function copyToClipboard(textVal) {
-  const t = textVal || "";
-  if (!t) return;
-  try { await navigator.clipboard.writeText(t); } catch { /* ignore */ }
-}
-
 // --- PaneManager lifecycle exports ----------------------------------------
 export async function mount({ root, bus, payload }) {
   _root = root;
@@ -467,16 +430,16 @@ export async function mount({ root, bus, payload }) {
   if (!orc) throw new Error("Orchestrator pane: template mounted but .orc not found");
 
   const els = {
-    summary: $(orc, '[data-el="summary"]'),
-    riskFilter: $(orc, '[data-el="riskFilter"]'),
-    caseFilter: $(orc, '[data-el="caseFilter"]'),
-    refreshBtn: $(orc, '[data-el="refreshBtn"]'),
-    exportBtn: $(orc, '[data-el="exportBtn"]'),
-    selection: $(orc, '[data-el="selection"]'),
-    coverage: $(orc, '[data-el="coverage"]'),
-    cards: $(orc, '[data-el="cards"]'),
-    selCount: $(orc, '[data-el="selCount"]'),
-    riskCount: $(orc, '[data-el="riskCount"]'),
+    summary: qs(orc, '[data-el="summary"]'),
+    riskFilter: qs(orc, '[data-el="riskFilter"]'),
+    caseFilter: qs(orc, '[data-el="caseFilter"]'),
+    refreshBtn: qs(orc, '[data-el="refreshBtn"]'),
+    exportBtn: qs(orc, '[data-el="exportBtn"]'),
+    selection: qs(orc, '[data-el="selection"]'),
+    coverage: qs(orc, '[data-el="coverage"]'),
+    cards: qs(orc, '[data-el="cards"]'),
+    selCount: qs(orc, '[data-el="selCount"]'),
+    riskCount: qs(orc, '[data-el="riskCount"]'),
   };
 
   const state = {
@@ -526,8 +489,8 @@ export async function mount({ root, bus, payload }) {
 
     // IMPORTANT: union risks from BOTH selection + classifications
     const risks = new Set();
-    for (const r of cls) if (r.risk) risks.add(text(r.risk));
-    for (const r of sel) if (r.risk) risks.add(text(r.risk));
+    for (const r of cls) if (r.risk) risks.add(toText(r.risk));
+    for (const r of sel) if (r.risk) risks.add(toText(r.risk));
 
     const riskList = Array.from(risks).sort();
     renderRiskFilter(els.riskFilter, riskList, state.risk);
@@ -601,7 +564,7 @@ export async function mount({ root, bus, payload }) {
       const iri = btn.getAttribute("data-iri") || evObj.solutionIri;
       if (!iri) return;
 
-      _bus?.emit?.("graph:focus", { iri, caseId });
+      safeInvoke(_bus, "emit", "graph:focus", { iri, caseId });
       return;
     }
 

@@ -384,3 +384,86 @@ export function loadLocalBool(key, { defaultValue = true } = {}) {
 export function saveLocalBool(key, value) {
   localStorage.setItem(String(key), value ? "1" : "0");
 }
+
+// --- generic DOM + formatting helpers -------------------------------------
+
+/** Query selector convenience (like your local $). */
+export function qs(root, sel) {
+  const r = (typeof root === "string") ? document.querySelector(root) : root;
+  return r?.querySelector(sel) ?? null;
+}
+
+/** Query selector all convenience. */
+export function qsa(root, sel) {
+  const r = (typeof root === "string") ? document.querySelector(root) : root;
+  return Array.from(r?.querySelectorAll(sel) ?? []);
+}
+
+/** Normalize any value into displayable text. */
+export function toText(v) {
+  if (v == null) return "";
+  return String(v);
+}
+
+/** Escape HTML after stringifying. */
+export function escText(v) {
+  return escapeHtml(toText(v));
+}
+
+/** Format a probability/number into a compact stable string. */
+export function fmtProb(v, { digits = 4 } = {}) {
+  const n = Number(v);
+  if (Number.isFinite(n)) {
+    // trim trailing zeros, trim trailing dot
+    return n.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
+  }
+  return toText(v);
+}
+
+/** Generic groupBy utility. */
+export function groupBy(arr, keyFn) {
+  const m = new Map();
+  for (const x of (arr || [])) {
+    const k = keyFn(x);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(x);
+  }
+  return m;
+}
+
+/**
+ * Find the max timestamp-ish value across rowsets.
+ * Looks at common keys: timestamp, time, ts.
+ */
+export function maxTimestamp(...rowSets) {
+  let best = null;
+  for (const rows of rowSets) {
+    for (const r of (rows || [])) {
+      const ts = r?.timestamp || r?.time || r?.ts;
+      if (!ts) continue;
+      if (!best || String(ts) > String(best)) best = ts;
+    }
+  }
+  return best;
+}
+
+/** Clipboard helper (silent fail by default). */
+export async function copyToClipboard(textVal) {
+  const t = toText(textVal);
+  if (!t) return false;
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * "Safe" RDF literal normalization:
+ * - uses cleanRdfLiteral()
+ * - falls back to string if it throws
+ */
+export function normRdfLiteral(v) {
+  try { return cleanRdfLiteral(v); } catch { return toText(v); }
+}
