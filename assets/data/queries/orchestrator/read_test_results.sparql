@@ -1,11 +1,43 @@
-PREFIX tap: <https://example.org/tap#>
+PREFIX tap:       <https://fortiss-demo.org/ontologies/actfast/treeofattacks#>
+PREFIX harmbench: <https://fortiss-demo.org/ontologies/actfast/harmbench#>
+PREFIX rdf:       <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd:       <http://www.w3.org/2001/XMLSchema#>
 
-SELECT ?case ?prompt ?output ?verdict ?timestamp WHERE {
-  ?run a tap:TestExecution ;
-       tap:case ?case .
-  OPTIONAL { ?run tap:prompt ?prompt . }
-  OPTIONAL { ?run tap:output ?output . }
-  OPTIONAL { ?run tap:judgeVerdict ?verdict . }
-  OPTIONAL { ?run tap:timestamp ?timestamp . }
+SELECT ?tree_str ?testcase ?stopReason ?attack_str ?prompt_str ?response_str ?attemptNumber ?attack_final ?attack_original ?attack_success ?timestamp ?depth_val ?graderPassed_val ?score_val ?onTopic_val ?wasSelected_val ?prompt ?output ?orig_prompt_iri ?original_prompt ?orig_response_iri ?original_response
+WHERE {
+  ?tree a tap:Tree .
+  OPTIONAL { ?tree tap:implements  ?testcaseIRI .
+             ?testcaseIRI harmbench:identifier ?testcase . }
+  OPTIONAL { ?tree tap:stopReason  ?stopReason . }
+  OPTIONAL { ?tree tap:attemptNumber ?attemptNumber}
+
+  OPTIONAL {
+    ?tree tap:contains ?attack .
+
+    OPTIONAL { ?attack tap:generated        ?prompt_iri . }
+    OPTIONAL { ?attack tap:received         ?response_iri . }
+    OPTIONAL { ?attack tap:final            ?attack_final . }
+    OPTIONAL { ?attack tap:original         ?attack_original . }
+    OPTIONAL { ?attack tap:success          ?attack_success . }
+    OPTIONAL { ?attack tap:timestamp        ?timestamp . }
+    OPTIONAL { ?attack tap:depth            ?depth_val . }
+    OPTIONAL { ?attack tap:graderPassed     ?graderPassed_val . }
+    OPTIONAL { ?attack tap:judgeScore       ?score_val . }
+    OPTIONAL { ?attack tap:onTopic          ?onTopic_val . }
+    OPTIONAL { ?attack tap:selected         ?wasSelected_val . }
+  }
+
+  OPTIONAL {
+    ?prompt_iri a tap:Prompt ;
+                tap:fullText ?prompt .
+  }
+  OPTIONAL {
+    ?response_iri a tap:Response ;
+                  tap:fullText ?output .
+  }
+
+  BIND(STRAFTER(STR(?tree),"#") AS ?tree_str)
+  BIND(STRAFTER(STR(?attack),"#") AS ?attack_str)
+  BIND(STRAFTER(STR(?prompt_iri),"#") AS ?prompt_str)
+  BIND(STRAFTER(STR(?response_iri),"#") AS ?response_str)
 }
-ORDER BY DESC(?timestamp)

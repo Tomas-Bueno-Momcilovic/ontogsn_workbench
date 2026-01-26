@@ -1,10 +1,26 @@
-PREFIX tap: <https://example.org/tap#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX harmbench: <https://fortiss-demo.org/ontologies/actfast/harmbench#>
+PREFIX guardian: <https://fortiss-demo.org/ontologies/actfast/granite_guardian#>
+PREFIX dc: <http://purl.org/dc/elements/1.1/>
+PREFIX temp: <https://fortiss-demo.org/ontologies/actfast/temporaryOnto#>
 
-SELECT ?risk ?case ?order ?timestamp WHERE {
-  ?sel a tap:Selection ;
-       tap:risk ?risk ;
-       tap:case ?case .
-  OPTIONAL { ?sel tap:order ?order . }
-  OPTIONAL { ?sel tap:timestamp ?timestamp . }
+SELECT ?selection ?risk ?case ?order ?timestamp
+WHERE {
+  ?selection a temp:Selection .
+
+  OPTIONAL {
+    ?selection temp:hasRisk ?riskIRI .
+    OPTIONAL { ?riskIRI a guardian:Risk ;
+                        dc:identifier ?risk . }
+                        }
+
+  OPTIONAL {
+    ?selection temp:hasTestCase ?caseIRI .
+    OPTIONAL { ?caseIRI a harmbench:TargetResponse ;
+                        harmbench:identifier ?case . }
+                        }
+
+  OPTIONAL { ?selection temp:order ?order . }
+  OPTIONAL { ?selection temp:timestamp ?timestamp . }
 }
-ORDER BY ?risk ?order

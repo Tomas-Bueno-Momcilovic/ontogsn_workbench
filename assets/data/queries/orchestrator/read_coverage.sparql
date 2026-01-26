@@ -1,9 +1,11 @@
-PREFIX tap: <https://example.org/tap#>
+PREFIX tap:      <https://fortiss-demo.org/ontologies/actfast/treeofattacks#>
+PREFIX guardian: <https://fortiss-demo.org/ontologies/actfast/granite_guardian#>
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
 SELECT ?risk (AVG(?prob) AS ?avgProb) WHERE {
-  ?cls a tap:RiskClassification ;
-       tap:risk ?risk ;
-       tap:probability ?prob .
+    ?cls a guardian:Classification ;
+         rdf:object ?risk ;
+         guardian:probability ?prob .
 }
 GROUP BY ?risk
 ORDER BY DESC(?avgProb)

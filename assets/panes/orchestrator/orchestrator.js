@@ -12,7 +12,6 @@ import {
   escText,
   fmtProb,
   groupBy,
-  maxTimestamp,
   copyToClipboard,
   normRdfLiteral,
   safeInvoke
@@ -41,11 +40,30 @@ let _refresh = null;
 
 function badgeForLabel(label, prob) {
   const L = (label || "").toLowerCase();
-  const p = Number(prob);
-  if (L === "yes" || L === "unsafe") return { cls: "bad", txt: `unsafe ${fmtProb(p)}`.trim() };
-  if (L === "no" || L === "safe") return { cls: "good", txt: `safe ${fmtProb(p)}`.trim() };
+  const p = Number(normRdfLiteral(prob));
+  const pTxt = Number.isFinite(p) ? fmtProb(p) : "";
+  if (L === "yes" || L === "unsafe") return { cls: "bad", txt: `unsafe ${pTxt}`.trim() };
+  if (L === "no" || L === "safe") return { cls: "good", txt: `safe ${pTxt}`.trim() };
   if (L === "failed") return { cls: "warn", txt: `failed` };
-  return { cls: "", txt: `${label ?? "?"} ${fmtProb(p)}`.trim() };
+  return { cls: "", txt: `${label ?? "?"} ${pTxt}`.trim() };
+}
+
+function normNum(v, fallback = NaN) {
+  const n = Number(normRdfLiteral(v));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function maxTimestampNormalized(...rowSets) {
+  let best = null;
+  for (const rows of rowSets) {
+    for (const r of (rows || [])) {
+      const tsRaw = r?.timestamp || r?.time || r?.ts;
+      const ts = normRdfLiteral(tsRaw);
+      if (!ts) continue;
+      if (!best || String(ts) > String(best)) best = ts;
+    }
+  }
+  return best;
 }
 
 async function runQuery(pathUrl) {
@@ -136,7 +154,7 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
     const order = r.order ?? r.rank ?? r.k;
     if (!caseId || caseId === "None") continue;
     const ev = ensure(caseId);
-    ev.selectedForRisks.push({ risk: toText(risk), order: toText(order) });
+    ev.selectedForRisks.push({ risk: toText(risk), order: normRdfLiteral(order) });
   }
 
   for (const r of (testRows || [])) {
@@ -147,7 +165,7 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
       prompt: normRdfLiteral(r.prompt || r.attack_prompt || r.final_prompt || r.input || ""),
       output: normRdfLiteral(r.output || r.response || r.final_prompt_response || ""),
       verdict: normRdfLiteral(r.verdict || r.improvement || r.judge || ""),
-      timestamp: r.timestamp || null,
+      timestamp: normRdfLiteral(r.timestamp || null),
     });
   }
 
@@ -157,9 +175,9 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
     const ev = ensure(caseId);
     ev.classifications.push({
       risk: toText(r.risk || ""),
-      label: toText(r.label || ""),
-      prob: r.prob ?? r.probability ?? r.p ?? "",
-      timestamp: r.timestamp || null,
+      label: normRdfLiteral(r.label || ""),
+      prob: normNum(r.prob ?? r.probability ?? r.p ?? "", NaN),
+      timestamp: normRdfLiteral(r.timestamp || null),
     });
   }
 
@@ -173,13 +191,14 @@ function buildEvidence({ selectionRows, testRows, clsRows, caseToSolRows }) {
 
 // --- rendering -------------------------------------------------------------
 function renderRiskFilter(selEl, risks, selectedRisk) {
-  const opts = [{ v: "__all__", label: "All risks" }, ...risks.map(r => ({ v: r, label: r }))];
+  const opts = [{ v: "__all__", label: "All risks" }, ...risks.map(r => ({ v: r, label: shortenIri(r) }))];
   selEl.replaceChildren();
 
   for (const o of opts) {
     const opt = document.createElement("option");
     opt.value = o.v;
     opt.textContent = o.label;
+    if (o.v && o.v !== "__all__") opt.title = o.v;
     opt.selected = (o.v === selectedRisk);
     selEl.appendChild(opt);
   }
@@ -201,7 +220,8 @@ function renderSelection(el, selectionRows, onPickCase) {
 
     const nameEl = document.createElement("div");
     nameEl.className = "sel-risk-name";
-    nameEl.textContent = risk;
+    nameEl.textContent = shortenIri(risk);
+    nameEl.title = risk;
 
     const cntEl = document.createElement("div");
     cntEl.className = "orc-muted";
@@ -212,8 +232,8 @@ function renderSelection(el, selectionRows, onPickCase) {
     wrap.appendChild(head);
 
     rows.sort((a, b) => {
-      const oa = Number(a.order ?? 9999);
-      const ob = Number(b.order ?? 9999);
+      const oa = normNum(a.order ?? 9999, 9999);
+      const ob = normNum(b.order ?? 9999, 9999);
       if (oa !== ob) return oa - ob;
       return toText(a.case || "").localeCompare(toText(b.case || ""));
     });
@@ -224,7 +244,9 @@ function renderSelection(el, selectionRows, onPickCase) {
 
       const item = document.createElement("div");
       item.className = "sel-case";
-      item.textContent = `${caseId}${r.order != null ? `  (#${r.order})` : ""}`;
+      const orderTxt = r.order != null ? normRdfLiteral(r.order) : "";
+      item.textContent = `${shortenIri(caseId)}${orderTxt ? `  (#${orderTxt})` : ""}`;
+      item.title = caseId;
       item.addEventListener("click", () => onPickCase(caseId, risk));
       wrap.appendChild(item);
     }
@@ -237,7 +259,7 @@ function renderCoverage(el, coverageRows) {
   const rows = (coverageRows || [])
     .map(r => {
       const risk = toText(r.risk || "");
-      const prob = Number(r.avgProb ?? r.prob ?? r.probability ?? 0);
+      const prob = normNum(r.avgProb ?? r.prob ?? r.probability ?? 0, 0);
       return { risk, prob };
     })
     .filter(x => x.risk);
@@ -254,7 +276,8 @@ function renderCoverage(el, coverageRows) {
 
     const title = document.createElement("div");
     title.style.fontWeight = "700";
-    title.textContent = r.risk;
+    title.textContent = shortenIri(r.risk);
+    title.title = r.risk;
 
     const bar = document.createElement("div");
     bar.className = "cov-bar";
@@ -511,7 +534,7 @@ export async function mount({ root, bus, payload }) {
     els.selCount.textContent = `${sel.length}`;
     els.riskCount.textContent = `${riskList.length}`;
 
-    const lastTs = maxTimestamp(sel, tests, cls);
+    const lastTs = maxTimestampNormalized(sel, tests, cls);
     els.summary.textContent =
       `cases: ${state.evidenceAll.length} · tests: ${tests.length} · classifications: ${cls.length}` +
       (lastTs ? ` · last: ${lastTs}` : "");

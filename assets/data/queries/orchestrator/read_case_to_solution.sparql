@@ -1,7 +1,6 @@
-PREFIX ontogsn: <https://w3id.org/ontogsn#>
-PREFIX gsn:     <https://w3id.org/ontogsn/gsn#>
+PREFIX gsn:     <https://w3id.org/ontogsn/ontology#>
 
 SELECT ?case ?solution WHERE {
   ?solution a gsn:Solution ;
-            ontogsn:hasTestCase ?case .
+            gsn:hasTestCase ?case .
 }

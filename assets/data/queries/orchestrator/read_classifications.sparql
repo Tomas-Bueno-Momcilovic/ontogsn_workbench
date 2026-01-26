@@ -1,11 +1,21 @@
-PREFIX tap: <https://example.org/tap#>
+PREFIX guardian: <https://fortiss-demo.org/ontologies/actfast/granite_guardian#>
+PREFIX rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd:      <http://www.w3.org/2001/XMLSchema#>
+PREFIX dc:       <http://purl.org/dc/elements/1.1/>
+PREFIX harmbench: <https://fortiss-demo.org/ontologies/actfast/harmbench#>
+PREFIX tap: <https://fortiss-demo.org/ontologies/actfast/treeofattacks#>
 
-SELECT ?case ?risk ?label ?prob ?timestamp WHERE {
-  ?cls a tap:RiskClassification ;
-       tap:case ?case ;
-       tap:risk ?risk ;
-       tap:label ?label ;
-       tap:probability ?prob .
-  OPTIONAL { ?cls tap:timestamp ?timestamp . }
+SELECT ?class ?case ?risk ?attack ?label ?prob ?timestamp
+WHERE {
+  ?Classification a guardian:Classification .
+  BIND(STRAFTER(STR(?Classification), "#") AS ?class) .
+  OPTIONAL { ?Classification rdf:subject   ?caseIRI .
+             ?caseIRI harmbench:identifier ?case . }
+  OPTIONAL { ?Classification rdf:object    ?riskIRI .
+             ?riskIRI dc:identifier ?risk .}
+  OPTIONAL { ?Classification guardian:hasTest   ?attackIRI .
+             BIND(STRAFTER(STR(?attackIRI), "#") AS ?attack) . }
+  OPTIONAL { ?Classification guardian:label     ?label . }
+  OPTIONAL { ?Classification guardian:probability ?prob . }
+  OPTIONAL { ?Classification guardian:timestamp ?timestamp . }  
 }
-ORDER BY DESC(?timestamp) ?case ?risk
