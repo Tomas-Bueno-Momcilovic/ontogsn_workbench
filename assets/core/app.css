@@ -1,59 +1,144 @@
-body { 
-       font: 14px/1.45 system-ui, sans-serif; 
-       margin: 20px; 
+/* =========================================================
+   Theme (light/dark) — global tokens
+   Toggle via: <html data-theme="dark"> ... </html>
+   ========================================================= */
+
+:root {
+  --bg: #ffffff;
+  --fg: #111111;
+
+  --panel-bg: #ffffff;
+  --panel-alt-bg: #fafafa;
+
+  --muted-bg: #f6f6f6;
+
+  --border: #dddddd;
+  --border-strong: #cccccc;
+
+  --hover-bg: #f8f8f8;
+
+  --shadow: rgba(0, 0, 0, 0.08);
+
+  --overlay-bg: rgba(255, 255, 255, 0.72);
+
+  --spinner-track: #cccccc;
+  --spinner-head: #333333;
+
+  --code-bg: #f7f7f7;
+
+  --link: #0b62d6;
 }
 
-h1 { 
-       font-size: 20px; 
-       margin: 0 0 8px; 
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0e0f11;
+  --fg: #e8e8e8;
+
+  --panel-bg: #111216;
+  --panel-alt-bg: #16171c;
+
+  --muted-bg: #15161a;
+
+  --border: #2b2c32;
+  --border-strong: #3a3b44;
+
+  --hover-bg: #1c1d23;
+
+  --shadow: rgba(0, 0, 0, 0.35);
+
+  --overlay-bg: rgba(0, 0, 0, 0.35);
+
+  --spinner-track: #444444;
+  --spinner-head: #eaeaea;
+
+  --code-bg: #111216;
+
+  --link: #8ab4f8;
 }
 
-.btns { 
-       display:flex; 
-       gap:.5rem; 
-       flex-wrap:wrap; 
-       margin-bottom:.75rem; 
+/* =========================================================
+   Base / Typography
+   ========================================================= */
+
+body {
+  font: 14px/1.45 system-ui, sans-serif;
+  margin: 20px;
+
+  background: var(--bg);
+  color: var(--fg);
 }
 
-button { 
-       padding:.45rem .8rem; 
-       border:1px solid #ccc; 
-       border-radius:.5rem; 
-       background:#fff; 
-       cursor:pointer; 
+h1 {
+  font-size: 20px;
+  margin: 0 0 8px;
 }
 
-button:hover { 
-       background:#f8f8f8; 
+a {
+  color: var(--link);
 }
 
-table.sparql { 
-       border-collapse: collapse; 
-       width: 100%; 
+/* =========================================================
+   Controls (buttons / tabs / toolbars)
+   ========================================================= */
+
+.btns {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
 }
 
-table.sparql th, table.sparql td { 
-       border:1px solid #ddd; 
-       padding:6px 8px; 
-       text-align:left; 
-       vertical-align:top; 
+button,
+.tab {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+
+  background: var(--panel-bg);
+  color: var(--fg);
+
+  cursor: pointer;
 }
 
-table.sparql thead th { 
-       position:sticky; 
-       top:0; 
-       background:#fafafa; 
+button:hover,
+.tab:hover {
+  background: var(--hover-bg);
 }
 
-#out { 
-       margin-top:10px; 
-       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; 
-       background:#f6f6f6; 
-       padding:8px; 
-       border-radius:8px; 
-       min-height: 1.2rem; 
-       white-space:pre-wrap; 
+.tab.active {
+  background: var(--panel-alt-bg);
+  font-weight: 600;
 }
+
+button:disabled,
+.tab:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   Top bars: left/right groups
+   ========================================================= */
+
+#leftButtons,
+#rightButtons,
+#leftRules,
+#rightModules {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+#rightButtons,
+#rightModules {
+  margin-left: auto;
+}
+
+/* =========================================================
+   Layout (split + panes)
+   ========================================================= */
 
 .split {
   display: flex;
@@ -64,179 +149,38 @@ table.sparql thead th {
 /* Two fixed halves in the main split */
 #leftPane,
 #rightPane {
-  flex: 0 0 50%;      /* take 50% each, don't grow/shrink based on content */
+  flex: 0 0 50%;
   max-width: 50%;
-  min-width: 0;        /* allow inner content to overflow/scroll instead of stretching the flex item */
-}
+  min-width: 0;
 
-/* Make panes a positioning context for the overlay */
-#leftPane,
-#rightPane {
-  position: relative;
-}
-
-/* Loading overlay shown during lazy import + mount */
-.pane-loading {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(1px);
-  z-index: 50;
-
-  /* allow tab clicks to still work if desired:
-     if you want to block interaction while loading, remove this */
-  pointer-events: none;
-}
-
-.pane-loading[hidden] {
-  display: none !important;
-}
-
-.pane-loading-inner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-
-  padding: 10px 12px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
-
-  font-size: 13px;
-  opacity: 0.95;
-}
-
-.pane-spinner {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  border: 2px solid #ccc;
-  border-top-color: #333;
-  animation: paneSpin 0.9s linear infinite;
-}
-
-@keyframes paneSpin {
-  to { transform: rotate(360deg); }
-}
-
-
-
-#results{
-       max-height:520px;
-       overflow:auto
-}
-
-.left-tabs {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.left-tabs .tab.active {
-  font-weight: 600;
-  text-decoration: underline;
-}
-
-#leftButtons,#rightButtons,
-#leftRules,#rightModules{
-       display:flex; 
-       gap:.5rem; 
-       flex-wrap:wrap;
-       flex:0 0 auto;
-}
-
-#rightButtons, 
-#rightModules{ 
-       margin-left:auto; 
-}
-
-body[aria-busy="true"] { 
-       cursor: progress; 
-}
-
-body[aria-busy="true"] [data-query] { 
-       opacity: .6; 
-       pointer-events: none; 
-}
-
-.modules-bar { 
-       position: sticky; 
-       bottom: 0; 
-       background: #fff; 
-       padding: .5rem;
-       display: flex; 
-       gap: .5rem; 
-       border-top: 1px solid #eee; 
-       z-index: 1;
-}
-
-[data-theme="dark"] .modules-bar { 
-       background: #111; 
-       border-top-color: #333; 
-}
-
-.modules-bar button { 
-       padding: .35rem .6rem; 
-       border:1px solid #ccc; 
-       border-radius:.5rem; 
-       background:#fff; 
-       cursor:pointer; 
-}
-
-.modules-bar button.tab.active {
-  text-decoration: underline;
-}
-
-[data-theme="dark"] .modules-bar button { 
-       background:#222; 
-       border-color:#444; 
-       color:#eee; 
+  position: relative; /* overlay positioning context */
 }
 
 /* unused (for now) */
 .layout {
   display: grid;
-  grid-template-columns: 360px 1fr;   /* left width, tweak as you like */
+  grid-template-columns: 360px 1fr;
   gap: 16px;
 }
 
-.left { 
-       min-width: 280px; 
-}
-.right { 
-       min-width: 0; 
+.left {
+  min-width: 280px;
 }
 
-.tabs { 
-       display:flex; 
-       gap:.5rem; 
-       margin-bottom:.5rem; 
+.right {
+  min-width: 0;
 }
 
-.tab { 
-       padding:.4rem .7rem; 
-       border:1px solid #ccc; 
-       border-radius:.5rem; 
-       background:#fff; 
-       cursor:pointer; 
+/* =========================================================
+   Panes visibility + sizing
+   ========================================================= */
+
+.panes {
+  position: relative;
 }
 
-.tab.active { 
-       background:#f2f2f2;
-       font-weight:600;
-}
-
-.panes { 
-       position: relative; 
-}
-
-.pane[hidden] { 
-       display: none; 
+.pane[hidden] {
+  display: none;
 }
 
 #leftPane {
@@ -261,7 +205,7 @@ body[aria-busy="true"] [data-query] {
 
 #results,
 #editor-root,
-#doc-root, 
+#doc-root,
 #welcome-root {
   flex: 1 1 auto;
   min-height: 0;
@@ -269,29 +213,190 @@ body[aria-busy="true"] [data-query] {
   overflow-x: hidden;
 }
 
+/* =========================================================
+   Busy / disabled interaction state
+   ========================================================= */
+
+body[aria-busy="true"] {
+  cursor: progress;
+}
+
+body[aria-busy="true"] [data-query] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* =========================================================
+   Tables (SPARQL results)
+   ========================================================= */
+
+table.sparql {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.sparql th,
+table.sparql td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+table.sparql thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-alt-bg);
+}
+
+/* Keep the results table usable with long IRIs */
+#results {
+  max-height: 520px;
+  overflow: auto;
+}
+
 #results table.sparql {
   width: 100%;
-  table-layout: fixed;    /* columns share width, don't auto-grow */
+  table-layout: fixed;
 }
 
 #results table.sparql th,
 #results table.sparql td {
   overflow: hidden;
-  text-overflow: ellipsis;  /* cut off very long IRIs nicely */
-  word-wrap: break-word;    /* or use: overflow-wrap: anywhere; */
+  text-overflow: ellipsis;
+  word-wrap: break-word;
 }
 
-#results {
-  max-height: 520px;
+/* =========================================================
+   Output footer (#out)
+   ========================================================= */
+
+#out {
+  margin-top: 10px;
+
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  background: var(--muted-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+
+  padding: 8px;
+  border-radius: 8px;
+  min-height: 1.2rem;
+  white-space: pre-wrap;
 }
+
+/* =========================================================
+   Modules bar (sticky footer buttons)
+   ========================================================= */
+
+.modules-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+
+  background: var(--panel-bg);
+  border-top: 1px solid var(--border);
+
+  padding: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modules-bar button {
+  padding: 0.35rem 0.6rem;
+}
+
+.modules-bar button.tab.active {
+  text-decoration: underline;
+}
+
+/* =========================================================
+   Tabs (left pane inner tabs)
+   ========================================================= */
+
+.left-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.left-tabs .tab.active {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* =========================================================
+   Loading overlay (lazy import + mount)
+   ========================================================= */
+
+.pane-loading {
+  position: absolute;
+  inset: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--overlay-bg);
+  backdrop-filter: blur(1px);
+  z-index: 50;
+
+  /* allow tab clicks to still work if desired */
+  pointer-events: none;
+}
+
+.pane-loading[hidden] {
+  display: none !important;
+}
+
+.pane-loading-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  background: var(--panel-bg);
+  box-shadow: 0 4px 14px var(--shadow);
+
+  font-size: 13px;
+  opacity: 0.95;
+}
+
+.pane-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+
+  border: 2px solid var(--spinner-track);
+  border-top-color: var(--spinner-head);
+
+  animation: paneSpin 0.9s linear infinite;
+}
+
+@keyframes paneSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* =========================================================
+   Document: tooltip + entity underline
+   ========================================================= */
 
 .doc-view .doc-entity {
   background: none;
   border: none;
   padding: 0;
   margin: 0;
+
   font: inherit;
   cursor: pointer;
+
   border-bottom: 1px dotted var(--accent-color, #888);
 }
 
@@ -299,11 +404,14 @@ body[aria-busy="true"] [data-query] {
   position: absolute;
   z-index: 1000;
   max-width: 320px;
+
   padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+
   background: var(--doc-tooltip-bg, #111);
   color: var(--doc-tooltip-fg, #f9f9f9);
-  border-radius: 0.375rem;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   font-size: 0.85rem;
 }
 
@@ -323,17 +431,23 @@ body[aria-busy="true"] [data-query] {
   word-break: break-all;
 }
 
+/* =========================================================
+   Code blocks
+   ========================================================= */
+
 .code-panel pre {
-  background: #f7f7f7;
+  background: var(--code-bg);
   border-radius: 6px;
+
   padding: 0.75rem 1rem;
   margin: 0 0 1rem;
+
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-               "Liberation Mono", "Courier New", monospace;
+    "Liberation Mono", "Courier New", monospace;
+
   font-size: 0.9rem;
   line-height: 1.4;
 
-  /* Prevent it from pushing the layout sideways/too far down */
   overflow-x: auto;
   overflow-y: auto;
   max-height: 22rem;
