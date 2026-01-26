@@ -25,7 +25,7 @@ export async function initStore({ cache = "no-store", bust = true } = {}) {
     for (const ds of DATASETS) {
       const ttl = await fetchTTL(ds.path, { cache, bust });
       try {
-        store.load(ttl, MIME_TTL, ds.base);
+        store.load(ttl, { format: MIME_TTL, base_iri: String(ds.base) });
       } catch (e) {
         const preview = ttl.slice(0, 300);
         throw new Error(
