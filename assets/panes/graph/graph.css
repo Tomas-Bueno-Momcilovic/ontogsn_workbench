@@ -617,3 +617,41 @@ html[data-theme="dark"] .gsn-host {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+
+/* =========================================================
+   Modules bar (sticky footer buttons)
+   ========================================================= */
+
+#leftRules,
+#rightModules {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+#rightModules {
+  margin-left: auto;
+}
+
+.modules-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+
+  background: var(--panel-bg);
+  border-top: 1px solid var(--border);
+
+  padding: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modules-bar button {
+  padding: 0.35rem 0.6rem;
+}
+
+.modules-bar button.tab.active {
+  text-decoration: underline;
+}

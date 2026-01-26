@@ -1,3 +1,10 @@
+#editor-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .editor-label { display: inline-block; }
 .editor-label-block { display: block; margin-top: .5rem; }
 

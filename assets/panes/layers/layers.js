@@ -19,6 +19,7 @@ import {
 import { bus } from "@core/events.js";
 
 ensureCss(repoHref("panes/graph/graph.css", { from: import.meta.url, upLevels: 2 }));
+ensureCss(repoHref("panes/layers/layers.css", { from: import.meta.url, upLevels: 2 }));
 
 const NODE_H = 26;
 
@@ -156,6 +157,7 @@ export function visualizeLayers(
 
   const rootEl = typeof mount === "string" ? document.querySelector(mount) : mount;
   if (!rootEl) throw new Error(`visualizeLayers: mount "${mount}" not found`);
+  rootEl.classList.add("gsn-host");
 
   rootEl.innerHTML = `
   <div class="gsn-legend">
@@ -420,7 +422,7 @@ export function visualizeLayers(
 
     lane
       .append("rect")
-      .attr("class", "gsn-lane")
+      .attr("class", `gsn-lane ${i % 2 ? "odd" : "even"}`)
       .attr("x", 0)
       .attr("y", 0)
       .attr("width", laneW)
@@ -1048,9 +1050,9 @@ async function renderIntoRoot({ queryPath = null, renderOpts = {} } = {}) {
     // Don’t leave the user with a blank pane
     if (_root && _root.isConnected) {
       _root.innerHTML = `
-        <div style="padding:10px;font-family:ui-monospace,monospace;font-size:12px;">
+        <div class="layers-error">
           <b>Layers failed to render</b><br/>
-          <pre style="white-space:pre-wrap;opacity:0.9;margin:8px 0 0;">${String(err?.message || err)}</pre>
+          <pre>${String(err?.message || err)}</pre>
         </div>
       `;
     }
