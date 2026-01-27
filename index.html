@@ -17,22 +17,31 @@
   <meta charset = "utf-8" />
   <meta name    = "viewport" content = "width = device-width, initial-scale = 1" />
   <title> OntoGSN Interface Test Instance </title>
+  <script src="./assets/core/dark_mode.js"></script>
   <link rel="stylesheet" href="./assets/core/app.css" />
-  <link rel="stylesheet" href="./assets/vendor/github.min.css" />
+  <link id="hl-light" rel="stylesheet" href="./assets/vendor/github.min.css" />
+  <link id="hl-dark" rel="stylesheet" href="./assets/vendor/github-dark.min.css" disabled />
   <link rel="icon" type="image/png" sizes="32x32" href="./assets/images/favicon.png">
 </head>
 <body>
   <script>
   window.addEventListener('load', async () => {
+    const devReset = new URLSearchParams(location.search).has("reset");
+    if (!devReset) return;
     if ('caches' in window) (await caches.keys()).forEach(k => caches.delete(k));
     if ('serviceWorker' in navigator) (await navigator.serviceWorker.getRegistrations()).forEach(r => r.unregister());
-    localStorage.clear(); sessionStorage.clear();
+
+    const KEEP = new Set(["ontogsn.theme"]);
+    Object.keys(localStorage).forEach(k => { if (!KEEP.has(k)) localStorage.removeItem(k); });
+
+    sessionStorage.clear();
   });
   </script>
   <h1>OntoGSN Playground</h1>
 
   <div class="split">
     <div id="leftButtons" class="btns" data-tab-group="left-main">
+      <button id="btn-theme" class="tab" title="Toggle dark mode">🌓</button>
 
       <!-- Button: Config -->
       <button id="tab-settings" class="tab"
@@ -174,6 +183,12 @@
       console.error("[unhandledrejection]", e.reason);
     });
 
+  </script>
+
+  <script>
+    document.getElementById("btn-theme")?.addEventListener("click", () => {
+      window.OntoTheme?.toggle();
+    });
   </script>
 
 </body>

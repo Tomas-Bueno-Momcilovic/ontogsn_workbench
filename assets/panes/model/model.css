@@ -53,3 +53,13 @@
   align-items: center;
   gap: 0.25rem;
 }
+
+html[data-theme="dark"] .car-ui {
+  background: rgba(17, 18, 22, 0.72);
+  color: var(--fg);
+  border-top: 1px solid var(--border);
+}
+
+html[data-theme="dark"] .car-load-info {
+  opacity: 0.9;
+}
