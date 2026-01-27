@@ -1,9 +1,59 @@
+/* Orchestrator pane — light defaults + dark-mode overrides (html[data-theme="dark"]) */
+
 .orc {
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 10px;
   font: 13px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  color: var(--fg, #111);
+
+  /* Local theme tokens (light defaults) */
+  --orc-surface: var(--panel-bg, #fff);
+  --orc-surface-2: var(--panel-alt-bg, #fafafa);
+
+  --orc-border: rgba(0, 0, 0, 0.10);
+  --orc-border-2: rgba(0, 0, 0, 0.08);
+  --orc-border-strong: rgba(0, 0, 0, 0.15);
+
+  --orc-hover: rgba(0, 0, 0, 0.03);
+
+  --orc-pill-bg: rgba(0, 0, 0, 0.04);
+  --orc-pill-border: rgba(0, 0, 0, 0.15);
+
+  --orc-muted: rgba(0, 0, 0, 0.55);
+  --orc-sub: rgba(0, 0, 0, 0.65);
+  --orc-th: rgba(0, 0, 0, 0.70);
+  --orc-summary: rgba(0, 0, 0, 0.80);
+
+  --orc-details-bg: rgba(0, 0, 0, 0.02);
+  --orc-pre-bg: rgba(0, 0, 0, 0.04);
+
+  --orc-cov-bg: rgba(0, 0, 0, 0.04);
+  --orc-cov-fill: rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] .orc {
+  /* Dark overrides */
+  --orc-border: rgba(255, 255, 255, 0.14);
+  --orc-border-2: rgba(255, 255, 255, 0.10);
+  --orc-border-strong: rgba(255, 255, 255, 0.16);
+
+  --orc-hover: rgba(255, 255, 255, 0.06);
+
+  --orc-pill-bg: rgba(255, 255, 255, 0.06);
+  --orc-pill-border: rgba(255, 255, 255, 0.16);
+
+  --orc-muted: rgba(255, 255, 255, 0.62);
+  --orc-sub: rgba(255, 255, 255, 0.70);
+  --orc-th: rgba(255, 255, 255, 0.72);
+  --orc-summary: rgba(255, 255, 255, 0.82);
+
+  --orc-details-bg: rgba(255, 255, 255, 0.05);
+  --orc-pre-bg: rgba(255, 255, 255, 0.06);
+
+  --orc-cov-bg: rgba(255, 255, 255, 0.08);
+  --orc-cov-fill: rgba(255, 255, 255, 0.30);
 }
 
 .orc-bar {
@@ -12,9 +62,9 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid rgba(0,0,0,.10);
+  border: 1px solid var(--orc-border);
   border-radius: 14px;
-  background: #fff;
+  background: var(--orc-surface);
 }
 
 .orc-title-row {
@@ -32,13 +82,13 @@
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(0,0,0,.15);
-  background: rgba(0,0,0,.04);
+  border: 1px solid var(--orc-pill-border);
+  background: var(--orc-pill-bg);
 }
 
 .orc-sub {
   margin-top: 2px;
-  color: rgba(0,0,0,.65);
+  color: var(--orc-sub);
   max-width: 60ch;
 }
 
@@ -53,9 +103,10 @@
 .orc-select,
 .orc-search {
   padding: 7px 9px;
-  border: 1px solid rgba(0,0,0,.15);
+  border: 1px solid var(--orc-border-strong);
   border-radius: 12px;
-  background: #fff;
+  background: var(--orc-surface);
+  color: inherit;
 }
 
 .orc-search {
@@ -64,14 +115,28 @@
 
 .orc-btn {
   padding: 7px 10px;
-  border: 1px solid rgba(0,0,0,.15);
+  border: 1px solid var(--orc-border-strong);
   border-radius: 12px;
-  background: #fff;
+  background: var(--orc-surface);
+  color: inherit;
   cursor: pointer;
 }
 
 .orc-btn:hover {
-  background: rgba(0,0,0,.03);
+  background: var(--orc-hover);
+}
+
+.orc-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.orc-select:focus-visible,
+.orc-search:focus-visible,
+.orc-btn:focus-visible,
+.ev-btn:focus-visible {
+  outline: 2px solid var(--link, #0b62d6);
+  outline-offset: 2px;
 }
 
 .orc-main {
@@ -90,9 +155,9 @@
 }
 
 .orc-panel {
-  border: 1px solid rgba(0,0,0,.10);
+  border: 1px solid var(--orc-border);
   border-radius: 14px;
-  background: #fff;
+  background: var(--orc-surface);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -104,7 +169,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(0,0,0,.08);
+  border-bottom: 1px solid var(--orc-border-2);
 }
 
 .orc-panel-head h3 {
@@ -118,7 +183,7 @@
 }
 
 .orc-muted {
-  color: rgba(0,0,0,.55);
+  color: var(--orc-muted);
   font-size: 12px;
 }
 
@@ -132,9 +197,9 @@
 }
 
 .ev-card {
-  border: 1px solid rgba(0,0,0,.10);
+  border: 1px solid var(--orc-border);
   border-radius: 14px;
-  background: #fff;
+  background: var(--orc-surface);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -153,7 +218,7 @@
 }
 
 .ev-meta {
-  color: rgba(0,0,0,.55);
+  color: var(--orc-muted);
   font-size: 12px;
   text-align: right;
   max-width: 28ch;
@@ -174,14 +239,18 @@
   gap: 6px;
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid rgba(0,0,0,.15);
-  background: rgba(0,0,0,.03);
+  border: 1px solid var(--orc-pill-border);
+  background: var(--orc-hover);
   font-size: 12px;
 }
 
-.badge.good { background: rgba(0, 150, 0, .08); }
-.badge.bad  { background: rgba(200, 0, 0, .08); }
-.badge.warn { background: rgba(180, 120, 0, .10); }
+.badge.good { background: rgba(0, 150, 0, 0.10); }
+.badge.bad  { background: rgba(200, 0, 0, 0.10); }
+.badge.warn { background: rgba(180, 120, 0, 0.12); }
+
+html[data-theme="dark"] .badge.good { background: rgba(0, 220, 0, 0.14); }
+html[data-theme="dark"] .badge.bad  { background: rgba(255, 80, 80, 0.14); }
+html[data-theme="dark"] .badge.warn { background: rgba(255, 180, 80, 0.14); }
 
 .ev-table {
   width: 100%;
@@ -192,37 +261,37 @@
 .ev-table th,
 .ev-table td {
   padding: 6px 8px;
-  border-bottom: 1px solid rgba(0,0,0,.08);
+  border-bottom: 1px solid var(--orc-border-2);
   vertical-align: top;
 }
 
 .ev-table th {
   text-align: left;
-  color: rgba(0,0,0,.70);
+  color: var(--orc-th);
   font-weight: 600;
 }
 
 .ev-block details {
-  border: 1px solid rgba(0,0,0,.10);
+  border: 1px solid var(--orc-border);
   border-radius: 12px;
   padding: 6px 8px;
-  background: rgba(0,0,0,.02);
+  background: var(--orc-details-bg);
 }
 
 .ev-block summary {
   cursor: pointer;
   font-weight: 600;
-  color: rgba(0,0,0,.80);
+  color: var(--orc-summary);
 }
 
 .ev-pre {
   margin: 8px 0 0 0;
   white-space: pre-wrap;
   word-break: break-word;
-  background: rgba(0,0,0,.04);
+  background: var(--orc-pre-bg);
   padding: 8px 10px;
   border-radius: 12px;
-  border: 1px solid rgba(0,0,0,.08);
+  border: 1px solid var(--orc-border-2);
   max-height: 180px;
   overflow: auto;
 }
@@ -236,15 +305,16 @@
 
 .ev-btn {
   padding: 6px 9px;
-  border: 1px solid rgba(0,0,0,.15);
+  border: 1px solid var(--orc-border-strong);
   border-radius: 12px;
-  background: #fff;
+  background: var(--orc-surface);
+  color: inherit;
   cursor: pointer;
   font-size: 12px;
 }
 
 .ev-btn:hover {
-  background: rgba(0,0,0,.03);
+  background: var(--orc-hover);
 }
 
 .sel-risk {
@@ -265,14 +335,14 @@
 .sel-case {
   padding: 6px 8px;
   border-radius: 12px;
-  border: 1px solid rgba(0,0,0,.10);
-  background: rgba(0,0,0,.02);
+  border: 1px solid var(--orc-border);
+  background: var(--orc-details-bg);
   margin: 4px 0;
   cursor: pointer;
 }
 
 .sel-case:hover {
-  background: rgba(0,0,0,.04);
+  background: var(--orc-pre-bg);
 }
 
 .cov-row {
@@ -286,8 +356,9 @@
 .cov-bar {
   height: 10px;
   border-radius: 999px;
-  border: 1px solid rgba(0,0,0,.12);
-  background: rgba(0,0,0,.04);
+  border: 1px solid rgba(0, 0, 0, 0); /* keeps shape crisp; border comes from var */
+  outline: 1px solid var(--orc-border-strong);
+  background: var(--orc-cov-bg);
   overflow: hidden;
 }
 
@@ -295,11 +366,11 @@
   display: block;
   height: 100%;
   width: 0%;
-  background: rgba(0,0,0,.35);
+  background: var(--orc-cov-fill);
 }
 
 .cov-val {
   text-align: right;
   font-size: 12px;
-  color: rgba(0,0,0,.65);
+  color: var(--orc-sub);
 }
