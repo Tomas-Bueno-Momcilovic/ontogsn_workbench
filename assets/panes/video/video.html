@@ -1,0 +1,79 @@
+<div class="video-panel">
+  <div class="video-top">
+    <div class="video-controls">
+      <div class="video-group">
+        <button id="vid-startCam">Start camera</button>
+        <button id="vid-stopCam" disabled>Stop camera</button>
+      </div>
+
+      <div class="video-group">
+        <label class="video-label">
+          Camera
+          <select id="vid-camera" class="video-select" disabled>
+            <option value="">Default</option>
+          </select>
+        </label>
+
+        <label class="video-label">
+          Resolution
+          <select id="vid-res" class="video-select">
+            <option value="auto">Auto</option>
+            <option value="720p">720p</option>
+            <option value="1080p">1080p</option>
+          </select>
+        </label>
+
+        <label class="video-check">
+          <input id="vid-audio" type="checkbox" checked />
+          Record audio
+        </label>
+      </div>
+
+      <div class="video-group">
+        <button id="vid-startRec" disabled>Start recording</button>
+        <button id="vid-stopRec" disabled>Stop recording</button>
+
+        <label class="video-label">
+          Format
+          <select id="vid-mime" class="video-select" disabled>
+            <option value="">(detecting…)</option>
+          </select>
+        </label>
+
+        <a id="vid-download" class="tab video-download disabled" href="#" download aria-disabled="true">
+          Download
+        </a>
+
+        <button id="vid-clear" disabled>Clear</button>
+
+        <!-- optional: only enabled when a recording exists AND camera is on -->
+        <button id="vid-backLive" disabled>Back to live</button>
+      </div>
+
+      <div class="video-indicators">
+        <span id="vid-rec" class="video-rec" hidden>
+          <span class="video-dot" aria-hidden="true"></span>
+          REC <span id="vid-timer">00:00</span>
+        </span>
+        <span id="vid-meta" class="video-meta"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="video-stage">
+    <div class="video-card">
+      <div class="video-card-head">
+        <h3 id="vid-stageTitle">Live preview</h3>
+        <span id="vid-stageHint" class="video-hint">Tip: preview is muted to avoid feedback.</span>
+      </div>
+
+      <video id="vid-stage" class="video-el" playsinline></video>
+
+      <div class="video-hint" id="vid-footHint">
+        Before/while recording you see the live preview. After stopping, the recording is shown here.
+      </div>
+    </div>
+  </div>
+
+  <div id="vid-status" class="video-status">Ready.</div>
+</div>

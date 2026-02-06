@@ -1,0 +1,163 @@
+.video-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px;
+  height: 95%;
+  min-height: 0;
+}
+
+.video-top {
+  flex: 0 0 auto;
+}
+
+.video-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.video-group {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.video-label {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.video-check {
+  display: inline-flex;
+  gap: 0.45rem;
+  align-items: center;
+  font-size: 12px;
+  opacity: 0.95;
+}
+
+.video-select {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  background: var(--panel-bg);
+  color: var(--fg);
+}
+
+.video-select:disabled {
+  opacity: 0.6;
+}
+
+.video-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.video-card {
+  flex: 1 1 auto;
+  min-height: 0;
+
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+  padding: 10px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.video-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.video-card h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.video-el {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 220px;
+  max-height: 420px;
+
+  border-radius: 10px;
+  background: #000;
+
+  object-fit: contain;
+}
+
+.video-hint {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.video-status {
+  flex: 0 0 auto;
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--muted-bg);
+  white-space: pre-wrap;
+}
+
+.video-status.is-error {
+  border-color: var(--border-strong);
+}
+
+.video-indicators {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.video-rec {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.video-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #d4001a;
+  box-shadow: 0 0 0 2px rgba(212, 0, 26, 0.2);
+  animation: vidPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes vidPulse {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  50% { transform: scale(1.12); opacity: 0.65; }
+}
+
+.video-meta {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* Download link styled like a tab/button */
+.video-download {
+  text-decoration: none;
+  display: inline-block;
+}
+
+.video-download.disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
