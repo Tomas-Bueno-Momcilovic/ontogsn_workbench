@@ -1,79 +1,100 @@
 <div class="video-panel">
-  <div class="video-top">
-    <div class="video-controls">
-      <div class="video-group">
-        <button id="vid-startCam">Start camera</button>
-        <button id="vid-stopCam" disabled>Stop camera</button>
-      </div>
+    <div class="video-top">
+        <div class="video-controls">
+            <div class="video-group">
+                <button id="vid-camToggle">Start camera</button>
+                <button id="vid-recToggle" disabled>Start recording</button>
 
-      <div class="video-group">
-        <label class="video-label">
-          Camera
-          <select id="vid-camera" class="video-select" disabled>
-            <option value="">Default</option>
-          </select>
-        </label>
+                <!-- Options dropdown (Camera / Resolution / Format) -->
+                <div class="video-menu" id="vid-optionsMenu">
+                    <button id="vid-optionsBtn" class="video-menu-btn" type="button" aria-haspopup="menu"
+                        aria-expanded="false">
+                        Options ▾
+                    </button>
 
-        <label class="video-label">
-          Resolution
-          <select id="vid-res" class="video-select">
-            <option value="auto">Auto</option>
-            <option value="720p">720p</option>
-            <option value="1080p">1080p</option>
-          </select>
-        </label>
+                    <div id="vid-optionsPanel" class="video-menu-panel" role="menu" hidden>
+                        <!-- Camera submenu -->
+                        <div class="video-submenu">
+                            <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
+                                Camera <span class="video-submenu-value" id="vid-cameraLabel">Default</span>
+                                <span class="video-submenu-caret">▸</span>
+                            </button>
 
-        <label class="video-check">
-          <input id="vid-audio" type="checkbox" checked />
-          Record audio
-        </label>
-      </div>
+                            <div class="video-submenu-panel" role="menu">
+                                <select id="vid-camera" class="video-select" disabled>
+                                    <option value="">Default</option>
+                                </select>
+                            </div>
+                        </div>
 
-      <div class="video-group">
-        <button id="vid-startRec" disabled>Start recording</button>
-        <button id="vid-stopRec" disabled>Stop recording</button>
+                        <!-- Resolution submenu -->
+                        <div class="video-submenu">
+                            <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
+                                Resolution <span class="video-submenu-value" id="vid-resLabel">Auto</span>
+                                <span class="video-submenu-caret">▸</span>
+                            </button>
 
-        <label class="video-label">
-          Format
-          <select id="vid-mime" class="video-select" disabled>
-            <option value="">(detecting…)</option>
-          </select>
-        </label>
+                            <div class="video-submenu-panel" role="menu">
+                                <select id="vid-res" class="video-select">
+                                    <option value="auto">Auto</option>
+                                    <option value="720p">720p</option>
+                                    <option value="1080p">1080p</option>
+                                </select>
+                            </div>
+                        </div>
 
-        <a id="vid-download" class="tab video-download disabled" href="#" download aria-disabled="true">
-          Download
-        </a>
+                        <!-- Format submenu -->
+                        <div class="video-submenu">
+                            <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
+                                Format <span class="video-submenu-value" id="vid-mimeLabel">(detecting…)</span>
+                                <span class="video-submenu-caret">▸</span>
+                            </button>
 
-        <button id="vid-clear" disabled>Clear</button>
+                            <div class="video-submenu-panel" role="menu">
+                                <select id="vid-mime" class="video-select" disabled>
+                                    <option value="">(detecting…)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-        <!-- optional: only enabled when a recording exists AND camera is on -->
-        <button id="vid-backLive" disabled>Back to live</button>
-      </div>
+                <label class="video-check">
+                    <input id="vid-audio" type="checkbox" checked />
+                    Audio?
+                </label>
 
-      <div class="video-indicators">
-        <span id="vid-rec" class="video-rec" hidden>
-          <span class="video-dot" aria-hidden="true"></span>
-          REC <span id="vid-timer">00:00</span>
-        </span>
-        <span id="vid-meta" class="video-meta"></span>
-      </div>
+                <a id="vid-download" class="tab video-download disabled" href="#" download aria-disabled="true">
+                    Download
+                </a>
+
+                <button id="vid-clear" disabled>Clear</button>
+                <div class="video-switch" role="group" aria-label="View">
+                    <button id="vid-viewLive" class="video-switch-btn" type="button" aria-pressed="true" disabled>
+                        ◀ Live
+                    </button>
+                    <button id="vid-viewRec" class="video-switch-btn" type="button" aria-pressed="false" disabled>
+                        Recording ▶
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <div class="video-stage">
-    <div class="video-card">
-      <div class="video-card-head">
-        <h3 id="vid-stageTitle">Live preview</h3>
-        <span id="vid-stageHint" class="video-hint">Tip: preview is muted to avoid feedback.</span>
-      </div>
+    <div class="video-stage">
+        <div class="video-frame">
+            <video id="vid-stage" class="video-el" autoplay muted playsinline></video>
 
-      <video id="vid-stage" class="video-el" playsinline></video>
+            <div class="video-hud" aria-live="polite">
+                <span id="vid-rec" class="video-rec" hidden>
+                    <span class="video-dot" aria-hidden="true"></span>
+                    REC <span id="vid-timer">00:00</span>
+                </span>
 
-      <div class="video-hint" id="vid-footHint">
-        Before/while recording you see the live preview. After stopping, the recording is shown here.
-      </div>
+                <span id="vid-meta" class="video-meta"></span>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <div id="vid-status" class="video-status">Ready.</div>
+    <div id="vid-status" class="video-status">Ready.</div>
 </div>

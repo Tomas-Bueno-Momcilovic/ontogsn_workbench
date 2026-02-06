@@ -50,17 +50,36 @@ function setStatus(msg, { error = false } = {}) {
     _els.status.classList.toggle("is-error", !!error);
 }
 
+function isRecordingActive() {
+    return !!_recorder && _recorder.state !== "inactive";
+}
+
 function setRecordingUI(isRec) {
+    const canRecord = !!_stream && ("MediaRecorder" in window);
+
     _els.rec.hidden = !isRec;
-    _els.startRec.disabled = isRec || !_stream || !("MediaRecorder" in window);
-    _els.stopRec.disabled = !isRec;
+
+    if (_els.recToggle) {
+        _els.recToggle.textContent = isRec ? "Stop recording" : "Start recording";
+        _els.recToggle.disabled = isRec ? false : !canRecord;
+        _els.recToggle.setAttribute("aria-pressed", isRec ? "true" : "false");
+    }
 }
 
 function setCameraUI(isOn) {
-    _els.startCam.disabled = !!isOn;
-    _els.stopCam.disabled = !isOn;
-    _els.cameraSel.disabled = !isOn;
-    _els.startRec.disabled = !isOn || !("MediaRecorder" in window);
+    if (_els.camToggle) {
+        _els.camToggle.textContent = isOn ? "Stop camera" : "Start camera";
+        _els.camToggle.setAttribute("aria-pressed", isOn ? "true" : "false");
+        _els.camToggle.disabled = false;
+    }
+
+    if (_els.cameraSel) _els.cameraSel.disabled = !isOn;
+
+    if (_els.recToggle) {
+        const canRecord = isOn && ("MediaRecorder" in window);
+        // If currently recording, keep enabled so user can stop
+        _els.recToggle.disabled = isRecordingActive() ? false : !canRecord;
+    }
 }
 
 function clearTimer() {
@@ -146,6 +165,25 @@ function detectSupportedMimes() {
     return out;
 }
 
+let _view = "live";
+
+function syncViewButtons() {
+    if (_els.viewLive) {
+        const canLive = !!_stream; // camera on
+        _els.viewLive.disabled = !canLive;
+        _els.viewLive.classList.toggle("is-active", _view === "live");
+        _els.viewLive.setAttribute("aria-pressed", _view === "live" ? "true" : "false");
+    }
+
+    if (_els.viewRec) {
+        const canRecView = !!_recordedUrl; // recording exists
+        _els.viewRec.disabled = !canRecView;
+        _els.viewRec.classList.toggle("is-active", _view === "recording");
+        _els.viewRec.setAttribute("aria-pressed", _view === "recording" ? "true" : "false");
+    }
+}
+
+
 function applyMimeOptions() {
     const sel = _els.mimeSel;
     if (!sel) return;
@@ -154,14 +192,15 @@ function applyMimeOptions() {
 
     const supported = detectSupportedMimes();
     if (!supported.length) {
-        // Leave blank -> we’ll let the browser choose recorder defaults.
         const opt = document.createElement("option");
         opt.value = "";
         opt.textContent = "(browser default)";
         sel.appendChild(opt);
         sel.disabled = false;
+        syncOptionLabels();
         return;
     }
+
 
     for (const t of supported) {
         const opt = document.createElement("option");
@@ -171,7 +210,55 @@ function applyMimeOptions() {
     }
 
     sel.disabled = false;
+    syncOptionLabels();
 }
+
+function closeOptionsMenu() {
+    if (!_els.optionsPanel || !_els.optionsBtn) return;
+
+    _els.optionsPanel.hidden = true;
+    _els.optionsBtn.setAttribute("aria-expanded", "false");
+
+    // close any open submenu
+    _els.optionsPanel.querySelectorAll(".video-submenu.is-open").forEach(n => {
+        n.classList.remove("is-open");
+        const b = n.querySelector(".video-submenu-btn");
+        if (b) b.setAttribute("aria-expanded", "false");
+    });
+}
+
+function openOptionsMenu() {
+    if (!_els.optionsPanel || !_els.optionsBtn) return;
+    _els.optionsPanel.hidden = false;
+    _els.optionsBtn.setAttribute("aria-expanded", "true");
+}
+
+function toggleOptionsMenu() {
+    if (!_els.optionsPanel) return;
+    if (_els.optionsPanel.hidden) openOptionsMenu();
+    else closeOptionsMenu();
+}
+
+function syncOptionLabels() {
+    // Camera label (uses selected option text)
+    if (_els.cameraLabel && _els.cameraSel) {
+        const opt = _els.cameraSel.selectedOptions?.[0];
+        _els.cameraLabel.textContent = opt?.textContent?.trim() || "Default";
+    }
+
+    // Resolution label
+    if (_els.resLabel && _els.resSel) {
+        const opt = _els.resSel.selectedOptions?.[0];
+        _els.resLabel.textContent = opt?.textContent?.trim() || "Auto";
+    }
+
+    // Format label
+    if (_els.mimeLabel && _els.mimeSel) {
+        const opt = _els.mimeSel.selectedOptions?.[0];
+        _els.mimeLabel.textContent = opt?.textContent?.trim() || "(browser default)";
+    }
+}
+
 
 async function refreshCameraList({ keepSelection = true } = {}) {
     const sel = _els.cameraSel;
@@ -200,6 +287,7 @@ async function refreshCameraList({ keepSelection = true } = {}) {
     if (prev && Array.from(sel.options).some(o => o.value === prev)) {
         sel.value = prev;
     }
+    syncOptionLabels();
 }
 
 function buildConstraints() {
@@ -257,6 +345,7 @@ async function stopRecording({ finalize = true } = {}) {
 
                     const filename = buildFilename(blob.type || type);
                     setDownloadEnabled(true, filename);
+                    syncViewButtons();
 
                     _els.clear.disabled = false;
 
@@ -309,39 +398,37 @@ async function tryPlayVideo(el) {
 }
 
 function showLive() {
+    _view = "live";
     const v = _els.stage;
     if (!v) return;
 
-    // Stage should show the live stream (video-only) and be muted
     setStageLabels("live");
 
-    v.pause?.();
+    try { v.pause?.(); } catch { }
 
-    // Clear blob playback first
+    v.srcObject = null;
     v.removeAttribute("src");
     v.load?.();
 
     v.muted = true;
     v.defaultMuted = true;
-    v.volume = 0;
     v.autoplay = true;
     v.playsInline = true;
     v.controls = false;
 
     v.srcObject = _previewStream || null;
 
-    // Best-effort autoplay; fallback to click-to-play
-    tryPlayVideo(v).then((ok) => {
-        if (ok) return;
-        v.addEventListener("loadedmetadata", () => { tryPlayVideo(v); }, { once: true });
-        v.addEventListener("click", () => { tryPlayVideo(v); }, { once: true });
-    });
+    const kick = () => v.play().catch(() => { });
+    kick();
+    v.addEventListener("loadedmetadata", kick, { once: true });
+    v.addEventListener("canplay", kick, { once: true });
 
-    // Back-to-live only makes sense when recording exists and camera is on
-    if (_els.backLive) _els.backLive.disabled = true;
+    syncViewButtons();
 }
 
+
 function showRecording() {
+    _view = "recording";
     const v = _els.stage;
     if (!v || !_recordedUrl) return;
 
@@ -363,7 +450,7 @@ function showRecording() {
     // (Comment out if you prefer not auto-playing the result)
     tryPlayVideo(v);
 
-    if (_els.backLive) _els.backLive.disabled = !_stream; // only if camera is still on
+    syncViewButtons();
 }
 
 
@@ -382,6 +469,7 @@ function stopCameraTracks() {
     }
 
     setCameraUI(false);
+    syncViewButtons();
 }
 
 async function startCamera() {
@@ -422,15 +510,16 @@ async function startCamera() {
 
         // Now that we have permission, we can populate camera labels
         await refreshCameraList({ keepSelection: true });
-        _els.cameraSel.disabled = false;
+        if (_els.cameraSel) _els.cameraSel.disabled = false;
 
         // Recording support check
         if (!("MediaRecorder" in window)) {
             setStatus("Camera is on, but MediaRecorder is not supported in this browser (recording disabled).", { error: true });
-            _els.startRec.disabled = true;
+            _els.recToggle.disabled = true;
         } else {
-            _els.startRec.disabled = false;
+            _els.recToggle.disabled = false;
         }
+
 
     } catch (e) {
         setStatus(`Could not start camera: ${e?.name || ""} ${e?.message || e}`, { error: true });
@@ -523,6 +612,7 @@ async function clearRecording() {
     _els.meta.textContent = "";
     setDownloadEnabled(false);
     _els.clear.disabled = true;
+    syncViewButtons();
 
     setStatus("Cleared recording.");
 }
@@ -548,10 +638,8 @@ export async function mount({ root, bus }) {
     _ac = new AbortController();
 
     _els = {
-        startCam: resolveEl("#vid-startCam", { root }),
-        stopCam: resolveEl("#vid-stopCam", { root }),
-        startRec: resolveEl("#vid-startRec", { root }),
-        stopRec: resolveEl("#vid-stopRec", { root }),
+        camToggle: resolveEl("#vid-camToggle", { root }),
+        recToggle: resolveEl("#vid-recToggle", { root }),
         clear: resolveEl("#vid-clear", { root }),
 
         cameraSel: resolveEl("#vid-camera", { root, required: false }),
@@ -563,20 +651,71 @@ export async function mount({ root, bus }) {
         stage: resolveEl("#vid-stage", { root }),
         stageTitle: resolveEl("#vid-stageTitle", { root, required: false }),
         stageHint: resolveEl("#vid-stageHint", { root, required: false }),
-        backLive: resolveEl("#vid-backLive", { root, required: false }),
+        viewLive: resolveEl("#vid-viewLive", { root, required: false }),
+        viewRec: resolveEl("#vid-viewRec", { root, required: false }),
 
         rec: resolveEl("#vid-rec", { root }),
         timer: resolveEl("#vid-timer", { root }),
         meta: resolveEl("#vid-meta", { root }),
         status: resolveEl("#vid-status", { root }),
+
+        optionsMenu: resolveEl("#vid-optionsMenu", { root, required: false }),
+        optionsBtn: resolveEl("#vid-optionsBtn", { root, required: false }),
+        optionsPanel: resolveEl("#vid-optionsPanel", { root, required: false }),
+
+        cameraLabel: resolveEl("#vid-cameraLabel", { root, required: false }),
+        resLabel: resolveEl("#vid-resLabel", { root, required: false }),
+        mimeLabel: resolveEl("#vid-mimeLabel", { root, required: false }),
+
     };
+
+    // --- Options menu behavior ---
+    if (_els.optionsBtn && _els.optionsPanel && _els.optionsMenu) {
+        _els.optionsBtn.addEventListener("click", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            toggleOptionsMenu();
+        }, { signal: _ac.signal });
+
+        // Click outside to close
+        document.addEventListener("pointerdown", (ev) => {
+            if (!_els.optionsMenu.contains(ev.target)) closeOptionsMenu();
+        }, { signal: _ac.signal });
+
+        // ESC closes
+        document.addEventListener("keydown", (ev) => {
+            if (ev.key === "Escape") closeOptionsMenu();
+        }, { signal: _ac.signal });
+
+        // Submenu open/close (click)
+        _els.optionsPanel.querySelectorAll(".video-submenu").forEach((node) => {
+            const btn = node.querySelector(".video-submenu-btn");
+            if (!btn) return;
+
+            btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+
+                // Close others, open this
+                _els.optionsPanel.querySelectorAll(".video-submenu").forEach((n) => {
+                    if (n === node) return;
+                    n.classList.remove("is-open");
+                    const b = n.querySelector(".video-submenu-btn");
+                    if (b) b.setAttribute("aria-expanded", "false");
+                });
+
+                const isOpen = node.classList.toggle("is-open");
+                btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+            }, { signal: _ac.signal });
+        });
+    }
 
     // Initial capability checks
     applyMimeOptions();
+    syncOptionLabels();
 
     if (!("MediaRecorder" in window)) {
-        _els.startRec.disabled = true;
-        _els.stopRec.disabled = true;
+        _els.recToggle.disabled = true;
         _els.mimeSel.disabled = true;
         setStatus("Ready. Note: MediaRecorder not supported in this browser (recording disabled).");
     } else {
@@ -584,21 +723,65 @@ export async function mount({ root, bus }) {
         setStatus("Ready.");
     }
 
+
     setDownloadEnabled(false);
     setCameraUI(false);
     setRecordingUI(false);
+    syncViewButtons();
     _els.clear.disabled = true;
 
-    _els.startCam.addEventListener("click", () => startCamera(), { signal: _ac.signal });
-    _els.stopCam.addEventListener("click", () => stopAll(), { signal: _ac.signal });
+    _els.camToggle.addEventListener("click", async () => {
+        if (_stream) await stopAll();
+        else await startCamera();
+    }, { signal: _ac.signal });
 
-    _els.startRec.addEventListener("click", () => startRecording(), { signal: _ac.signal });
-    _els.stopRec.addEventListener("click", () => stopRecording({ finalize: true }), { signal: _ac.signal });
+    _els.recToggle.addEventListener("click", async () => {
+        if (isRecordingActive()) await stopRecording({ finalize: true });
+        else await startRecording();
+    }, { signal: _ac.signal });
 
-    _els.clear.addEventListener("click", () => clearRecording(), { signal: _ac.signal });
+
+    let _clearArmed = false;
+    let _clearArmTimer = null;
+    const _clearDefaultLabel = _els.clear?.textContent || "Clear";
+
+    function disarmClear() {
+        _clearArmed = false;
+        if (_clearArmTimer) {
+            clearTimeout(_clearArmTimer);
+            _clearArmTimer = null;
+        }
+        if (_els.clear) {
+            _els.clear.classList.remove("video-clear-warn");
+            _els.clear.textContent = _clearDefaultLabel;
+            _els.clear.removeAttribute("aria-label");
+        }
+    }
+
+    _els.clear.addEventListener("click", async (ev) => {
+        if (_els.clear.disabled) return;
+
+        // First click: arm confirmation
+        if (!_clearArmed) {
+            _clearArmed = true;
+            _els.clear.classList.add("video-clear-warn");
+            _els.clear.textContent = "Clear (again)";
+            _els.clear.setAttribute("aria-label", "Click again to confirm clear");
+
+            if (_clearArmTimer) clearTimeout(_clearArmTimer);
+            _clearArmTimer = setTimeout(disarmClear, 1500); // auto-cancel after 1.5s
+            return;
+        }
+
+        // Second click (within timeout): actually clear
+        disarmClear();
+        await clearRecording();
+    }, { signal: _ac.signal });
+
 
     // If user changes camera/res/audio while camera is on, we restart camera
     const restartIfOn = async () => {
+        syncOptionLabels();
         if (!_stream) return;
         await startCamera();
     };
@@ -606,6 +789,8 @@ export async function mount({ root, bus }) {
     _els.cameraSel?.addEventListener("change", restartIfOn, { signal: _ac.signal });
     _els.resSel?.addEventListener("change", restartIfOn, { signal: _ac.signal });
     _els.audioChk?.addEventListener("change", restartIfOn, { signal: _ac.signal });
+
+    _els.mimeSel?.addEventListener("change", () => syncOptionLabels(), { signal: _ac.signal });
 
     // Download link guard (avoid “#” navigation when disabled)
     _els.download.addEventListener("click", (ev) => {
@@ -615,12 +800,21 @@ export async function mount({ root, bus }) {
         }
     }, { signal: _ac.signal });
 
-    _els.backLive?.addEventListener("click", () => {
+    _els.viewLive?.addEventListener("click", () => {
         if (_stream) showLive();
     }, { signal: _ac.signal });
 
+    _els.viewRec?.addEventListener("click", () => {
+        if (_recordedUrl) showRecording();
+    }, { signal: _ac.signal });
+
+
     // Populate camera list (labels may be blank until permission granted)
     try { await refreshCameraList({ keepSelection: true }); } catch { }
+
+    _els.cameraSel?.addEventListener("change", () => { syncOptionLabels(); closeOptionsMenu(); }, { signal: _ac.signal });
+    _els.resSel?.addEventListener("change", () => { syncOptionLabels(); closeOptionsMenu(); }, { signal: _ac.signal });
+    _els.mimeSel?.addEventListener("change", () => { syncOptionLabels(); closeOptionsMenu(); }, { signal: _ac.signal });
 
     return () => {
         // cleanup
