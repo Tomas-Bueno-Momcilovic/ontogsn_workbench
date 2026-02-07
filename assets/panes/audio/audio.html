@@ -36,9 +36,15 @@
       <button id="audio-tx-clear" type="button" title="Clear transcript">Clear transcript</button>
 
       <select id="audio-asr-model" title="Transcription model">
-        <option value="Xenova/whisper-tiny">whisper-tiny (multilingual)</option>
-        <option value="Xenova/whisper-tiny.en">whisper-tiny.en (English)</option>
-        <option value="Xenova/wav2vec2-base-960h">wav2vec2-base-960h (fast, English)</option>
+        <optgroup label="Cloud (Mistral)">
+          <option value="mistral:voxtral-mini-latest">Voxtral (stream) — voxtral-mini-latest</option>
+        </optgroup>
+
+        <optgroup label="Local (browser)">
+          <option value="Xenova/whisper-tiny">whisper-tiny (multilingual)</option>
+          <option value="Xenova/whisper-tiny.en">whisper-tiny.en (English)</option>
+          <option value="Xenova/wav2vec2-base-960h">wav2vec2-base-960h (fast, English)</option>
+        </optgroup>
       </select>
 
       <span id="audio-asr-status" class="audio-status"></span>
