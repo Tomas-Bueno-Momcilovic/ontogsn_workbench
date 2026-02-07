@@ -96,5 +96,17 @@
         </div>
     </div>
 
+    <!-- Frame viewer (thumbnails + scrub) -->
+    <div id="vid-frames" class="video-frames" hidden>
+        <div id="vid-strip" class="video-strip" role="group" aria-label="Frame viewer">
+            <div class="video-playhead" aria-hidden="true"></div>
+            <div id="vid-frameBadge" class="video-frame-badge" aria-hidden="true">0 / 0</div>
+            <div id="vid-stripInner" class="video-strip-inner"></div>
+        </div>
+
+        <input id="vid-scrub" class="video-scrub" type="range" min="0" max="1000" value="0" step="1"
+            aria-label="Scrub recording" disabled />
+    </div>
+
     <div id="vid-status" class="video-status">Ready.</div>
 </div>

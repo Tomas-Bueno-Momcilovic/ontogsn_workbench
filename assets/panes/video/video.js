@@ -1,5 +1,6 @@
 import { bus as coreBus } from "@core/events.js";
 import { mountTemplate, resolveEl } from "@core/utils.js";
+import { createFrameViewer } from "./frameViewer.js";
 
 const HTML = new URL("./video.html", import.meta.url);
 const CSS = new URL("./video.css", import.meta.url);
@@ -20,6 +21,8 @@ let _recordedUrl = null;
 
 let _timerHandle = null;
 let _recStartMs = 0;
+
+let _frameViewer = null;
 
 function fmtTime(ms) {
     const s = Math.max(0, Math.floor(ms / 1000));
@@ -58,6 +61,9 @@ function setRecordingUI(isRec) {
     const canRecord = !!_stream && ("MediaRecorder" in window);
 
     _els.rec.hidden = !isRec;
+
+    const frame = _root?.querySelector(".video-frame");
+    frame?.classList.toggle("is-recording", !!isRec);
 
     if (_els.recToggle) {
         _els.recToggle.textContent = isRec ? "Stop recording" : "Start recording";
@@ -312,12 +318,17 @@ function buildConstraints() {
     return { video, audio: wantAudio };
 }
 
+let _stopPromise = null;
+
 async function stopRecording({ finalize = true } = {}) {
+    if (_stopPromise) return _stopPromise;
     if (!_recorder) return;
 
     const rec = _recorder;
+    const chunks = _chunks;
+    _chunks = [];
 
-    return new Promise((resolve) => {
+    _stopPromise = new Promise((resolve) => {
         const done = () => resolve();
 
         // If stop event already fired or recorder is inactive, just resolve.
@@ -347,6 +358,8 @@ async function stopRecording({ finalize = true } = {}) {
                     setDownloadEnabled(true, filename);
                     syncViewButtons();
 
+                    _frameViewer?.rebuild().catch(() => { });
+
                     _els.clear.disabled = false;
 
                     _els.meta.textContent = `Saved: ${fmtBytes(blob.size)} • ${blob.type || "video"}`;
@@ -374,7 +387,9 @@ async function stopRecording({ finalize = true } = {}) {
             setRecordingUI(false);
             done();
         }
-    });
+    }).finally(() => { _stopPromise = null; });
+
+    return _stopPromise;
 }
 
 function setStageLabels(kind) {
@@ -594,6 +609,7 @@ async function clearRecording() {
 
     _recordedBlob = null;
     revokeRecordedUrl();
+    _frameViewer?.clear();
     if (_els.backLive) _els.backLive.disabled = true;
 
     if (_stream) showLive();
@@ -667,6 +683,12 @@ export async function mount({ root, bus }) {
         resLabel: resolveEl("#vid-resLabel", { root, required: false }),
         mimeLabel: resolveEl("#vid-mimeLabel", { root, required: false }),
 
+        frames: resolveEl("#vid-frames", { root, required: false }),
+        strip: resolveEl("#vid-strip", { root, required: false }),
+        stripInner: resolveEl("#vid-stripInner", { root, required: false }),
+        frameBadge: resolveEl("#vid-frameBadge", { root, required: false }),
+        scrub: resolveEl("#vid-scrub", { root, required: false }),
+
     };
 
     // --- Options menu behavior ---
@@ -710,6 +732,26 @@ export async function mount({ root, bus }) {
         });
     }
 
+    _frameViewer = createFrameViewer({
+        framesEl: _els.frames,
+        stripEl: _els.strip,
+        stripInnerEl: _els.stripInner,
+        frameBadgeEl: _els.frameBadge,
+        scrubEl: _els.scrub,
+        stageEl: _els.stage,
+
+        getRecordedUrl: () => _recordedUrl,
+        ensureRecordingView: () => {
+            if (!_recordedUrl) return false;
+            if (_view !== "recording") showRecording();
+            return true;
+        },
+
+        signal: _ac.signal,
+        scrubMax: 1000,
+        fpsEst: 30,
+    });
+
     // Initial capability checks
     applyMimeOptions();
     syncOptionLabels();
@@ -723,12 +765,14 @@ export async function mount({ root, bus }) {
         setStatus("Ready.");
     }
 
-
     setDownloadEnabled(false);
     setCameraUI(false);
     setRecordingUI(false);
     syncViewButtons();
     _els.clear.disabled = true;
+
+    if (_recordedUrl) _frameViewer.rebuild().catch(() => {});
+    else _frameViewer.clear();
 
     _els.camToggle.addEventListener("click", async () => {
         if (_stream) await stopAll();
@@ -816,15 +860,14 @@ export async function mount({ root, bus }) {
     _els.resSel?.addEventListener("change", () => { syncOptionLabels(); closeOptionsMenu(); }, { signal: _ac.signal });
     _els.mimeSel?.addEventListener("change", () => { syncOptionLabels(); closeOptionsMenu(); }, { signal: _ac.signal });
 
-    return () => {
-        // cleanup
+    return async () => {
         try { _ac?.abort(); } catch { }
         _ac = null;
 
-        // Stop everything and release resources
-        // (don’t await here; pane manager doesn’t require cleanup to be async)
-        stopAll();
+        try { _frameViewer?.destroy?.(); } catch {}
+        _frameViewer = null;
 
+        try { await stopAll(); } catch {}
         revokeRecordedUrl();
 
         _root = null;
