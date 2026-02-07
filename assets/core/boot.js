@@ -19,6 +19,7 @@ async function boot() {
 
     panes.registerPane("right", "audio-root",      () => import("@panes/audio/audio.js"));
     panes.registerPane("right", "video-root",      () => import("@panes/video/video.js"));
+    panes.registerPane("right", "image-root",     () => import("@panes/image/image.js"));
     panes.registerPane("right", "graph-root",     () => import("@panes/graph/graph.js"), { cache: false });
     panes.registerPane("right", "layers-root",   () => import("@panes/layers/layers.js"));
     panes.registerPane("right", "model-root",     () => import("@panes/model/model.js"));
