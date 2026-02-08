@@ -278,6 +278,9 @@ export function createFrameViewer({
             img.className = "video-thumb";
             img.alt = `Thumb ${i + 1}`;
             img.src = url;
+            img.addEventListener("load", () => { try { URL.revokeObjectURL(url); } catch {} }, { once: true });
+            img.addEventListener("error", () => { try { URL.revokeObjectURL(url); } catch {} }, { once: true });
+            
             btn.appendChild(img);
 
             btn.addEventListener("click", () => {
