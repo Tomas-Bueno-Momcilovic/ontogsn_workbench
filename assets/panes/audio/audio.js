@@ -1,5 +1,12 @@
 import { mountTemplate } from "@core/utils.js";
 
+import {
+  ensureOpenRouterAudioModels,
+  isOpenRouterAudioModel,
+  openRouterModelId,
+  openRouterAudioTranscribeBlob
+} from "./ai.js";
+
 const HTML = new URL("./audio.html", import.meta.url);
 const CSS = new URL("./audio.css", import.meta.url);
 
@@ -583,6 +590,41 @@ async function transcribeCurrentAudio() {
     }
   }
 
+  const useOpenRouter = isOpenRouterAudioModel(modelId);
+
+  if (useOpenRouter) {
+    if (txBtn) txBtn.disabled = true;
+    if (txModelSel) txModelSel.disabled = true;
+    if (txCopyBtn) txCopyBtn.disabled = true;
+    if (txClearBtn) txClearBtn.disabled = true;
+
+    setTxStatus("OpenRouter: uploading…", "busy");
+    if (txOutEl) txOutEl.value = "";
+
+    try {
+      const model = openRouterModelId(modelId); // e.g. "openai/gpt-audio"
+      const text = await openRouterAudioTranscribeBlob({
+        blob: currentBlob,
+        modelId: model,
+        prompt: "Please transcribe this audio file. If there are multiple speakers, label them.",
+        // signal: optional AbortController if you add one later
+      });
+
+      if (txOutEl) txOutEl.value = (text || "").trim() || "(no text)";
+      setTxStatus("Done.");
+      return; // IMPORTANT: don’t fall through to local ASR
+    } catch (e) {
+      console.error("[audio] openrouter transcribe failed:", e);
+      setTxStatus(`OpenRouter failed: ${e?.message || e}`, "err");
+      return;
+    } finally {
+      if (txBtn) txBtn.disabled = false;
+      if (txModelSel) txModelSel.disabled = false;
+      if (txCopyBtn) txCopyBtn.disabled = false;
+      if (txClearBtn) txClearBtn.disabled = false;
+    }
+  }
+
   const isEnglishOnly = /\.en$/i.test(modelId);
   const lang = "en";
 
@@ -1128,6 +1170,11 @@ async function startLiveStt(stream) {
   const modelId = txModelSel?.value || "Xenova/whisper-tiny.en";
   const useVoxtral = isMistralModel(modelId);
 
+  if (isOpenRouterAudioModel(modelId)) {
+    setTxStatus("Live STT is not supported for OpenRouter audio models.", "err");
+    return;
+  }
+
   setTxStatus(useVoxtral ? "Live STT (Voxtral): listening…" : "Live STT: loading…", useVoxtral ? "" : "busy");
 
   if (!useVoxtral) {
@@ -1436,6 +1483,12 @@ function wireUi(root) {
     if (!isRecording() || !recStream) return;
     if (!txLiveToggle?.checked) return;
 
+    if (isOpenRouterAudioModel(txModelSel.value)) {
+      stopLiveStt({ flush: false }).catch(console.warn);
+      setTxStatus("Live STT is not supported for OpenRouter audio models.", "err");
+      return;
+    }
+
     stopLiveStt({ flush: false })
       .then(() => startLiveStt(recStream))
       .catch(console.warn);
@@ -1477,6 +1530,8 @@ export async function mount({ root }) {
   setTxStatus("");
   drawEmptyWave("No audio loaded");
   setStatus("Ready.");
+
+  try { await ensureOpenRouterAudioModels(txModelSel); } catch {}
 
   // seek by click
   _onCanvasClick = (ev) => {

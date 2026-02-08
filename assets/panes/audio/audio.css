@@ -164,3 +164,27 @@ html[data-theme="dark"] .audio-status[data-kind="err"] {
 .audio-live-toggle input {
   margin: 0;
 }
+
+/* Let the row wrap instead of forcing one giant control */
+.audio-transcribe-top {
+  flex-wrap: wrap;
+}
+
+/* Constrain the model dropdown width */
+#audio-asr-model {
+  /* pick the cap you like */
+  max-width: 360px;
+
+  /* make it shrink instead of pushing everything */
+  flex: 0 1 360px;
+
+  /* optional: keep it usable on small screens */
+  min-width: 220px;
+  width: min(55vw, 360px);
+
+  /* optional: show ellipsis when selected option text is long */
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
