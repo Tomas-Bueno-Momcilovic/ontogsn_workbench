@@ -66,7 +66,7 @@ function setRecordingUI(isRec) {
     frame?.classList.toggle("is-recording", !!isRec);
 
     if (_els.recToggle) {
-        _els.recToggle.textContent = isRec ? "Stop recording" : "Start recording";
+        _els.recToggle.textContent = isRec ? "Stop" : "Record";
         _els.recToggle.disabled = isRec ? false : !canRecord;
         _els.recToggle.setAttribute("aria-pressed", isRec ? "true" : "false");
     }
@@ -74,7 +74,7 @@ function setRecordingUI(isRec) {
 
 function setCameraUI(isOn) {
     if (_els.camToggle) {
-        _els.camToggle.textContent = isOn ? "Stop camera" : "Start camera";
+        _els.camToggle.textContent = isOn ? "Disable camera" : "Enable camera";
         _els.camToggle.setAttribute("aria-pressed", isOn ? "true" : "false");
         _els.camToggle.disabled = false;
     }

@@ -3,7 +3,7 @@
         <div class="video-controls">
             <div class="video-group">
                 <button id="vid-camToggle">Start camera</button>
-                <button id="vid-recToggle" disabled>Start recording</button>
+                <button id="vid-recToggle" disabled>Record</button>
 
                 <!-- Options dropdown (Camera / Resolution / Format) -->
                 <div class="video-menu" id="vid-optionsMenu">
@@ -64,19 +64,7 @@
                     Audio?
                 </label>
 
-                <a id="vid-download" class="tab video-download disabled" href="#" download aria-disabled="true">
-                    Download
-                </a>
-
                 <button id="vid-clear" disabled>Clear</button>
-                <div class="video-switch" role="group" aria-label="View">
-                    <button id="vid-viewLive" class="video-switch-btn" type="button" aria-pressed="true" disabled>
-                        ◀ Live
-                    </button>
-                    <button id="vid-viewRec" class="video-switch-btn" type="button" aria-pressed="false" disabled>
-                        Recording ▶
-                    </button>
-                </div>
             </div>
         </div>
     </div>
@@ -85,14 +73,36 @@
         <div class="video-frame">
             <video id="vid-stage" class="video-el" autoplay muted playsinline></video>
 
-            <div class="video-hud" aria-live="polite">
+            <div class="video-hud">
                 <span id="vid-rec" class="video-rec" hidden>
                     <span class="video-dot" aria-hidden="true"></span>
                     REC <span id="vid-timer">00:00</span>
                 </span>
 
-                <span id="vid-meta" class="video-meta"></span>
+                <!-- Download icon (top-right) -->
+                <a id="vid-download" class="video-hud-btn video-download disabled" href="#" aria-disabled="true"
+                    title="Download recording" aria-label="Download">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path
+                            d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1z" />
+                        <path d="M5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
+                    </svg>
+                </a>
+
+                <!-- Meta (bottom-left) -->
+                <div id="vid-meta" class="video-hud-meta" aria-live="polite"></div>
+
+                <!-- Bottom-right view switch -->
+                <div class="video-switch video-hud-switch" role="group" aria-label="View">
+                    <button id="vid-viewLive" class="video-switch-btn" type="button" aria-pressed="true" disabled>
+                        ◀ Live
+                    </button>
+                    <button id="vid-viewRec" class="video-switch-btn" type="button" aria-pressed="false" disabled>
+                        Recording ▶
+                    </button>
+                </div>
             </div>
+
         </div>
     </div>
 

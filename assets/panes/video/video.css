@@ -256,16 +256,8 @@
   opacity: 0;
   transition: opacity 120ms ease;
   position: absolute;
-  top: 10px;
-  left: 10px;
-  right: 10px;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-
-  pointer-events: none; /* don't block clicks on the video */
+  inset: 10px;                 /* top/right/bottom/left */
+  pointer-events: none;        /* don't block clicks on video */
   z-index: 2;
 }
 
@@ -277,9 +269,50 @@
   opacity: 1;
 }
 
+/* Position HUD items */
+.video-hud .video-rec {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* Bottom-right view switch inside HUD */
+.video-hud-switch {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+
+  pointer-events: auto;     /* make it clickable even though HUD is pointer-events:none */
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* HUD styling for the buttons */
+.video-hud-switch .video-switch-btn {
+  pointer-events: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+
+.video-hud-switch .video-switch-btn:hover {
+  background: rgba(0, 0, 0, 0.70);
+}
+
+.video-hud-switch .video-switch-btn.is-active {
+  border-color: rgba(43, 107, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(43, 107, 255, 0.18);
+}
+
 /* Make text readable on video */
-.video-rec,
-.video-meta {
+.video-rec {
   pointer-events: none;
   padding: 4px 8px;
   border-radius: 999px;
@@ -439,4 +472,79 @@
 .video-scrub {
   width: 100%;
   accent-color: var(--focus);
+}
+
+/* Top-right download icon in HUD (image-pane style) */
+.video-hud-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+
+  width: 44px;
+  height: 44px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+
+  cursor: pointer;
+  pointer-events: auto; /* clickable even though HUD container is pointer-events:none */
+  text-decoration: none;
+}
+
+.video-hud-btn:hover {
+  background: rgba(0, 0, 0, 0.70);
+}
+
+.video-hud-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.video-hud-btn svg {
+  width: 26px;
+  height: 26px;
+  fill: currentColor;
+}
+
+/* Disabled state for <a> */
+.video-hud-btn.disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Bottom-left metadata panel */
+.video-hud-meta {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+
+  max-width: calc(100% - 220px); /* leave room for the bottom-right switch */
+
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+
+  font-size: 12px;
+  line-height: 1.25;
+
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+
+  pointer-events: none; /* informational only */
+  overflow-wrap: anywhere;
 }
