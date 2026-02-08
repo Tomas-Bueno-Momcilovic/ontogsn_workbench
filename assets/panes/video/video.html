@@ -1,0 +1,122 @@
+<div class="video-panel">
+    <div class="video-top">
+        <div class="video-controls">
+            <div class="video-group">
+                <button id="vid-camToggle">Start camera</button>
+                <button id="vid-recToggle" disabled>Record</button>
+
+                <!-- Options dropdown (Camera / Resolution / Format) -->
+                <div class="video-menu" id="vid-optionsMenu">
+                    <button id="vid-optionsBtn" class="video-menu-btn" type="button" aria-haspopup="menu"
+                        aria-expanded="false">
+                        Options ▾
+                    </button>
+
+                    <div id="vid-optionsPanel" class="video-menu-panel" role="menu" hidden>
+                        <!-- Camera submenu -->
+                        <div class="video-submenu">
+                            <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
+                                Camera <span class="video-submenu-value" id="vid-cameraLabel">Default</span>
+                                <span class="video-submenu-caret">▸</span>
+                            </button>
+
+                            <div class="video-submenu-panel" role="menu">
+                                <select id="vid-camera" class="video-select" disabled>
+                                    <option value="">Default</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Resolution submenu -->
+                        <div class="video-submenu">
+                            <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
+                                Resolution <span class="video-submenu-value" id="vid-resLabel">Auto</span>
+                                <span class="video-submenu-caret">▸</span>
+                            </button>
+
+                            <div class="video-submenu-panel" role="menu">
+                                <select id="vid-res" class="video-select">
+                                    <option value="auto">Auto</option>
+                                    <option value="720p">720p</option>
+                                    <option value="1080p">1080p</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Format submenu -->
+                        <div class="video-submenu">
+                            <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
+                                Format <span class="video-submenu-value" id="vid-mimeLabel">(detecting…)</span>
+                                <span class="video-submenu-caret">▸</span>
+                            </button>
+
+                            <div class="video-submenu-panel" role="menu">
+                                <select id="vid-mime" class="video-select" disabled>
+                                    <option value="">(detecting…)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <label class="video-check">
+                    <input id="vid-audio" type="checkbox" checked />
+                    Audio?
+                </label>
+
+                <button id="vid-clear" disabled>Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="video-stage">
+        <div class="video-frame">
+            <video id="vid-stage" class="video-el" autoplay muted playsinline></video>
+
+            <div class="video-hud">
+                <span id="vid-rec" class="video-rec" hidden>
+                    <span class="video-dot" aria-hidden="true"></span>
+                    REC <span id="vid-timer">00:00</span>
+                </span>
+
+                <!-- Download icon (top-right) -->
+                <a id="vid-download" class="video-hud-btn video-download disabled" href="#" aria-disabled="true"
+                    title="Download recording" aria-label="Download">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path
+                            d="M12 3a1 1 0 0 1 1 1v9.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42l2.3 2.3V4a1 1 0 0 1 1-1z" />
+                        <path d="M5 19a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z" />
+                    </svg>
+                </a>
+
+                <!-- Meta (bottom-left) -->
+                <div id="vid-meta" class="video-hud-meta" aria-live="polite"></div>
+
+                <!-- Bottom-right view switch -->
+                <div class="video-switch video-hud-switch" role="group" aria-label="View">
+                    <button id="vid-viewLive" class="video-switch-btn" type="button" aria-pressed="true" disabled>
+                        ◀ Live
+                    </button>
+                    <button id="vid-viewRec" class="video-switch-btn" type="button" aria-pressed="false" disabled>
+                        Recording ▶
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Frame viewer (thumbnails + scrub) -->
+    <div id="vid-frames" class="video-frames" hidden>
+        <div id="vid-strip" class="video-strip" role="group" aria-label="Frame viewer">
+            <div class="video-playhead" aria-hidden="true"></div>
+            <div id="vid-frameBadge" class="video-frame-badge" aria-hidden="true">0 / 0</div>
+            <div id="vid-stripInner" class="video-strip-inner"></div>
+        </div>
+
+        <input id="vid-scrub" class="video-scrub" type="range" min="0" max="1000" value="0" step="1"
+            aria-label="Scrub recording" disabled />
+    </div>
+
+    <div id="vid-status" class="video-status">Ready.</div>
+</div>

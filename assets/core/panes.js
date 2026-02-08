@@ -353,6 +353,8 @@ class PaneManager {
       safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
       safeInvoke(this.bus, "emit", "pane:tab", payload);
 
+      console.log("[PaneManager] activating", { slot, paneId, tabId: b.id, label: b.textContent });
+      
       Promise.resolve(this._activatePane(slot, paneId, payload))
         .then(() => {
           safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
