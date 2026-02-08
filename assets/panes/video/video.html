@@ -56,6 +56,27 @@
                                 </select>
                             </div>
                         </div>
+
+                        <!-- AI Model submenu -->
+                        <div class="video-submenu">
+                            <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
+                                AI model <span class="video-submenu-value"
+                                    id="vid-aiModelLabel">openai/gpt-4o-mini</span>
+                                <span class="video-submenu-caret">▸</span>
+                            </button>
+
+                            <div class="video-submenu-panel" role="menu">
+                                <input id="vid-aiModel" class="video-select" type="text" list="vid-aiModelList"
+                                    placeholder="openrouter model id" />
+                                <datalist id="vid-aiModelList">
+                                    <option value="openai/gpt-4o-mini"></option>
+                                    <option value="openai/gpt-4o"></option>
+                                    <option value="google/gemini-2.0-flash"></option>
+                                    <option value="anthropic/claude-3.5-sonnet"></option>
+                                </datalist>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
@@ -65,6 +86,8 @@
                 </label>
 
                 <button id="vid-clear" disabled>Clear</button>
+                <button id="vid-aiToggle" type="button" disabled> Describe</button>
+
             </div>
         </div>
     </div>
