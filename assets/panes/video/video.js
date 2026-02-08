@@ -1,6 +1,9 @@
 import { bus as coreBus } from "@core/events.js";
 import { mountTemplate, resolveEl } from "@core/utils.js";
 import { createFrameViewer } from "./frameViewer.js";
+import { createVideoAI } from "./ai.js";
+
+let _ai = null;
 
 const HTML = new URL("./video.html", import.meta.url);
 const CSS = new URL("./video.css", import.meta.url);
@@ -263,6 +266,11 @@ function syncOptionLabels() {
         const opt = _els.mimeSel.selectedOptions?.[0];
         _els.mimeLabel.textContent = opt?.textContent?.trim() || "(browser default)";
     }
+
+    if (_els.aiModelLabel && _els.aiModel) {
+        const v = String(_els.aiModel.value || "").trim();
+        _els.aiModelLabel.textContent = v || "openai/gpt-4o-mini";
+    }
 }
 
 
@@ -325,8 +333,6 @@ async function stopRecording({ finalize = true } = {}) {
     if (!_recorder) return;
 
     const rec = _recorder;
-    const chunks = _chunks;
-    _chunks = [];
 
     _stopPromise = new Promise((resolve) => {
         const done = () => resolve();
@@ -357,6 +363,7 @@ async function stopRecording({ finalize = true } = {}) {
                     const filename = buildFilename(blob.type || type);
                     setDownloadEnabled(true, filename);
                     syncViewButtons();
+                    _ai?.sync?.();
 
                     _frameViewer?.rebuild().catch(() => { });
 
@@ -629,6 +636,7 @@ async function clearRecording() {
     setDownloadEnabled(false);
     _els.clear.disabled = true;
     syncViewButtons();
+    _ai?.sync?.();
 
     setStatus("Cleared recording.");
 }
@@ -689,6 +697,8 @@ export async function mount({ root, bus }) {
         frameBadge: resolveEl("#vid-frameBadge", { root, required: false }),
         scrub: resolveEl("#vid-scrub", { root, required: false }),
 
+        aiModel: resolveEl("#vid-aiModel", { root, required: false }),
+        aiModelLabel: resolveEl("#vid-aiModelLabel", { root, required: false }),
     };
 
     // --- Options menu behavior ---
@@ -732,6 +742,15 @@ export async function mount({ root, bus }) {
         });
     }
 
+    _ai = createVideoAI({
+        root,
+        signal: _ac.signal,
+        getRecordedBlob: () => _recordedBlob,
+        getRecordedUrl: () => _recordedUrl,
+        setStatus, // optional (even if you hide status)
+    });
+    _ai?.sync?.();
+
     _frameViewer = createFrameViewer({
         framesEl: _els.frames,
         stripEl: _els.strip,
@@ -771,7 +790,7 @@ export async function mount({ root, bus }) {
     syncViewButtons();
     _els.clear.disabled = true;
 
-    if (_recordedUrl) _frameViewer.rebuild().catch(() => {});
+    if (_recordedUrl) _frameViewer.rebuild().catch(() => { });
     else _frameViewer.clear();
 
     _els.camToggle.addEventListener("click", async () => {
@@ -835,6 +854,7 @@ export async function mount({ root, bus }) {
     _els.audioChk?.addEventListener("change", restartIfOn, { signal: _ac.signal });
 
     _els.mimeSel?.addEventListener("change", () => syncOptionLabels(), { signal: _ac.signal });
+    _els.aiModel?.addEventListener("change", () => { syncOptionLabels(); closeOptionsMenu(); }, { signal: _ac.signal });
 
     // Download link guard (avoid “#” navigation when disabled)
     _els.download.addEventListener("click", (ev) => {
@@ -864,10 +884,10 @@ export async function mount({ root, bus }) {
         try { _ac?.abort(); } catch { }
         _ac = null;
 
-        try { _frameViewer?.destroy?.(); } catch {}
+        try { _frameViewer?.destroy?.(); } catch { }
         _frameViewer = null;
 
-        try { await stopAll(); } catch {}
+        try { await stopAll(); } catch { }
         revokeRecordedUrl();
 
         _root = null;
@@ -889,4 +909,7 @@ export async function unmount() {
     // If cache:false ever used in registerPane, this will be called.
     await stopAll();
     revokeRecordedUrl();
+    try { _ai?.destroy?.(); } catch {}
+    _ai = null;
+
 }
