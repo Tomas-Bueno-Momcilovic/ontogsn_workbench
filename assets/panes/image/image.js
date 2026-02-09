@@ -1,5 +1,6 @@
 import { bus as coreBus } from "@core/events.js";
 import { mountTemplate, resolveEl } from "@core/utils.js";
+import { wireImageDescribeAI } from "./ai.js";
 
 const HTML = new URL("./image.html", import.meta.url);
 const CSS = new URL("./image.css", import.meta.url);
@@ -12,6 +13,9 @@ let _els = {};
 let _stream = null;
 let _cameraSupported = true;
 let _cameraBusy = false;
+
+let _ai = null;
+let _aiBusy = false;
 
 let _current = {
     blob: null,
@@ -84,20 +88,26 @@ function _showDropHint(show) {
 function _updateButtons() {
     const hasImage = !!_current.blob;
     const camOn = !!_stream;
+    const busy = !!(_cameraBusy || _aiBusy);
+
+    if (_els.file) _els.file.disabled = busy;
+
+    if (_els.describe) _els.describe.disabled = !hasImage || busy;
 
     if (_els.camera) {
-        _els.camera.disabled = !_cameraSupported || _cameraBusy;
+        _els.camera.disabled = !_cameraSupported || busy;
         _els.camera.textContent = camOn ? "Stop camera" : "Start camera";
         _els.camera.title = camOn ? "Stop webcam" : "Start webcam";
     }
 
-    if (_els.capture) _els.capture.disabled = !camOn || _cameraBusy;
+    if (_els.capture) _els.capture.disabled = !camOn || busy;
 
-    if (_els.clear) _els.clear.disabled = !(camOn || hasImage) || _cameraBusy;
-    if (_els.download) _els.download.disabled = !hasImage || _cameraBusy;
+    if (_els.clear) _els.clear.disabled = !(camOn || hasImage) || busy;
+    if (_els.download) _els.download.disabled = !hasImage || busy;
 
     if (_els.capture) _els.capture.textContent = _cameraHasCapture ? "Retake" : "Capture";
 }
+
 
 function _stopStream() {
     if (_stream) {
@@ -415,7 +425,19 @@ export async function mount({ root, bus }) {
         metaSource: resolveEl("#image-source", { root, required: false }),
         metaSize: resolveEl("#image-size", { root, required: false }),
         metaDims: resolveEl("#image-dims", { root, required: false }),
+
+        describe: resolveEl("#image-describe", { root, required: false }),
     };
+
+    _ai = wireImageDescribeAI({
+        root,
+        getImageBlob: () => _current.blob,
+        setBusy: (v) => { _aiBusy = !!v; _updateButtons(); },
+        setStatus: _setStatus,
+        emit: _emit, // reuse your existing bus+window emitter
+        title: "OntoGSN Workbench (Image pane)",
+        // model/prompt can be overridden here later if desired
+    });
 
     // Upload
     _els.file?.addEventListener("change", (e) => {
@@ -466,6 +488,10 @@ export async function mount({ root, bus }) {
     return () => {
         _stopStream();
         _revokeObjectUrl();
+
+        try { _ai?.destroy?.(); } catch {}
+        _ai = null;
+        _aiBusy = false;
 
         _root = null;
         _bus = null;
