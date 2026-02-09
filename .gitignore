@@ -1,5 +1,7 @@
 /working_files
 /assets/panes/orchestrator/ontos
 */api.txt
+assets/panes/*/api.txt
 assets/panes/video/api.txt
 assets/panes/image/api.txt
+assets/panes/audio/api.txt
