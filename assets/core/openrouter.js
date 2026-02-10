@@ -79,6 +79,8 @@ export async function openRouterChatCompletions(opts = {}) {
   } = opts;
 
   if (!apiKey) throw new Error("Missing OpenRouter API key.");
+  if (!model) throw new Error("Missing model.");
+  if (!messages) throw new Error("Missing messages.");
 
   const res = await fetch(endpoint, {
     method: "POST",
