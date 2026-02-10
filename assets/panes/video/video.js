@@ -1,7 +1,7 @@
 import { bus as coreBus } from "@core/events.js";
-import { mountTemplate, resolveEl } from "@core/utils.js";
+import { mountTemplate, resolveEl, fmtBytes, fmtTimeMs } from "@core/utils.js";
 import { createFrameViewer } from "./frameViewer.js";
-import { createVideoAI } from "./ai.js";
+import { createVideoAI, ensureOpenRouterVideoModels } from "./ai.js";
 
 let _ai = null;
 
@@ -26,24 +26,6 @@ let _timerHandle = null;
 let _recStartMs = 0;
 
 let _frameViewer = null;
-
-function fmtTime(ms) {
-    const s = Math.max(0, Math.floor(ms / 1000));
-    const mm = String(Math.floor(s / 60)).padStart(2, "0");
-    const ss = String(s % 60).padStart(2, "0");
-    return `${mm}:${ss}`;
-}
-
-function fmtBytes(bytes) {
-    const b = Math.max(0, Number(bytes || 0));
-    if (b < 1024) return `${b} B`;
-    const kb = b / 1024;
-    if (kb < 1024) return `${kb.toFixed(1)} KB`;
-    const mb = kb / 1024;
-    if (mb < 1024) return `${mb.toFixed(1)} MB`;
-    const gb = mb / 1024;
-    return `${gb.toFixed(2)} GB`;
-}
 
 function isProbablyLocalhost() {
     const h = location.hostname;
@@ -780,6 +762,8 @@ export async function mount({ root, bus }) {
             }, { signal: _ac.signal });
         });
     }
+
+    ensureOpenRouterVideoModels(_els.aiModel, { signal: _ac.signal });
 
     _ai = createVideoAI({
         root,

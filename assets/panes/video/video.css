@@ -381,18 +381,37 @@
   flex: 0 0 auto;
 }
 
+/* Light theme: make placeholders visible on white panels */
 .video-thumb {
-  width: 96px;
-  height: 54px;
-  border-radius: 8px;
-
-  object-fit: cover;
-  display: block;
-
-  background: #111;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  opacity: 0.92;
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
+
+.video-thumb-placeholder {
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    90deg,
+    rgba(0,0,0,0.04),
+    rgba(0,0,0,0.10),
+    rgba(0,0,0,0.04)
+  );
+  background-size: 240px 100%;
+}
+
+/* Dark theme: keep your original look */
+html[data-theme="dark"] .video-thumb {
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+html[data-theme="dark"] .video-thumb-placeholder {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04),
+    rgba(255,255,255,0.10),
+    rgba(255,255,255,0.04)
+  );
+}
+
 
 .video-thumb-btn:hover .video-thumb {
   opacity: 1;
@@ -407,22 +426,6 @@
   outline: 2px solid var(--focus);
   outline-offset: 1px;
   opacity: 1;
-}
-
-.video-thumb-placeholder {
-  width: 96px;
-  height: 54px;
-  border-radius: 8px;
-
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0.04),
-    rgba(255,255,255,0.10),
-    rgba(255,255,255,0.04)
-  );
-  background-size: 240px 100%;
-  animation: vidShimmer 1.1s linear infinite;
 }
 
 @keyframes vidShimmer {
@@ -548,4 +551,12 @@
 
   pointer-events: none; /* informational only */
   overflow-wrap: anywhere;
+}
+
+/* Hide the bottom range scrubber (seeker) */
+.video-scrub {
+  display: none !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }

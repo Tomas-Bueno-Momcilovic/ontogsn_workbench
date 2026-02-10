@@ -58,6 +58,7 @@
                         </div>
 
                         <!-- AI Model submenu -->
+                        <!-- AI Model submenu -->
                         <div class="video-submenu">
                             <button type="button" class="video-submenu-btn" aria-haspopup="menu" aria-expanded="false">
                                 AI model <span class="video-submenu-value"
@@ -66,14 +67,15 @@
                             </button>
 
                             <div class="video-submenu-panel" role="menu">
-                                <input id="vid-aiModel" class="video-select" type="text" list="vid-aiModelList"
-                                    placeholder="openrouter model id" />
-                                <datalist id="vid-aiModelList">
-                                    <option value="openai/gpt-4o-mini"></option>
-                                    <option value="openai/gpt-4o"></option>
-                                    <option value="google/gemini-2.0-flash"></option>
-                                    <option value="anthropic/claude-3.5-sonnet"></option>
-                                </datalist>
+                                <select id="vid-aiModel" class="video-select">
+                                    <optgroup label="Cloud (OpenRouter)">
+                                        <!-- fallback shown immediately; JS will replace if /models succeeds -->
+                                        <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+                                        <option value="openai/gpt-4o">openai/gpt-4o</option>
+                                        <option value="google/gemini-2.0-flash">google/gemini-2.0-flash</option>
+                                        <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet</option>
+                                    </optgroup>
+                                </select>
                             </div>
                         </div>
 
@@ -86,10 +88,10 @@
                 </label>
 
                 <button id="vid-uploadBtn" type="button">Upload</button>
-                <input id="vid-upload" type="file" accept="video/*" hidden />
+                <input id="vid-upload" type="file" accept="video/mp4,video/webm" hidden />
 
                 <button id="vid-clear" disabled>Clear</button>
-                <button id="vid-aiToggle" type="button" disabled> Describe</button>
+                <button id="vid-aiToggle" type="button" disabled>Describe (AI)</button>
 
             </div>
         </div>

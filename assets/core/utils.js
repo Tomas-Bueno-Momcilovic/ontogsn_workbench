@@ -384,3 +384,292 @@ export function loadLocalBool(key, { defaultValue = true } = {}) {
 export function saveLocalBool(key, value) {
   localStorage.setItem(String(key), value ? "1" : "0");
 }
+
+// --- Formatting ---------------------------------------------------------
+
+export function fmtBytes(bytes, { decimals = 1, base = 1024 } = {}) {
+  const b = Math.max(0, Number(bytes || 0));
+  if (!Number.isFinite(b) || b === 0) return "0 B";
+
+  const units = (base === 1000)
+    ? ["B", "KB", "MB", "GB", "TB"]
+    : ["B", "KiB", "MiB", "GiB", "TiB"];
+
+  let v = b;
+  let i = 0;
+  while (v >= base && i < units.length - 1) { v /= base; i++; }
+
+  if (i === 0) return `${Math.round(v)} ${units[i]}`;
+  const d = Math.max(0, decimals | 0);
+  const s = (v >= 10 || d === 0) ? v.toFixed(d) : v.toFixed(Math.max(d, 2));
+  return `${s} ${units[i]}`;
+}
+
+export function fmtTimeMs(ms) {
+  const s = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
+export function fmtTimeSec(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  const m = Math.floor(s / 60);
+  const ss = String(s % 60).padStart(2, "0");
+  return `${m}:${ss}`;
+}
+
+export function nowStamp({ dateSep = "", timeSep = "", between = "_" } = {}) {
+  const d = new Date();
+  const pad = (x) => String(x).padStart(2, "0");
+  const Y = d.getFullYear();
+  const M = pad(d.getMonth() + 1);
+  const D = pad(d.getDate());
+  const h = pad(d.getHours());
+  const m = pad(d.getMinutes());
+  const s = pad(d.getSeconds());
+  return `${Y}${dateSep}${M}${dateSep}${D}${between}${h}${timeSep}${m}${timeSep}${s}`;
+}
+
+export function extFromMime(mime, { fallback = "bin" } = {}) {
+  const m = String(mime || "").toLowerCase();
+  if (m.includes("png")) return "png";
+  if (m.includes("jpeg") || m.includes("jpg")) return "jpg";
+  if (m.includes("webp")) return "webp";
+  if (m.includes("gif")) return "gif";
+  if (m.includes("mp4")) return "mp4";
+  if (m.includes("webm")) return "webm";
+  if (m.includes("matroska") || m.includes("mkv")) return "mkv";
+  if (m.includes("wav")) return "wav";
+  if (m.includes("ogg")) return "ogg";
+  if (m.includes("mpeg")) return "mp3";
+  return fallback;
+}
+
+export function buildStampedFilename(prefix, mime, {
+  stamp = nowStamp({ dateSep: "-", timeSep: "-", between: "_" }),
+  ext = null
+} = {}) {
+  const e = ext || extFromMime(mime, { fallback: "bin" });
+  const p = String(prefix || "file").replace(/[^\w.-]+/g, "_");
+  return `${p}_${stamp}.${e}`;
+}
+
+// --- Blobs / download / object URLs ------------------------------------
+
+export function revokeObjectUrl(url) {
+  if (!url) return;
+  try { URL.revokeObjectURL(url); } catch {}
+}
+
+export function downloadUrl(filename, url, { revoke = false } = {}) {
+  if (!url) return;
+
+  const a = document.createElement("a");
+  a.href = url;
+  if (filename) a.download = filename;
+
+  (document.body || document.documentElement).appendChild(a);
+  a.click();
+  a.remove();
+
+  if (revoke) setTimeout(() => revokeObjectUrl(url), 0);
+}
+
+export function downloadBlob(filename, blob) {
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  downloadUrl(filename, url, { revoke: true });
+}
+
+// --- Clipboard ----------------------------------------------------------
+
+export async function copyTextToClipboard(text) {
+  const t = String(text ?? "");
+  if (!t) return false;
+
+  // Modern API
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(t);
+    return true;
+  }
+
+  // Fallback (some contexts block clipboard API)
+  const ta = document.createElement("textarea");
+  ta.value = t;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  const ok = document.execCommand?.("copy");
+  ta.remove();
+  if (!ok) throw new Error("Copy failed");
+  return true;
+}
+
+// --- Media / permissions ------------------------------------------------
+
+export function isProbablyLocalhost(hostname = location.hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+export function canUseGetUserMedia() {
+  return !!(navigator.mediaDevices?.getUserMedia);
+}
+
+export function assertSecureGetUserMediaContext() {
+  // getUserMedia requires secure context (HTTPS) or localhost.
+  if (window.isSecureContext) return true;
+  if (isProbablyLocalhost()) return true;
+  throw new Error("getUserMedia requires HTTPS or localhost (secure context).");
+}
+
+export function stopMediaStream(stream) {
+  if (!stream) return null;
+  try { stream.getTracks?.().forEach(t => t.stop()); } catch {}
+  return null;
+}
+
+export async function tryPlayMedia(el) {
+  if (!el?.play) return false;
+  try { await el.play(); return true; } catch { return false; }
+}
+
+// --- MediaRecorder MIME helpers ----------------------------------------
+
+export function detectSupportedRecorderMimes(candidates) {
+  const out = [];
+  if (!("MediaRecorder" in window)) return out;
+
+  for (const t of (candidates || [])) {
+    try { if (MediaRecorder.isTypeSupported(t)) out.push(t); } catch {}
+  }
+  return out;
+}
+
+export function pickFirstSupportedRecorderMime(candidates) {
+  return detectSupportedRecorderMimes(candidates)[0] || "";
+}
+
+// --- UI patterns --------------------------------------------------------
+
+export function attachArmConfirm(button, onConfirm, {
+  armedText = "Confirm (again)",
+  timeoutMs = 1500,
+  className = "is-armed",
+  ariaLabel = "Click again to confirm",
+} = {}) {
+  if (!button) return () => {};
+
+  let armed = false;
+  let timer = null;
+  const defaultText = button.textContent || "";
+
+  const disarm = () => {
+    armed = false;
+    if (timer) { clearTimeout(timer); timer = null; }
+    button.classList.remove(className);
+    button.textContent = defaultText;
+    button.removeAttribute("aria-label");
+  };
+
+  const handler = async (ev) => {
+    if (button.disabled) return;
+
+    if (!armed) {
+      armed = true;
+      button.classList.add(className);
+      button.textContent = armedText;
+      button.setAttribute("aria-label", ariaLabel);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(disarm, timeoutMs);
+      return;
+    }
+
+    disarm();
+    await onConfirm?.(ev);
+  };
+
+  button.addEventListener("click", handler);
+  return () => {
+    try { button.removeEventListener("click", handler); } catch {}
+    disarm();
+  };
+}
+
+// --- Async DOM helpers --------------------------------------------------
+
+export function waitForEvent(target, type, { signal, timeoutMs = 0 } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!target?.addEventListener) return reject(new Error("waitForEvent: invalid target"));
+
+    let t = null;
+    const onAbort = () => done(new DOMException("Aborted", "AbortError"), true);
+    const onEvent = (ev) => done(ev, false);
+
+    const done = (value, isErr) => {
+      cleanup();
+      isErr ? reject(value) : resolve(value);
+    };
+
+    const cleanup = () => {
+      try { target.removeEventListener(type, onEvent); } catch {}
+      if (signal) try { signal.removeEventListener("abort", onAbort); } catch {}
+      if (t) { clearTimeout(t); t = null; }
+    };
+
+    if (signal?.aborted) return onAbort();
+    target.addEventListener(type, onEvent, { once: true });
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+
+    if (timeoutMs > 0) {
+      t = setTimeout(() => done(new Error(`Timed out waiting for "${type}"`), true), timeoutMs);
+    }
+  });
+}
+
+export function wireFileDrop(el, {
+  onFile,
+  accept = null,          // e.g. /^image\// or (file)=>bool
+  hoverClass = "dragover",
+  signal,
+  preventDefaults = true,
+} = {}) {
+  if (!el) return () => {};
+  const ok = (file) => {
+    if (!file) return false;
+    if (!accept) return true;
+    if (accept instanceof RegExp) return accept.test(file.type || "");
+    if (typeof accept === "function") return !!accept(file);
+    return true;
+  };
+
+  const prevent = (e) => {
+    if (!preventDefaults) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const onEnter = (e) => { prevent(e); el.classList.add(hoverClass); };
+  const onOver  = (e) => { prevent(e); el.classList.add(hoverClass); };
+  const onLeave = (e) => { prevent(e); el.classList.remove(hoverClass); };
+  const onDrop  = (e) => {
+    prevent(e);
+    el.classList.remove(hoverClass);
+    const file = e.dataTransfer?.files?.[0] || null;
+    if (ok(file)) onFile?.(file);
+  };
+
+  el.addEventListener("dragenter", onEnter, { signal });
+  el.addEventListener("dragover", onOver, { signal });
+  el.addEventListener("dragleave", onLeave, { signal });
+  el.addEventListener("drop", onDrop, { signal });
+
+  return () => {
+    try { el.removeEventListener("dragenter", onEnter); } catch {}
+    try { el.removeEventListener("dragover", onOver); } catch {}
+    try { el.removeEventListener("dragleave", onLeave); } catch {}
+    try { el.removeEventListener("drop", onDrop); } catch {}
+  };
+}

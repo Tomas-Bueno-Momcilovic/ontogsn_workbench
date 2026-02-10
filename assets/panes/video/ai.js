@@ -3,14 +3,168 @@ import {
   saveOpenRouterPrefs,
   openRouterChatCompletions,
   OPENROUTER_DEFAULT_MODEL,
+  buildOpenRouterHeaders,
 } from "@core/openrouter.js";
 
 const API_TXT_URL = new URL("./api.txt", import.meta.url);
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
+
+// Fallback list if /models fetch fails
+const FALLBACK_VIDEO_MODELS = [
+  { id: "openai/gpt-4o-mini" },
+  { id: "openai/gpt-4o" },
+  { id: "google/gemini-2.0-flash" },
+  { id: "anthropic/claude-3.5-sonnet" },
+];
 
 // Frame sampling defaults (no UI)
 const DEFAULT_MAX_FRAMES = 8;
 const DEFAULT_FRAME_MAX_W = 640;
 const DEFAULT_JPEG_QUALITY = 0.72;
+
+let _keyInfoPromise = null;
+
+async function loadApiKeyInfo({ signal } = {}) {
+  if (_keyInfoPromise) return _keyInfoPromise;
+
+  _keyInfoPromise = (async () => {
+    const res = await fetch(API_TXT_URL, { cache: "no-store", signal });
+    if (!res.ok) return { ok: false, key: "" };
+    const key = ((await res.text()) || "").trim();
+    return { ok: true, key };
+  })();
+
+  return _keyInfoPromise;
+}
+
+async function loadApiKeyOptional(signal) {
+  const info = await loadApiKeyInfo({ signal });
+  return info.ok ? info.key : "";
+}
+
+async function loadApiKeyRequired(signal) {
+  const info = await loadApiKeyInfo({ signal });
+  if (!info.ok) {
+    throw new Error("Missing api.txt (OpenRouter key). Add ./assets/panes/video/api.txt");
+  }
+  if (!info.key) throw new Error("api.txt is empty.");
+  return info.key;
+}
+
+async function fetchOpenRouterModels(apiKey, signal) {
+  const headers = apiKey
+    ? buildOpenRouterHeaders(apiKey, {
+        title: "OntoGSN Workbench",
+        referer: location.origin,
+      })
+    : { "Content-Type": "application/json" };
+
+  const res = await fetch(OPENROUTER_MODELS_URL, { headers, signal });
+  if (!res.ok) throw new Error(`Models fetch failed: ${res.status}`);
+  const json = await res.json();
+  return json?.data || [];
+}
+
+function filterImageInputModels(models) {
+  return (models || []).filter((m) => {
+    const ins =
+      m?.architecture?.input_modalities ||
+      m?.architecture?.inputModalities ||
+      [];
+    if (Array.isArray(ins) && ins.includes("image")) return true;
+
+    // Some entries may describe modality in a broader way; include "multimodal" as a fallback.
+    const modality = m?.architecture?.modality;
+    if (typeof modality === "string" && /multimodal/i.test(modality)) return true;
+
+    return false;
+  });
+}
+
+function ensureOptgroup(selectEl, label, { prepend = false } = {}) {
+  if (!selectEl) return null;
+
+  let og = Array.from(selectEl.querySelectorAll("optgroup")).find(
+    (g) => (g.getAttribute("label") || "") === label
+  );
+
+  if (!og) {
+    og = document.createElement("optgroup");
+    og.setAttribute("label", label);
+    if (prepend) selectEl.prepend(og);
+    else selectEl.appendChild(og);
+  }
+
+  return og;
+}
+
+function replaceOptions(optgroupEl, models) {
+  if (!optgroupEl) return;
+  optgroupEl.innerHTML = "";
+
+  for (const m of models) {
+    const id = m?.id;
+    if (!id) continue;
+
+    const name = m?.name || id;
+
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id; // show only provider/model
+    if (name && name !== id) opt.title = name;
+
+    optgroupEl.appendChild(opt);
+  }
+}
+
+function hasOption(selectEl, value) {
+  if (!selectEl) return false;
+  return Array.from(selectEl.querySelectorAll("option")).some((o) => o.value === value);
+}
+
+function ensureCustomOption(selectEl, value) {
+  const v = String(value || "").trim();
+  if (!v || hasOption(selectEl, v)) return;
+
+  const custom = ensureOptgroup(selectEl, "Custom", { prepend: true });
+  const opt = document.createElement("option");
+  opt.value = v;
+  opt.textContent = v;
+  custom.appendChild(opt);
+}
+
+export async function ensureOpenRouterVideoModels(selectEl, { signal } = {}) {
+  if (!selectEl) return;
+
+  // 1) show fallback immediately
+  const cloud = ensureOptgroup(selectEl, "Cloud (OpenRouter)");
+  replaceOptions(cloud, FALLBACK_VIDEO_MODELS);
+
+  // 2) ensure preferred model exists + is selected
+  const pref =
+    String(loadOpenRouterPrefs()?.model || "").trim() || OPENROUTER_DEFAULT_MODEL;
+
+  ensureCustomOption(selectEl, pref);
+  selectEl.value = pref;
+
+  // 3) try to fetch and replace with real /models list
+  try {
+    const apiKey = await loadApiKeyOptional(signal); // ok if ""
+    const all = await fetchOpenRouterModels(apiKey, signal);
+    const vision = filterImageInputModels(all);
+
+    if (vision.length) {
+      vision.sort((a, b) => String(a?.id || "").localeCompare(String(b?.id || "")));
+      replaceOptions(cloud, vision);
+
+      // preserve selection even if it’s not in fetched list
+      ensureCustomOption(selectEl, pref);
+      selectEl.value = pref;
+    }
+  } catch {
+    // keep fallback silently
+  }
+}
 
 function clamp(n, a, b) {
   n = Number(n);
@@ -199,6 +353,9 @@ async function loadApiKey(signal) {
 export function createVideoAI(opts = {}) {
   const { root, signal, getRecordedBlob, setStatus } = opts;
 
+  const btn = root?.querySelector("#vid-aiToggle");
+  if (!btn) return { sync() {}, destroy() {} };
+
   const els = {
     btn: root?.querySelector("#vid-aiToggle"),
     modelInput: root?.querySelector("#vid-aiModel"),
@@ -243,10 +400,13 @@ export function createVideoAI(opts = {}) {
     return b instanceof Blob && b.size > 0;
   }
 
+  const IDLE_LABEL = (btn.textContent || "").trim() || "AI";
+  const BUSY_LABEL = "Cancel";
+
   function setBusy(isBusy) {
     busy = !!isBusy;
-    els.btn.disabled = !hasRecording() && !busy;
-    els.btn.textContent = busy ? "Cancel AI" : "AI";
+    btn.disabled = !getRecordedBlob?.() && !busy;
+    btn.textContent = busy ? BUSY_LABEL : IDLE_LABEL;
   }
 
   async function run() {
@@ -271,7 +431,7 @@ export function createVideoAI(opts = {}) {
     }
 
     try {
-      const apiKey = await loadApiKey(reqAbort.signal);
+      const apiKey = await loadApiKeyRequired(reqAbort.signal);
       const model = getModel();
 
       const meta = `Video: ${prettyBytes(blob.size)} • ${blob.type || "video"}`;
