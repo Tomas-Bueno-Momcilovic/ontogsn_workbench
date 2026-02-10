@@ -3,13 +3,13 @@ import { openRouterChatCompletions } from "@core/openrouter.js";
 
 const DEFAULT_MODEL = "anthropic/claude-opus-4.6";
 
-// Boilerplate prompt (change later as you like)
 const DEFAULT_PROMPT =
   "Describe the image clearly. If there is text, transcribe it. " +
   "If it's a UI/screenshot, summarize the visible elements and their state. " +
-  "Be concise but specific.";
+  "Be concise but specific. Single-line output only, 4 sentences max.";
 
 function blobToDataURL(blob) {
+  // fallback (rarely used once we convert)
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result || ""));
@@ -17,6 +17,71 @@ function blobToDataURL(blob) {
     r.readAsDataURL(blob);
   });
 }
+
+async function blobToJpegDataURL(
+  blob,
+  {
+    maxW = 1600,
+    maxH = 1600,
+    quality = 0.86,
+  } = {}
+) {
+  // Use createImageBitmap when available (fast, avoids DOM Image decode issues)
+  let bitmap = null;
+  try {
+    bitmap = await createImageBitmap(blob);
+  } catch {
+    // Fallback: decode via <img>
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("Image decode failed."));
+        el.src = url;
+      });
+
+      const w0 = img.naturalWidth || img.width;
+      const h0 = img.naturalHeight || img.height;
+
+      const s = Math.min(1, maxW / w0, maxH / h0);
+      const w = Math.max(1, Math.round(w0 * s));
+      const h = Math.max(1, Math.round(h0 * s));
+
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const ctx = c.getContext("2d", { alpha: false });
+
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Prefer JPEG; providers almost always accept it
+      return c.toDataURL("image/jpeg", quality);
+    } finally {
+      try { URL.revokeObjectURL(url); } catch { }
+    }
+  }
+
+  // createImageBitmap path
+  const w0 = bitmap.width;
+  const h0 = bitmap.height;
+
+  const s = Math.min(1, maxW / w0, maxH / h0);
+  const w = Math.max(1, Math.round(w0 * s));
+  const h = Math.max(1, Math.round(h0 * s));
+
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d", { alpha: false });
+
+  ctx.drawImage(bitmap, 0, 0, w, h);
+
+  try { bitmap.close?.(); } catch { }
+
+  return c.toDataURL("image/jpeg", quality);
+}
+
 
 async function loadApiKeyFromTxt() {
   const url = new URL("./api.txt", import.meta.url);
@@ -28,7 +93,6 @@ async function loadApiKeyFromTxt() {
   }
   const raw = await res.text();
 
-  // First non-empty, non-comment line
   const line =
     raw
       .split(/\r?\n/g)
@@ -43,9 +107,10 @@ export function wireImageDescribeAI(opts = {}) {
   const {
     root,
     getImageBlob = () => null,
-    setBusy = () => {},
-    setStatus = () => {},
-    emit = () => {},
+    setBusy = () => { },
+    setStatus = () => { },
+    setOutput = () => { },
+    emit = () => { },
     title = "OntoGSN Workbench (Image pane)",
     model = DEFAULT_MODEL,
     prompt = DEFAULT_PROMPT,
@@ -60,7 +125,9 @@ export function wireImageDescribeAI(opts = {}) {
 
   function _setBusy(v) {
     _busy = !!v;
-    try { setBusy(_busy); } catch {}
+    try {
+      setBusy(_busy);
+    } catch { }
   }
 
   async function _ensureApiKey() {
@@ -77,13 +144,17 @@ export function wireImageDescribeAI(opts = {}) {
     }
 
     _setBusy(true);
-    setStatus("Describing image…");
+    setOutput("");
+    setStatus("Describing image...");
 
     try {
       const apiKey = await _ensureApiKey();
-      const dataUrl = await blobToDataURL(blob);
+      const dataUrl = await blobToJpegDataURL(blob, {
+        maxW: 1600,
+        maxH: 1600,
+        quality: 0.86,
+      });
 
-      // OpenRouter: text first, then image. Image can be base64 data URL.
       const messages = [
         {
           role: "user",
@@ -103,25 +174,18 @@ export function wireImageDescribeAI(opts = {}) {
         title,
       });
 
-      const text = data?.choices?.[0]?.message?.content || "";
+      const text = String(data?.choices?.[0]?.message?.content || "");
+      setOutput(text);
 
-      // Best-effort: copy to clipboard (no extra UI)
-      let copied = false;
+      emit("image:described", { model, text, copied: false, raw: data });
+
       try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(text);
-          copied = true;
-        }
-      } catch {}
+        console.log("[image:described]", { model, copied: false, text });
+      } catch { }
 
-      // Emit for other panes / orchestrator / logs
-      emit("image:described", { model, text, copied, raw: data });
-
-      // Also log for dev convenience
-      try { console.log("[image:described]", { model, copied, text }); } catch {}
-
-      setStatus(copied ? "Description copied to clipboard." : "Description ready (see console / event).");
+      setStatus("Description ready below.");
     } catch (err) {
+      setOutput("");
       const msg = `Describe error: ${err?.message || String(err)}`;
       emit("image:describe:error", { error: msg });
       setStatus(msg);
@@ -140,7 +204,7 @@ export function wireImageDescribeAI(opts = {}) {
 
   return {
     destroy() {
-      // nothing to unhook beyond letting GC collect; button is inside pane DOM
+      // Nothing to unhook beyond letting GC collect.
     },
   };
 }

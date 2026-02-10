@@ -47,7 +47,7 @@
   cursor: not-allowed;
 }
 
-/* Label can't be :disabled, so we keep it always enabled */
+/* Label cannot be :disabled, so keep it always enabled */
 .image-btn {
   display: inline-flex;
   align-items: center;
@@ -55,7 +55,6 @@
 }
 
 .image-status {
-  
   font-size: 12px;
   opacity: 0.85;
 }
@@ -116,7 +115,7 @@
   opacity: 0.8;
 }
 
-/* “Dragging” state */
+/* Dragging state */
 .image-stage.dragover .image-drop-inner {
   border-style: solid;
 }
@@ -139,12 +138,8 @@
   position: absolute;
   inset: 0;
   z-index: 10;
-  pointer-events: none; /* HUD container doesn't block drag/drop */
+  pointer-events: none; /* HUD container does not block drag/drop */
 }
-
-/* ---------------------------------------------------------
-   HUD overlays (inside .image-stage)
-   --------------------------------------------------------- */
 
 .image-hud-btn {
   position: absolute;
@@ -158,7 +153,7 @@
   align-items: center;
   justify-content: center;
 
-  border: 0px solid var(--border-strong);
+  border: 0 solid var(--border-strong);
   border-radius: 2px;
 
   background: var(--overlay-bg);
@@ -168,7 +163,7 @@
   backdrop-filter: blur(2px);
 
   cursor: pointer;
-  pointer-events: auto; /* button IS clickable */
+  pointer-events: auto;
 }
 
 .image-hud-btn:hover {
@@ -190,9 +185,9 @@
 .image-hud-meta {
   position: absolute;
   left: 8px;
-  bottom: 8px;
+  bottom: 180px;
 
-  max-width: calc(100% - 16px - 44px); /* leave room away from top-right btn */
+  max-width: calc(100% - 16px - 44px);
 
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -202,7 +197,7 @@
   box-shadow: 0 6px 18px var(--shadow);
   backdrop-filter: blur(2px);
 
-  pointer-events: none; /* purely informational */
+  pointer-events: none;
 }
 
 .image-hud-row {
@@ -218,11 +213,64 @@
 }
 
 .image-hud-val {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
-    monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+/* --- AI description HUD overlay (bottom) ------------------------------- */
+.image-ai-hud {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+
+  /* avoid overlapping the bottom-left metadata panel */
+  margin-left: 0;
+  max-width: calc(100% - 16px);
+
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  background: var(--overlay-bg);
+  box-shadow: 0 6px 18px var(--shadow);
+  backdrop-filter: blur(2px);
+
+  pointer-events: none; /* don’t block drag/drop by default */
+}
+
+/* If you want users to scroll/select text inside it, allow interaction there */
+.image-ai-hud .image-ai-output-hud {
+  pointer-events: auto;
+}
+
+.image-ai-output-hud {
+  width: 100%;
+  resize: none;
+
+  /* Scrollable, HUD-sized */
+  min-height: 56px;
+  max-height: 160px;
+
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+
+  background: transparent; /* HUD transparent */
+  color: var(--fg);
+
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  overflow: auto;
+  outline: none;
+}
+
+/* Optional: subtle fade at the top to indicate scroll (nice-to-have) */
+.image-ai-hud {
+  mask-image: linear-gradient(to bottom, transparent 0, black 12px, black 100%);
+}
+
 
 /* Visually hidden (keeps content for JS + screen readers, no layout space) */
 .image-sr-only {
@@ -236,3 +284,4 @@
   white-space: nowrap !important;
   border: 0 !important;
 }
+
