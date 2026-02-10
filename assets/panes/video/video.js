@@ -641,6 +641,42 @@ async function clearRecording() {
     setStatus("Cleared recording.");
 }
 
+async function loadUploadedFile(file) {
+    if (!(file instanceof File) || file.size <= 0) return;
+
+    // If currently recording, stop without finalizing a new blob (we're replacing it).
+    await stopRecording({ finalize: false });
+
+    // Replace current "recording" with uploaded file
+    _recordedBlob = file;
+
+    revokeRecordedUrl();
+    _recordedUrl = URL.createObjectURL(file);
+
+    // Switch stage to playback
+    showRecording();
+
+    // Enable download using the original filename if possible
+    const filename = (file.name && String(file.name).trim()) || buildFilename(file.type);
+    setDownloadEnabled(true, filename);
+
+    // UI + tools
+    _els.clear.disabled = false;
+    syncViewButtons();
+    _ai?.sync?.();
+
+    _frameViewer?.rebuild().catch(() => { });
+
+    // First line becomes the "base" line AI preserves
+    if (_els.meta) {
+        _els.meta.textContent =
+            `Loaded: ${filename} • ${fmtBytes(file.size)} • ${file.type || "video"}`;
+    }
+
+    setStatus("Loaded video file.");
+}
+
+
 async function stopAll() {
     // Finalize recording if in progress
     await stopRecording({ finalize: true });
@@ -699,6 +735,9 @@ export async function mount({ root, bus }) {
 
         aiModel: resolveEl("#vid-aiModel", { root, required: false }),
         aiModelLabel: resolveEl("#vid-aiModelLabel", { root, required: false }),
+
+        uploadBtn: resolveEl("#vid-uploadBtn", { root, required: false }),
+        uploadInput: resolveEl("#vid-upload", { root, required: false }),
     };
 
     // --- Options menu behavior ---
@@ -770,6 +809,28 @@ export async function mount({ root, bus }) {
         scrubMax: 1000,
         fpsEst: 30,
     });
+
+    // --- Upload wiring ---
+    _els.uploadBtn?.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        _els.uploadInput?.click();
+    }, { signal: _ac.signal });
+
+    _els.uploadInput?.addEventListener("change", async () => {
+        const file = _els.uploadInput?.files?.[0] || null;
+
+        // allow re-selecting the same file later
+        if (_els.uploadInput) _els.uploadInput.value = "";
+
+        if (!file) return;
+
+        try {
+            await loadUploadedFile(file);
+        } catch (e) {
+            setStatus(`Could not load file: ${e?.message || e}`, { error: true });
+        }
+    }, { signal: _ac.signal });
 
     // Initial capability checks
     applyMimeOptions();
@@ -909,7 +970,7 @@ export async function unmount() {
     // If cache:false ever used in registerPane, this will be called.
     await stopAll();
     revokeRecordedUrl();
-    try { _ai?.destroy?.(); } catch {}
+    try { _ai?.destroy?.(); } catch { }
     _ai = null;
 
 }
