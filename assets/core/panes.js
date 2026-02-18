@@ -235,7 +235,14 @@ class PaneManager {
     paneDefaultSelector = null
   }) {
     const groupEl = document.querySelector(`[data-tab-group="${groupName}"]`);
-    const tabs = groupEl ? Array.from(groupEl.querySelectorAll("button.tab")) : [];
+
+    const allButtons = groupEl ? Array.from(groupEl.querySelectorAll("button.tab")) : [];
+    const tabs = allButtons.filter((btn) => {
+      if (btn.dataset.tabIgnore) return false;
+      // only treat "real tabs" as tabs (must map to a pane/view)
+      return !!(btn.dataset.pane || btn.dataset.view || (paneDefaultSelector ? paneDefaultSelector(btn) : null));
+    });
+
 
     if (!tabs.length) {
       console.warn(`[PaneManager] No ${slot} tab buttons found.`);
@@ -256,6 +263,53 @@ class PaneManager {
 
       return raw;
     };
+
+    // --- optional dropdown wiring for this tab group --------------------------
+    const dropdown = groupEl?.querySelector("[data-dropdown]");
+    const ddTrigger = dropdown?.querySelector("[data-dropdown-trigger]");
+    const ddMenu = dropdown?.querySelector("[data-dropdown-menu]");
+    const ddLabel = dropdown?.querySelector("[data-dropdown-label]");
+
+    const ddOpen = () => {
+      if (!dropdown || !ddTrigger || !ddMenu) return;
+      ddMenu.hidden = false;
+      ddTrigger.setAttribute("aria-expanded", "true");
+      dropdown.classList.add("open");
+    };
+
+    const ddClose = () => {
+      if (!dropdown || !ddTrigger || !ddMenu) return;
+      ddMenu.hidden = true;
+      ddTrigger.setAttribute("aria-expanded", "false");
+      dropdown.classList.remove("open");
+    };
+
+    const ddToggle = () => {
+      if (!ddMenu) return;
+      ddMenu.hidden ? ddOpen() : ddClose();
+    };
+
+    const ddSetLabel = (btn) => {
+      if (!ddLabel || !btn) return;
+      ddLabel.textContent = ((btn.dataset.label || btn.textContent || "").trim() || "Select");
+    };
+
+    if (ddTrigger && ddMenu && dropdown) {
+      ddTrigger.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ddToggle();
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!dropdown.contains(e.target)) ddClose();
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") ddClose();
+      });
+    }
+
 
     const paneIds = tabs.map(paneIdOf).filter(Boolean);
     const panes = paneIds
@@ -288,6 +342,9 @@ class PaneManager {
 
       tabs.forEach(x => x.classList.toggle("active", x === b));
 
+      ddSetLabel?.(b);
+      ddClose?.();
+
       const paneId = paneIdOf(b);
       showOnlyPaneId(paneId);
 
@@ -296,6 +353,8 @@ class PaneManager {
       safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
       safeInvoke(this.bus, "emit", "pane:tab", payload);
 
+      console.log("[PaneManager] activating", { slot, paneId, tabId: b.id, label: b.textContent });
+      
       Promise.resolve(this._activatePane(slot, paneId, payload))
         .then(() => {
           safeInvoke(this.bus, "emit", `${slot}:tab`, payload);

@@ -1,7 +1,14 @@
 import { mountTemplate } from "@core/utils.js";
 
+import {
+  ensureOpenRouterAudioModels,
+  isOpenRouterAudioModel,
+  openRouterModelId,
+  openRouterAudioTranscribeBlob
+} from "./ai.js";
+
 const HTML = new URL("./audio.html", import.meta.url);
-const CSS  = new URL("./audio.css",  import.meta.url);
+const CSS = new URL("./audio.css", import.meta.url);
 
 // --- module state ------------------------------------------------------
 let audioRoot = null;
@@ -43,7 +50,7 @@ let txLiveToggle = null;
 // --- Live STT (mic PCM -> downsample -> Worker ASR) --------------------
 const TARGET_SR = 16000;
 
-const LIVE_SEG_S  = 2.6;
+const LIVE_SEG_S = 2.6;
 const LIVE_OVER_S = 0.25;
 const LIVE_TICK_MS = 1400;
 const MAX_QUEUE_SEC = 12;
@@ -73,6 +80,135 @@ let sttInitResolve = null;
 let sttInitReject = null;
 
 // --- helpers -----------------------------------------------------------
+// --- Voxtral (Mistral) streaming --------------------------------------
+const VOXTRAL_PROXY_URL = "/api/voxtral/transcribe-stream"; // proxy route above
+
+function isMistralModel(modelId) {
+  return typeof modelId === "string" && modelId.startsWith("mistral:");
+}
+function mistralModelName(modelId) {
+  return (modelId || "").replace(/^mistral:/, "") || "voxtral-mini-latest";
+}
+
+function float32ToWavBlobMono16(samples, sampleRate) {
+  // 16-bit PCM mono WAV
+  const n = samples.length;
+  const out = new ArrayBuffer(44 + n * 2);
+  const view = new DataView(out);
+
+  let off = 0;
+  const writeStr = (s) => { for (let i = 0; i < s.length; i++) view.setUint8(off++, s.charCodeAt(i)); };
+
+  const byteRate = sampleRate * 2; // mono * 16-bit
+  writeStr("RIFF");
+  view.setUint32(off, 36 + n * 2, true); off += 4;
+  writeStr("WAVE");
+
+  writeStr("fmt ");
+  view.setUint32(off, 16, true); off += 4;
+  view.setUint16(off, 1, true); off += 2;      // PCM
+  view.setUint16(off, 1, true); off += 2;      // mono
+  view.setUint32(off, sampleRate, true); off += 4;
+  view.setUint32(off, byteRate, true); off += 4;
+  view.setUint16(off, 2, true); off += 2;      // blockAlign
+  view.setUint16(off, 16, true); off += 2;     // bits
+
+  writeStr("data");
+  view.setUint32(off, n * 2, true); off += 4;
+
+  for (let i = 0; i < n; i++) {
+    let s = Math.max(-1, Math.min(1, samples[i]));
+    const int16 = s < 0 ? s * 0x8000 : s * 0x7fff;
+    view.setInt16(off, int16, true);
+    off += 2;
+  }
+
+  return new Blob([out], { type: "audio/wav" });
+}
+
+async function readSSE(response, onData) {
+  const reader = response.body?.getReader?.();
+  if (!reader) throw new Error("No streaming body (SSE) available.");
+
+  const td = new TextDecoder();
+  let buf = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += td.decode(value, { stream: true });
+
+    // SSE events are separated by blank line
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) !== -1) {
+      const chunk = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+
+      const lines = chunk.split(/\r?\n/);
+      const dataLines = [];
+      for (const ln of lines) {
+        if (ln.startsWith("data:")) dataLines.push(ln.slice(5).trimStart());
+      }
+      if (!dataLines.length) continue;
+
+      const dataStr = dataLines.join("\n");
+      if (dataStr === "[DONE]") return;
+
+      let payload = null;
+      try { payload = JSON.parse(dataStr); } catch { payload = { type: "text", text: dataStr }; }
+      await onData(payload);
+    }
+  }
+}
+
+function extractDeltaText(ev) {
+  if (!ev) return "";
+  if (typeof ev === "string") return ev;
+
+  const t = (ev.type || ev.event || "").toString().toLowerCase();
+  if (t.includes("error")) throw new Error(ev.message || "Voxtral error");
+  if (t.includes("done")) return "";
+
+  // common shapes
+  if (typeof ev.text === "string") return ev.text;
+  if (typeof ev.delta === "string") return ev.delta;
+  if (ev.delta && typeof ev.delta.text === "string") return ev.delta.text;
+  if (ev.data && typeof ev.data.text === "string") return ev.data.text;
+
+  return "";
+}
+
+async function voxtralStreamTranscribeBlob({ blob, model, language, onDelta, signal }) {
+  const fd = new FormData();
+  fd.append("model", model || "voxtral-mini-latest");
+  if (language) fd.append("language", language);
+
+  // name helps the SDK pick content type
+  fd.append("file", blob, blob.type === "audio/wav" ? "chunk.wav" : "audio.bin");
+
+  const resp = await fetch(VOXTRAL_PROXY_URL, {
+    method: "POST",
+    body: fd,
+    signal,
+  });
+  if (!resp.ok) throw new Error(`Voxtral proxy error: ${resp.status} ${resp.statusText}`);
+
+  let segText = "";
+  await readSSE(resp, async (ev) => {
+    const piece = extractDeltaText(ev);
+    if (!piece) return;
+
+    // handle both "delta" streaming and "cumulative" streaming gracefully
+    if (piece.length >= segText.length && piece.startsWith(segText)) segText = piece;
+    else segText += piece;
+
+    onDelta?.(segText, piece);
+  });
+
+  return segText;
+}
+
+
 function setStatus(msg, kind = "") {
   if (!statusEl) return;
   statusEl.textContent = msg;
@@ -94,7 +230,7 @@ function fmtTime(sec) {
 
 function clearCurrentUrl() {
   if (currentObjectUrl) {
-    try { URL.revokeObjectURL(currentObjectUrl); } catch {}
+    try { URL.revokeObjectURL(currentObjectUrl); } catch { }
     currentObjectUrl = null;
   }
 }
@@ -298,7 +434,7 @@ async function decodeToBuffer(arrayBuffer) {
     const buf = arrayBuffer.slice(0);
     return await ac.decodeAudioData(buf);
   } finally {
-    try { await ac.close(); } catch {}
+    try { await ac.close(); } catch { }
   }
 }
 
@@ -324,7 +460,7 @@ async function pickDevice() {
     try {
       const adapter = await navigator.gpu.requestAdapter();
       if (adapter) return "webgpu";
-    } catch {}
+    } catch { }
   }
   return "wasm";
 }
@@ -410,6 +546,85 @@ async function transcribeCurrentAudio() {
   }
 
   const modelId = txModelSel?.value || "Xenova/whisper-tiny";
+  const useVoxtral = isMistralModel(modelId);
+
+  if (useVoxtral) {
+    if (txBtn) txBtn.disabled = true;
+    if (txModelSel) txModelSel.disabled = true;
+    if (txCopyBtn) txCopyBtn.disabled = true;
+    if (txClearBtn) txClearBtn.disabled = true;
+
+    setTxStatus("Voxtral: uploading…", "busy");
+    if (txOutEl) txOutEl.value = "";
+
+    try {
+      const model = mistralModelName(modelId);
+
+      let lastRendered = "";
+      await voxtralStreamTranscribeBlob({
+        blob: currentBlob,
+        model,
+        // language: "en", // optional
+        onDelta: (cumulative) => {
+          lastRendered = cumulative;
+          if (txOutEl) {
+            txOutEl.value = cumulative;
+            txOutEl.scrollTop = txOutEl.scrollHeight;
+          }
+          setTxStatus("Voxtral: transcribing…", "busy");
+        },
+      });
+
+      if (txOutEl) txOutEl.value = (lastRendered || "").trim() || "(no text)";
+      setTxStatus("Done.");
+      return; // IMPORTANT: don't fall through to local ASR
+    } catch (e) {
+      console.error("[audio] voxtral transcribe failed:", e);
+      setTxStatus(`Voxtral failed: ${e?.message || e}`, "err");
+      return;
+    } finally {
+      if (txBtn) txBtn.disabled = false;
+      if (txModelSel) txModelSel.disabled = false;
+      if (txCopyBtn) txCopyBtn.disabled = false;
+      if (txClearBtn) txClearBtn.disabled = false;
+    }
+  }
+
+  const useOpenRouter = isOpenRouterAudioModel(modelId);
+
+  if (useOpenRouter) {
+    if (txBtn) txBtn.disabled = true;
+    if (txModelSel) txModelSel.disabled = true;
+    if (txCopyBtn) txCopyBtn.disabled = true;
+    if (txClearBtn) txClearBtn.disabled = true;
+
+    setTxStatus("OpenRouter: uploading…", "busy");
+    if (txOutEl) txOutEl.value = "";
+
+    try {
+      const model = openRouterModelId(modelId); // e.g. "openai/gpt-audio"
+      const text = await openRouterAudioTranscribeBlob({
+        blob: currentBlob,
+        modelId: model,
+        prompt: "Please transcribe this audio file. If there are multiple speakers, label them.",
+        // signal: optional AbortController if you add one later
+      });
+
+      if (txOutEl) txOutEl.value = (text || "").trim() || "(no text)";
+      setTxStatus("Done.");
+      return; // IMPORTANT: don’t fall through to local ASR
+    } catch (e) {
+      console.error("[audio] openrouter transcribe failed:", e);
+      setTxStatus(`OpenRouter failed: ${e?.message || e}`, "err");
+      return;
+    } finally {
+      if (txBtn) txBtn.disabled = false;
+      if (txModelSel) txModelSel.disabled = false;
+      if (txCopyBtn) txCopyBtn.disabled = false;
+      if (txClearBtn) txClearBtn.disabled = false;
+    }
+  }
+
   const isEnglishOnly = /\.en$/i.test(modelId);
   const lang = "en";
 
@@ -514,7 +729,7 @@ function pickBestRecorderMime() {
   for (const t of candidates) {
     try {
       if (MediaRecorder.isTypeSupported(t)) return t;
-    } catch {}
+    } catch { }
   }
   return "";
 }
@@ -526,14 +741,14 @@ function stopLiveWave() {
   }
   liveData = null;
 
-  try { liveSrc?.disconnect?.(); } catch {}
-  try { liveAnalyser?.disconnect?.(); } catch {}
+  try { liveSrc?.disconnect?.(); } catch { }
+  try { liveAnalyser?.disconnect?.(); } catch { }
 
   liveSrc = null;
   liveAnalyser = null;
 
   if (liveAc) {
-    try { liveAc.close(); } catch {}
+    try { liveAc.close(); } catch { }
     liveAc = null;
   }
 }
@@ -545,7 +760,7 @@ async function startLiveWave(stream) {
   if (!AC) return;
 
   liveAc = new AC();
-  try { await liveAc.resume(); } catch {}
+  try { await liveAc.resume(); } catch { }
 
   liveSrc = liveAc.createMediaStreamSource(stream);
   liveAnalyser = liveAc.createAnalyser();
@@ -636,7 +851,7 @@ async function startRecording() {
     setStatus("MediaRecorder init failed in this browser.", "err");
 
     stopLiveWave();
-    try { recStream?.getTracks()?.forEach(t => t.stop()); } catch {}
+    try { recStream?.getTracks()?.forEach(t => t.stop()); } catch { }
     recStream = null;
 
     return;
@@ -652,10 +867,10 @@ async function startRecording() {
   };
 
   mediaRecorder.onstop = async () => {
-    await stopLiveStt({ flush: true }).catch(() => {});
+    await stopLiveStt({ flush: true }).catch(() => { });
     stopLiveWave();
 
-    try { recStream?.getTracks()?.forEach(t => t.stop()); } catch {}
+    try { recStream?.getTracks()?.forEach(t => t.stop()); } catch { }
     recStream = null;
 
     const rawBlob = new Blob(recChunks, { type: mediaRecorder?.mimeType || "audio/webm" });
@@ -953,7 +1168,18 @@ async function startLiveStt(stream) {
   sttBusy = false;
 
   const modelId = txModelSel?.value || "Xenova/whisper-tiny.en";
-  setTxStatus("Live STT: loading…", "busy");
+  const useVoxtral = isMistralModel(modelId);
+
+  if (isOpenRouterAudioModel(modelId)) {
+    setTxStatus("Live STT is not supported for OpenRouter audio models.", "err");
+    return;
+  }
+
+  setTxStatus(useVoxtral ? "Live STT (Voxtral): listening…" : "Live STT: loading…", useVoxtral ? "" : "busy");
+
+  if (!useVoxtral) {
+    await ensureLiveAsrWorker(modelId);
+  }
 
   await ensureLiveAsrWorker(modelId);
 
@@ -967,7 +1193,7 @@ async function startLiveStt(stream) {
     sttAc = new AC();
   }
 
-  try { await sttAc.resume(); } catch {}
+  try { await sttAc.resume(); } catch { }
 
   sttSrc = sttAc.createMediaStreamSource(stream);
 
@@ -1067,8 +1293,47 @@ async function processLiveSttSegment({ flush = false } = {}) {
 
     const audio16k = _downsampleLinear(merged, sr, TARGET_SR);
 
-    const text = await liveAsr(audio16k, modelId);
-    if (text) _appendLiveText(text);
+    const modelSel = txModelSel?.value || "Xenova/whisper-tiny.en";
+    const useVoxtral = isMistralModel(modelSel);
+
+    if (useVoxtral) {
+      setTxStatus("Live STT (Voxtral): transcribing…", "busy");
+
+      const wavBlob = float32ToWavBlobMono16(audio16k, TARGET_SR);
+
+      const baseText = txOutEl?.value || "";
+      let segText = "";
+
+      await voxtralStreamTranscribeBlob({
+        blob: wavBlob,
+        model: mistralModelName(modelSel),
+        // language: "en", // optional
+        onDelta: (cumulative /*, piece */) => {
+          // stream UI as base + current segment
+          segText = cumulative;
+          if (txOutEl) {
+            txOutEl.value = baseText + segText;
+            txOutEl.scrollTop = txOutEl.scrollHeight;
+          }
+        },
+      });
+
+      // finalize with your overlap-aware merge
+      if (txOutEl) {
+        txOutEl.value = mergeTranscript(baseText, segText);
+        txOutEl.scrollTop = txOutEl.scrollHeight;
+      }
+
+      setTxStatus("Live STT (Voxtral): listening…");
+    } else {
+      setTxStatus("Live STT: transcribing…", "busy");
+
+      const text = await liveAsr(audio16k, modelSel);
+      if (text) _appendLiveText(text);
+
+      setTxStatus("Live STT: listening…");
+    }
+
 
     setTxStatus("Live STT: listening…");
   } catch (e) {
@@ -1088,21 +1353,21 @@ async function stopLiveStt({ flush = true } = {}) {
   }
 
   if (flush) {
-    try { await processLiveSttSegment({ flush: true }); } catch {}
+    try { await processLiveSttSegment({ flush: true }); } catch { }
   }
 
   sttActive = false;
 
-  try { sttSrc?.disconnect?.(); } catch {}
-  try { sttTap?.disconnect?.(); } catch {}
-  try { sttZero?.disconnect?.(); } catch {}
+  try { sttSrc?.disconnect?.(); } catch { }
+  try { sttTap?.disconnect?.(); } catch { }
+  try { sttZero?.disconnect?.(); } catch { }
 
   sttSrc = null;
   sttTap = null;
   sttZero = null;
 
   if (sttAc) {
-    try { await sttAc.close(); } catch {}
+    try { await sttAc.close(); } catch { }
     sttAc = null;
   }
 
@@ -1170,7 +1435,7 @@ function wireUi(root) {
     a.remove();
 
     setTimeout(() => {
-      try { URL.revokeObjectURL(url); } catch {}
+      try { URL.revokeObjectURL(url); } catch { }
     }, 0);
   });
 
@@ -1218,6 +1483,12 @@ function wireUi(root) {
     if (!isRecording() || !recStream) return;
     if (!txLiveToggle?.checked) return;
 
+    if (isOpenRouterAudioModel(txModelSel.value)) {
+      stopLiveStt({ flush: false }).catch(console.warn);
+      setTxStatus("Live STT is not supported for OpenRouter audio models.", "err");
+      return;
+    }
+
     stopLiveStt({ flush: false })
       .then(() => startLiveStt(recStream))
       .catch(console.warn);
@@ -1242,23 +1513,25 @@ export async function mount({ root }) {
     replace: true
   });
 
-  canvas   = root.querySelector("#audio-wave");
-  ctx2d    = canvas?.getContext?.("2d") || null;
-  audioEl  = root.querySelector("#audio-player");
+  canvas = root.querySelector("#audio-wave");
+  ctx2d = canvas?.getContext?.("2d") || null;
+  audioEl = root.querySelector("#audio-player");
   statusEl = root.querySelector("#audio-status");
 
-  txBtn      = root.querySelector("#audio-transcribe");
+  txBtn = root.querySelector("#audio-transcribe");
   txModelSel = root.querySelector("#audio-asr-model");
   txStatusEl = root.querySelector("#audio-asr-status");
-  txOutEl    = root.querySelector("#audio-transcript");
+  txOutEl = root.querySelector("#audio-transcript");
 
-  txCopyBtn  = root.querySelector("#audio-copy");
+  txCopyBtn = root.querySelector("#audio-copy");
   txClearBtn = root.querySelector("#audio-tx-clear");
   txLiveToggle = root.querySelector("#audio-live-stt");
 
   setTxStatus("");
   drawEmptyWave("No audio loaded");
   setStatus("Ready.");
+
+  try { await ensureOpenRouterAudioModels(txModelSel); } catch {}
 
   // seek by click
   _onCanvasClick = (ev) => {
@@ -1286,14 +1559,14 @@ export async function mount({ root }) {
   wireUi(root);
 
   _cleanup = () => {
-    try { audioEl?.pause?.(); } catch {}
+    try { audioEl?.pause?.(); } catch { }
     if (isRecording()) stopRecording();
-    stopLiveStt({ flush: false }).catch(() => {});
+    stopLiveStt({ flush: false }).catch(() => { });
     stopLiveWave();
 
-    try { window.removeEventListener("resize", _onResize); } catch {}
-    try { canvas?.removeEventListener("click", _onCanvasClick); } catch {}
-    try { audioEl?.removeEventListener("timeupdate", _onTimeUpdate); } catch {}
+    try { window.removeEventListener("resize", _onResize); } catch { }
+    try { canvas?.removeEventListener("click", _onCanvasClick); } catch { }
+    try { audioEl?.removeEventListener("timeupdate", _onTimeUpdate); } catch { }
 
     _onResize = null;
     _onCanvasClick = null;
@@ -1311,14 +1584,14 @@ export async function resume() {
 
 export async function suspend() {
   // stop anything "active", keep loaded audio state
-  try { audioEl?.pause?.(); } catch {}
+  try { audioEl?.pause?.(); } catch { }
   if (isRecording()) stopRecording();
-  stopLiveStt({ flush: false }).catch(() => {});
+  stopLiveStt({ flush: false }).catch(() => { });
   stopLiveWave();
 }
 
 export async function unmount() {
   // hard cleanup
-  try { _cleanup?.(); } catch {}
+  try { _cleanup?.(); } catch { }
   _cleanup = null;
 }

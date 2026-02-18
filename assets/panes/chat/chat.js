@@ -11,6 +11,13 @@ import {
   safeInvoke
 } from "@core/utils.js";
 
+import {
+  loadOpenRouterPrefs,
+  saveOpenRouterPrefs,
+  askOpenRouter,
+  OPENROUTER_DEFAULT_MODEL
+} from "@core/openrouter.js";
+
 // module-relative URLs (works on localhost + GH Pages)
 const HTML = new URL("./chat.html", import.meta.url);
 const CSS  = new URL("./chat.css",  import.meta.url);
@@ -18,10 +25,6 @@ const CSS  = new URL("./chat.css",  import.meta.url);
 // repo paths (resolved via fetchRepoTextCached + from/upLevels)
 const Q_CONTEXT = "./data/queries/read_chatContext.sparql";
 const Q_NEIGH   = "./data/queries/read_chatNeighborhood.sparql";
-
-// localStorage keys
-const KEY_K   = "openrouter_api_key";
-const MODEL_K = "openrouter_model";
 
 // ---- module state ------------------------------------------------------
 
@@ -123,33 +126,6 @@ async function gatherContext(question) {
   return { synopsis: topLines, triples };
 }
 
-// Call OpenRouter (non-streaming)
-async function askOpenRouter({ apiKey, model, messages }) {
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": location.origin,
-      "X-Title": "OntoGSN Chat"
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.2,
-      max_tokens: 10000
-    })
-  });
-
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`OpenRouter ${res.status}: ${t}`);
-  }
-
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content || "";
-}
-
 // ---- pane UI -------------------------------------------------------------
 
 function appendMsg(root, role, html) {
@@ -200,9 +176,7 @@ async function handleSubmit(ev) {
   }
   if (!q) return;
 
-  // persist locally
-  localStorage.setItem(KEY_K, apiKey);
-  localStorage.setItem(MODEL_K, model);
+  saveOpenRouterPrefs({ apiKey, model });
 
   appendMsg(_root, "user", escapeHtml(q));
   inputEl.value = "";
@@ -234,7 +208,13 @@ ${triples.slice(0, 120).map(t => `${t.s}  ${t.p}  ${t.o}`).join("\n")}`;
       }
     ];
 
-    const answer = await askOpenRouter({ apiKey, model, messages });
+    const answer = await askOpenRouter({
+      apiKey,
+      model,
+      messages,
+      title: "OntoGSN Chat"
+    });
+
     appendMsg(_root, "bot", escapeHtml(answer));
   } catch (e) {
     appendMsg(_root, "bot", `<em>${escapeHtml(e?.message || String(e))}</em>`);
@@ -271,8 +251,10 @@ export async function mount({ root, bus }) {
   const keyEl   = resolveEl("#chat-key",   { root, required: false });
   const modelEl = resolveEl("#chat-model", { root, required: false });
 
-  if (keyEl)   keyEl.value   = localStorage.getItem(KEY_K) || "";
-  if (modelEl) modelEl.value = localStorage.getItem(MODEL_K) || modelEl.value;
+  const prefs = loadOpenRouterPrefs();
+  if (keyEl)   keyEl.value   = prefs.apiKey || "";
+  if (modelEl) modelEl.value = prefs.model || modelEl.value || OPENROUTER_DEFAULT_MODEL;
+
 
   const formEl = resolveEl("#chat-form", { root, required: false });
 
