@@ -560,3 +560,57 @@ html[data-theme="dark"] .video-thumb-placeholder {
   margin: 0 !important;
   padding: 0 !important;
 }
+
+/* --- AI description HUD overlay (bottom) ------------------------------- */
+.video-ai-hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  /* leave room so it doesn't fight the bottom-right switch */
+  max-width: calc(100% - 220px);
+
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+
+  pointer-events: none; /* container doesn't block video */
+}
+
+/* Allow selecting/scrolling inside the textarea */
+.video-ai-hud .video-ai-output-hud {
+  pointer-events: auto;
+}
+
+.video-ai-output-hud {
+  width: 100%;
+  resize: none;
+
+  min-height: 56px;
+  max-height: 160px;
+
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+
+  background: transparent;
+  color: inherit;
+
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  overflow: auto;
+  outline: none;
+}
+
+/* Optional scroll hint like image pane */
+.video-ai-hud {
+  mask-image: linear-gradient(to bottom, transparent 0, black 12px, black 100%);
+}

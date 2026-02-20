@@ -4,6 +4,8 @@ import { createFrameViewer } from "./frameViewer.js";
 import { createVideoAI, ensureOpenRouterVideoModels } from "./ai.js";
 
 let _ai = null;
+let _aiBusy = false;
+let _aiOutput = "";
 
 const HTML = new URL("./video.html", import.meta.url);
 const CSS = new URL("./video.css", import.meta.url);
@@ -354,6 +356,7 @@ async function stopRecording({ finalize = true } = {}) {
                     _els.meta.textContent = `Saved: ${fmtBytes(blob.size)} • ${blob.type || "video"}`;
 
                     if (_els.backLive) _els.backLive.disabled = !_stream;
+                    setAiOutput("");
                 }
             } catch (e) {
                 setStatus(`Recording stopped, but could not finalize: ${e?.message || e}`, { error: true });
@@ -619,6 +622,7 @@ async function clearRecording() {
     _els.clear.disabled = true;
     syncViewButtons();
     _ai?.sync?.();
+    setAiOutput("");
 
     setStatus("Cleared recording.");
 }
@@ -656,6 +660,8 @@ async function loadUploadedFile(file) {
     }
 
     setStatus("Loaded video file.");
+    setAiOutput("");
+
 }
 
 
@@ -664,6 +670,30 @@ async function stopAll() {
     await stopRecording({ finalize: true });
     stopCameraTracks();
 }
+
+function setAiOutput(text) {
+    const value = String(text || "").trim();
+    _aiOutput = value;
+
+    if (_els.aiOutput) _els.aiOutput.value = value;
+    if (_els.aiHud) _els.aiHud.hidden = !value;
+
+    // Keep the Describe button state sensible while AI runs
+    if (_els.aiToggle) {
+        const hasRecording = (_recordedBlob instanceof Blob && _recordedBlob.size > 0);
+        _els.aiToggle.disabled = _aiBusy ? false : !hasRecording;
+    }
+}
+
+function setAiBusy(v) {
+    _aiBusy = !!v;
+
+    if (_els.aiToggle) {
+        const hasRecording = (_recordedBlob instanceof Blob && _recordedBlob.size > 0);
+        _els.aiToggle.disabled = _aiBusy ? false : !hasRecording;
+    }
+}
+
 
 export async function mount({ root, bus }) {
     _root = root;
@@ -720,6 +750,11 @@ export async function mount({ root, bus }) {
 
         uploadBtn: resolveEl("#vid-uploadBtn", { root, required: false }),
         uploadInput: resolveEl("#vid-upload", { root, required: false }),
+
+        aiOutput: resolveEl("#vid-ai-output", { root, required: false }),
+        aiHud: resolveEl("#vid-ai-hud", { root, required: false }),
+        aiToggle: resolveEl("#vid-aiToggle", { root, required: false }),
+
     };
 
     // --- Options menu behavior ---
@@ -769,9 +804,11 @@ export async function mount({ root, bus }) {
         root,
         signal: _ac.signal,
         getRecordedBlob: () => _recordedBlob,
-        getRecordedUrl: () => _recordedUrl,
-        setStatus, // optional (even if you hide status)
+        setStatus,
+        setOutput: setAiOutput,
+        setBusy: setAiBusy,
     });
+
     _ai?.sync?.();
 
     _frameViewer = createFrameViewer({

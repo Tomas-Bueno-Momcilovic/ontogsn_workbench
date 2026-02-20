@@ -9,12 +9,19 @@ import {
 const API_TXT_URL = new URL("./api.txt", import.meta.url);
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 
-// Fallback list if /models fetch fails
+// Store the video pane model separately so it doesn't inherit a non-video model
+const VIDEO_MODEL_KEY = "openrouter_video_model";
+
+// Cache of models that actually support video input (filled by ensureOpenRouterVideoModels)
+let VIDEO_MODEL_IDS = new Set();
+
+// Fallback list if /models fetch fails.
+// IMPORTANT: Pick models that *actually* advertise input_modalities: ["video", ...] on OpenRouter.
 const FALLBACK_VIDEO_MODELS = [
-  { id: "openai/gpt-4o-mini" },
-  { id: "openai/gpt-4o" },
-  { id: "google/gemini-2.0-flash" },
-  { id: "anthropic/claude-3.5-sonnet" },
+  // Replace these with whatever your /api/v1/models shows as video-capable
+  { id: "minimax/minimax-m2.5" },
+  { id: "minimax/minimax-m2.1" },
+  { id: "qwen/qwen3.5-397b-a17b" },
 ];
 
 // Frame sampling defaults (no UI)
@@ -54,9 +61,9 @@ async function loadApiKeyRequired(signal) {
 async function fetchOpenRouterModels(apiKey, signal) {
   const headers = apiKey
     ? buildOpenRouterHeaders(apiKey, {
-        title: "OntoGSN Workbench",
-        referer: location.origin,
-      })
+      title: "OntoGSN Workbench",
+      referer: location.origin,
+    })
     : { "Content-Type": "application/json" };
 
   const res = await fetch(OPENROUTER_MODELS_URL, { headers, signal });
@@ -65,17 +72,52 @@ async function fetchOpenRouterModels(apiKey, signal) {
   return json?.data || [];
 }
 
-function filterImageInputModels(models) {
+async function blobToDataUrl(blob) {
+  // Produces: data:video/webm;base64,....
+  return await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = () => reject(r.error || new Error("FileReader failed"));
+    r.readAsDataURL(blob);
+  });
+}
+
+function buildMessagesForVideo({ prompt, videoDataUrl, meta }) {
+  return [
+    {
+      role: "system",
+      content:
+        "You are a careful video description assistant. " +
+        "You will receive a video. Describe what happens across time in plain text. " +
+        "If uncertain, say so.",
+    },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: `${prompt}\n\n${meta}` },
+        { type: "video_url", videoUrl: { url: videoDataUrl } },
+      ],
+    },
+  ];
+}
+
+function filterVideoInputModels(models) {
   return (models || []).filter((m) => {
     const ins =
       m?.architecture?.input_modalities ||
       m?.architecture?.inputModalities ||
+      m?.input_modalities ||
+      m?.inputModalities ||
       [];
-    if (Array.isArray(ins) && ins.includes("image")) return true;
 
-    // Some entries may describe modality in a broader way; include "multimodal" as a fallback.
+    if (
+      Array.isArray(ins) &&
+      ins.some((x) => String(x || "").toLowerCase() === "video")
+    ) return true;
+
+    // Some models express it in the "modality" string (e.g., "video+text->text")
     const modality = m?.architecture?.modality;
-    if (typeof modality === "string" && /multimodal/i.test(modality)) return true;
+    if (typeof modality === "string" && /video/i.test(modality)) return true;
 
     return false;
   });
@@ -140,29 +182,49 @@ export async function ensureOpenRouterVideoModels(selectEl, { signal } = {}) {
   const cloud = ensureOptgroup(selectEl, "Cloud (OpenRouter)");
   replaceOptions(cloud, FALLBACK_VIDEO_MODELS);
 
-  // 2) ensure preferred model exists + is selected
-  const pref =
-    String(loadOpenRouterPrefs()?.model || "").trim() || OPENROUTER_DEFAULT_MODEL;
+  // default VIDEO_MODEL_IDS to fallback (in case /models fetch fails)
+  VIDEO_MODEL_IDS = new Set(FALLBACK_VIDEO_MODELS.map(m => String(m?.id || "")).filter(Boolean));
 
-  ensureCustomOption(selectEl, pref);
-  selectEl.value = pref;
+  // 2) load preferred VIDEO model from dedicated key (not the global openrouter_model)
+  const pref = String(
+    loadOpenRouterPrefs({ modelKey: VIDEO_MODEL_KEY, defaultModel: "" })?.model || ""
+  ).trim();
 
-  // 3) try to fetch and replace with real /models list
+  // Pick an initial model: pref if present, else first fallback, else OPENROUTER_DEFAULT_MODEL
+  const initial = pref || FALLBACK_VIDEO_MODELS[0]?.id || OPENROUTER_DEFAULT_MODEL;
+  selectEl.value = initial;
+
+  // 3) fetch /models and replace options with ONLY video-capable models
   try {
     const apiKey = await loadApiKeyOptional(signal); // ok if ""
     const all = await fetchOpenRouterModels(apiKey, signal);
-    const vision = filterImageInputModels(all);
+    const videoModels = filterVideoInputModels(all);
 
-    if (vision.length) {
-      vision.sort((a, b) => String(a?.id || "").localeCompare(String(b?.id || "")));
-      replaceOptions(cloud, vision);
+    if (videoModels.length) {
+      videoModels.sort((a, b) => String(a?.id || "").localeCompare(String(b?.id || "")));
+      replaceOptions(cloud, videoModels);
 
-      // preserve selection even if it’s not in fetched list
-      ensureCustomOption(selectEl, pref);
-      selectEl.value = pref;
+      VIDEO_MODEL_IDS = new Set(
+        videoModels.map(m => String(m?.id || "")).filter(Boolean)
+      );
+
+      // Force selection to something that is truly video-capable
+      const stored = String(
+        loadOpenRouterPrefs({ modelKey: VIDEO_MODEL_KEY, defaultModel: "" })?.model || ""
+      ).trim();
+
+      const chosen =
+        (stored && VIDEO_MODEL_IDS.has(stored))
+          ? stored
+          : String(videoModels[0]?.id || "");
+
+      if (chosen) {
+        selectEl.value = chosen;
+        saveOpenRouterPrefs({ model: chosen, modelKey: VIDEO_MODEL_KEY });
+      }
     }
   } catch {
-    // keep fallback silently
+    // keep fallback silently (VIDEO_MODEL_IDS already set to fallback above)
   }
 }
 
@@ -204,7 +266,7 @@ function waitEvent(el, name, timeoutMs = 15000) {
       resolve();
     };
     const cleanup = () => {
-      try { el.removeEventListener(name, on); } catch {}
+      try { el.removeEventListener(name, on); } catch { }
       if (t) clearTimeout(t);
     };
     el.addEventListener(name, on, { once: true });
@@ -228,7 +290,7 @@ async function seekTo(video, t, timeoutMs = 15000) {
   if (Number.isFinite(cur) && Math.abs(cur - t) < 0.01 && video.readyState >= 2) return;
 
   if (video.readyState < 2) {
-    await waitEvent(video, "loadeddata", timeoutMs).catch(() => {});
+    await waitEvent(video, "loadeddata", timeoutMs).catch(() => { });
   }
 
   await new Promise((resolve, reject) => {
@@ -238,8 +300,8 @@ async function seekTo(video, t, timeoutMs = 15000) {
     const onErr = () => cleanup(() => reject(new Error("Video seek failed")));
 
     const cleanup = (fn) => {
-      try { video.removeEventListener("seeked", onSeeked); } catch {}
-      try { video.removeEventListener("error", onErr); } catch {}
+      try { video.removeEventListener("seeked", onSeeked); } catch { }
+      try { video.removeEventListener("error", onErr); } catch { }
       if (timer) clearTimeout(timer);
       fn();
     };
@@ -255,7 +317,7 @@ async function seekTo(video, t, timeoutMs = 15000) {
       video.currentTime = t;
     } catch {
       waitEvent(video, "loadeddata", timeoutMs).finally(() => {
-        try { video.currentTime = t; } catch {}
+        try { video.currentTime = t; } catch { }
       });
     }
   });
@@ -275,7 +337,7 @@ async function captureFramesFromBlob(blob, opts = {}) {
     v.src = url;
 
     await waitEvent(v, "loadedmetadata", 20000);
-    await waitEvent(v, "loadeddata", 20000).catch(() => {});
+    await waitEvent(v, "loadeddata", 20000).catch(() => { });
 
     const duration = Number(v.duration);
     const safeDur = Number.isFinite(duration) && duration > 0 ? duration : 0;
@@ -312,7 +374,7 @@ async function captureFramesFromBlob(blob, opts = {}) {
 
     return { duration: safeDur, frames: out };
   } finally {
-    try { URL.revokeObjectURL(url); } catch {}
+    try { URL.revokeObjectURL(url); } catch { }
   }
 }
 
@@ -322,7 +384,7 @@ function buildMessagesForFrames({ prompt, frames, meta }) {
     .join("\n");
 
   const content = [{ type: "text", text: `${prompt}\n\n${meta}\n\nFrames (chronological):\n${lines}` }];
-  for (const f of frames) content.push({ type: "image_url", imageUrl: { url: f.dataUrl } });
+  for (const f of frames) content.push({ type: "image_url", image_url: { url: f.dataUrl } });
 
   return [
     {
@@ -351,10 +413,10 @@ async function loadApiKey(signal) {
 }
 
 export function createVideoAI(opts = {}) {
-  const { root, signal, getRecordedBlob, setStatus } = opts;
+  const { root, signal, getRecordedBlob, setStatus, setOutput = () => { }, setBusy: setBusyHook = () => { } } = opts;
 
   const btn = root?.querySelector("#vid-aiToggle");
-  if (!btn) return { sync() {}, destroy() {} };
+  if (!btn) return { sync() { }, destroy() { } };
 
   const els = {
     btn: root?.querySelector("#vid-aiToggle"),
@@ -363,7 +425,7 @@ export function createVideoAI(opts = {}) {
     hudMeta: root?.querySelector("#vid-meta"),
   };
 
-  if (!els.btn) return { sync() {}, destroy() {} };
+  if (!els.btn) return { sync() { }, destroy() { } };
 
   let busy = false;
   let reqAbort = null;
@@ -391,7 +453,7 @@ export function createVideoAI(opts = {}) {
 
   function saveModelPref() {
     const model = getModel();
-    saveOpenRouterPrefs({ model });
+    saveOpenRouterPrefs({ model, modelKey: VIDEO_MODEL_KEY });
     syncModelLabel();
   }
 
@@ -407,11 +469,13 @@ export function createVideoAI(opts = {}) {
     busy = !!isBusy;
     btn.disabled = !getRecordedBlob?.() && !busy;
     btn.textContent = busy ? BUSY_LABEL : IDLE_LABEL;
+
+    try { setBusyHook?.(busy); } catch { }
   }
 
   async function run() {
     if (busy) {
-      try { reqAbort?.abort(); } catch {}
+      try { reqAbort?.abort(); } catch { }
       return;
     }
 
@@ -422,9 +486,12 @@ export function createVideoAI(opts = {}) {
     }
 
     setBusy(true);
+    setOutput("");
+    setBusy(true);
+
     reqAbort = new AbortController();
 
-    const onAbort = () => { try { reqAbort.abort(); } catch {} };
+    const onAbort = () => { try { reqAbort.abort(); } catch { } };
     if (signal) {
       if (signal.aborted) onAbort();
       else signal.addEventListener("abort", onAbort, { once: true });
@@ -434,26 +501,27 @@ export function createVideoAI(opts = {}) {
       const apiKey = await loadApiKeyRequired(reqAbort.signal);
       const model = getModel();
 
-      const meta = `Video: ${prettyBytes(blob.size)} • ${blob.type || "video"}`;
-      setAiStatus("Sampling frames…");
-
-      const captured = await captureFramesFromBlob(blob, {
-        frames: DEFAULT_MAX_FRAMES,
-        maxWidth: DEFAULT_FRAME_MAX_W,
-        jpegQuality: DEFAULT_JPEG_QUALITY,
-      });
+      setAiStatus("Encoding video…");
+      const videoDataUrl = await blobToDataUrl(blob);
 
       const prompt =
         "Describe what happens in this video. " +
         "Summarize the sequence of events, notable objects/actions, and any safety issues if present.";
 
-      const messages = buildMessagesForFrames({
+      const messages = buildMessagesForVideo({
         prompt,
-        frames: captured.frames,
-        meta: `${meta} • frames=${captured.frames.length}`,
+        videoDataUrl,
+        meta: `Video: ${prettyBytes(blob.size)} • ${blob.type || "video"}`,
       });
 
       setAiStatus("Calling model…");
+
+      const imgParts =
+        messages?.flatMap(m => Array.isArray(m.content) ? m.content : [])
+          .filter(p => p?.type === "image_url");
+
+      console.log("[video ai] sending images:", imgParts.length);
+      console.log("[video ai] first image prefix:", imgParts?.[0]?.image_url?.url?.slice(0, 30));
 
       const resp = await openRouterChatCompletions({
         apiKey,
@@ -469,11 +537,7 @@ export function createVideoAI(opts = {}) {
       const u = usageLine(resp);
 
       // Show output in HUD meta (truncate only if enormous)
-      if (els.hudMeta) {
-        const savedLine = String(els.hudMeta.textContent || "").split("\n")[0] || "";
-        const out = text.length > 3500 ? `${text.slice(0, 3500)}\n…` : text;
-        els.hudMeta.textContent = [savedLine, "AI:", out].filter(Boolean).join("\n");
-      }
+      setOutput(text);
 
       setAiStatus(u ? `Done • ${u}` : "Done.");
       console.log("[video ai] output:\n", text);
@@ -492,13 +556,17 @@ export function createVideoAI(opts = {}) {
   }
 
   function destroy() {
-    try { reqAbort?.abort(); } catch {}
+    try { reqAbort?.abort(); } catch { }
   }
 
-  // init: load model pref into input
-  const { model } = loadOpenRouterPrefs();
+  // init: load VIDEO model pref into input (not the global openrouter_model)
+  const { model } = loadOpenRouterPrefs({
+    modelKey: VIDEO_MODEL_KEY,
+    defaultModel: FALLBACK_VIDEO_MODELS[0]?.id || OPENROUTER_DEFAULT_MODEL,
+  });
+
   if (els.modelInput && !String(els.modelInput.value || "").trim()) {
-    els.modelInput.value = model || OPENROUTER_DEFAULT_MODEL;
+    els.modelInput.value = model || FALLBACK_VIDEO_MODELS[0]?.id || OPENROUTER_DEFAULT_MODEL;
   }
   syncModelLabel();
 
