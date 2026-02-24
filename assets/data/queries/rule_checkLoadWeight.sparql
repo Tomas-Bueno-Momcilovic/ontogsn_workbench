@@ -1,20 +1,25 @@
 PREFIX xsd:   <http://www.w3.org/2001/XMLSchema#>
-PREFIX gsn:   <https://w3id.org/OntoGSN/ontology#>
 PREFIX schema:<https://schema.org/>
 PREFIX ex:    <https://example.org/car-demo#>
 
-SELECT ((SUM(xsd:float(?currentLoadWeight)) <= xsd:float(?maxLoadWeight)) AS ?loadCompliant) 
-(SUM(xsd:float(?currentLoadWeight) - xsd:float(?maxLoadWeight)) AS ?overweight)
+SELECT
+  ((COALESCE(SUM(xsd:float(?wVal)), 0.0) <= xsd:float(?maxVal)) AS ?loadCompliant)
+  ((COALESCE(SUM(xsd:float(?wVal)), 0.0) - xsd:float(?maxVal)) AS ?overweight)
 WHERE {
-  ?loadIRI a schema:Product ;
-           schema:name ?currentLoadName ;
-           schema:weight ?collection .
-  ?collection schema:value    ?currentLoadWeight ;
-              schema:unitCode ?currentLoadUnit .
-    FILTER(?currentLoadName = "Luggage")
   ?car a schema:Car ;
-       schema:roofLoad ?roofCollection .
-  ?roofCollection schema:value    ?maxLoadWeight ;
-                  schema:unitCode ?maxLoadUnit .
+       schema:roofLoad ?roofQv .
+  ?roofQv schema:value ?maxVal .
+
+  ?roofRack schema:isPartOf ?car .
+  OPTIONAL { ?roofRack schema:identifier ?rackId . }
+  FILTER( !BOUND(?rackId) || ?rackId = "roofRack" )
+
+  OPTIONAL {
+    ?load a schema:Product ;
+          ex:isActive true ;
+          schema:weight ?wQv ;
+          ex:onTopOf+ ?roofRack .
+    ?wQv schema:value ?wVal .
+  }
 }
-GROUP BY ?maxLoadWeight
+GROUP BY ?maxVal
