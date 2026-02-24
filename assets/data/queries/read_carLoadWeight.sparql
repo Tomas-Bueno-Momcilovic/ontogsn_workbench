@@ -3,22 +3,28 @@ PREFIX schema:<https://schema.org/>
 PREFIX ex:    <https://example.org/car-demo#>
 
 SELECT
-  (COALESCE(SUM(xsd:float(?currentLoadWeight)), 0.0) AS ?currentLoadWeight)
-  ?maxLoadWeight
+  (COALESCE(SUM(xsd:float(?wVal)), 0.0) AS ?currentLoadWeight)
+  (xsd:float(?maxVal) AS ?maxLoadWeight)
 WHERE {
-  # Always get the max roof load for the car
+  # Identify the car (if you have multiple cars later, parameterize this by IRI)
   ?car a schema:Car ;
-       schema:roofLoad ?roofCollection .
-  ?roofCollection schema:value    ?maxLoadWeight ;
-                  schema:unitCode ?maxLoadUnit .
+       schema:roofLoad ?roofQv .
 
-  # Only *optionally* add active loads
+  ?roofQv schema:value ?maxVal .
+
+  # Identify the roof rack for THIS car
+  ?roofRack schema:isPartOf ?car .
+  # Prefer a stable identifier (or use ex:role "roofRack")
+  OPTIONAL { ?roofRack schema:identifier ?rackId . }
+  FILTER( !BOUND(?rackId) || ?rackId = "roofRack" )
+
+  # Active loads on top of that roof rack (transitively)
   OPTIONAL {
-    ?loadIRI a schema:Product ;
-             ex:isActiveLoad true ;
-             schema:weight ?collection .
-    ?collection schema:value    ?currentLoadWeight ;
-                schema:unitCode ?currentLoadUnit .
+    ?load a schema:Product ;
+          ex:isActive true ;
+          schema:weight ?wQv ;
+          ex:onTopOf+ ?roofRack .
+    ?wQv schema:value ?wVal .
   }
 }
-GROUP BY ?maxLoadWeight
+GROUP BY ?maxVal

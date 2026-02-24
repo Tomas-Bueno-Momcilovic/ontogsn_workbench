@@ -1,0 +1,287 @@
+.image-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px;
+  height: 95%;
+  min-height: 0;
+}
+
+.image-top {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.image-controls {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Make <label> look like the global buttons */
+.image-panel button,
+.image-panel .image-btn {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+
+  background: var(--panel-bg);
+  color: var(--fg);
+
+  cursor: pointer;
+  font: inherit;
+
+  user-select: none;
+}
+
+.image-panel button:hover,
+.image-panel .image-btn:hover {
+  background: var(--hover-bg);
+}
+
+.image-panel button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Label cannot be :disabled, so keep it always enabled */
+.image-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-status {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.image-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-bg);
+
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Drag/drop hint overlay */
+.image-drop {
+  position: absolute;
+  inset: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 10px;
+  background: transparent;
+  pointer-events: none;
+
+  opacity: 1;
+  transition: opacity 120ms ease;
+}
+
+.image-drop.hidden {
+  opacity: 0;
+}
+
+.image-drop-inner {
+  padding: 14px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--panel-alt-bg);
+  box-shadow: 0 6px 20px var(--shadow);
+  text-align: center;
+  opacity: 0.92;
+}
+
+.image-drop-title {
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.image-drop-sub {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Dragging state */
+.image-stage.dragover .image-drop-inner {
+  border-style: solid;
+}
+
+/* Media elements */
+.image-video,
+.image-preview,
+.image-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--panel-bg);
+}
+
+.image-drop {
+  z-index: 5;
+}
+
+.image-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none; /* HUD container does not block drag/drop */
+}
+
+.image-hud-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+
+  width: 50px;
+  height: 50px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 0 solid var(--border-strong);
+  border-radius: 2px;
+
+  background: var(--overlay-bg);
+  color: var(--fg);
+
+  box-shadow: 0 6px 18px var(--shadow);
+  backdrop-filter: blur(2px);
+
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.image-hud-btn:hover {
+  background: var(--hover-bg);
+}
+
+.image-hud-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.image-hud-btn svg {
+  width: 30px;
+  height: 30px;
+  fill: currentColor;
+}
+
+/* Bottom-left metadata panel */
+.image-hud-meta {
+  position: absolute;
+  left: 8px;
+  bottom: 180px;
+
+  max-width: calc(100% - 16px - 44px);
+
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  background: var(--overlay-bg);
+  box-shadow: 0 6px 18px var(--shadow);
+  backdrop-filter: blur(2px);
+
+  pointer-events: none;
+}
+
+.image-hud-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.image-hud-label {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.image-hud-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* --- AI description HUD overlay (bottom) ------------------------------- */
+.image-ai-hud {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+
+  /* avoid overlapping the bottom-left metadata panel */
+  margin-left: 0;
+  max-width: calc(100% - 16px);
+
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  background: var(--overlay-bg);
+  box-shadow: 0 6px 18px var(--shadow);
+  backdrop-filter: blur(2px);
+
+  pointer-events: none; /* don’t block drag/drop by default */
+}
+
+/* If you want users to scroll/select text inside it, allow interaction there */
+.image-ai-hud .image-ai-output-hud {
+  pointer-events: auto;
+}
+
+.image-ai-output-hud {
+  width: 100%;
+  resize: none;
+
+  /* Scrollable, HUD-sized */
+  min-height: 56px;
+  max-height: 160px;
+
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+
+  background: transparent; /* HUD transparent */
+  color: var(--fg);
+
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  overflow: auto;
+  outline: none;
+}
+
+/* Optional: subtle fade at the top to indicate scroll (nice-to-have) */
+.image-ai-hud {
+  mask-image: linear-gradient(to bottom, transparent 0, black 12px, black 100%);
+}
+
+
+/* Visually hidden (keeps content for JS + screen readers, no layout space) */
+.image-sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
