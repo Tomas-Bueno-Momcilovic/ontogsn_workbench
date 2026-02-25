@@ -1,157 +1,77 @@
-# Static Structural Load Assurance for the OntoGSN Demo Hatchback
+# Static Structural Load Report
 
 ## 1. System overview
 
-The system under consideration is the **OntoGSN Demo Hatchback**, a small 3-door hatchback used as a demonstration vehicle in knowledge-augmented assurance case visualizations. It is inspired by the Zastava 101, which was manufactured in the late-1970s in former Yugoslavia.
+Inspired by the Zastava 101 from the late-1970s Yugoslavia, the OntoGSN demo car (further: **OntoCar**) is a small 3-door hatchback used as a demonstration vehicle for load transport simulations. The car is front-wheel-drive with a 4-speed manual transmission and seating for up to five occupants. The assurance case focuses on static structural loads, particularly those acting on the roof of the vehicle during planned demonstration drives.
 
-The car is front-wheel-drive with a 4-speed manual transmission and seating for up to **five occupants**. The assurance case focuses on **static structural loads**, particularly those acting on the **cabin** and the vehicle structure during planned demonstration drives.
+1973 Zastava 101. Source: Wikimedia Commons, 2016.             |  OntoCar model of Zastava 101. Own work.
+:-------------------------:|:-------------------------:
+![check out](../../working_files/zastava101_photo.jpg)  |  ![check out](../../working_files/zastava101_model.png)
 
-### 1.1 Key static-load properties
+### 1.1 Key properties
 
 | Property                          | Value     | Unit | Interpretation                                                     |
 |-----------------------------------|-----------|------|--------------------------------------------------------------------|
-| **Payload rating**                | 400       | kg   | Maximum allowed combined mass of occupants + in-cabin cargo        |
-| **Roof-load rating**              | 50        | kg   | Maximum allowed static load on the [roof rack]($roofRack)          |
-| **Total permitted mass**          | 1220      | kg   | Maximum allowed overall vehicle mass (curb + payload)              |
-| **Seating capacity**              | 5         | –    | Maximum number of occupants                                        |
-| **Cargo volume (cabin/luggage)**  | 320       | L    | Approximate usable cargo space                                     |
+| Payload rating                | 400       | kg   | Maximum allowed combined mass of occupants + in-cabin cargo        |
+| Roof-load rating              | 50        | kg   | Maximum allowed static load on the [roof rack]($roofRack)          |
+| Total permitted mass          | 1220      | kg   | Maximum allowed overall vehicle mass (curb + payload)              |
+| Seating capacity              | 5         | –    | Maximum number of occupants                                        |
+| Cargo volume (cabin/luggage)  | 320       | L    | Approximate usable cargo space                                     |
 
-These parameters form the basis for the static load assurance arguments in this document.
+---
+<!-- dl:start car_G1 -->
+## 2. Argument Structure 
+
+The assurance case is centered around a single operational question:
+
+> *Can OntoCar transport heavy loads from point A to point B?*
+
+The answer to this question depends on the existing configuration of the static load. Currently, it's estimated as X kg, for which the evaluation is **yes**.
+
+[](#p:car_C1) OntoCar's static load capacity is assessed against the specifications present in the industry manual for Zastava 101. [](#p:car_C2) The intended operational domain for OntoCar are short, non-high-speed demonstration drives on an open course, with no more than two occupants (including the driver). Extreme or improvised loading scenarios are not foreseen. [](#p:car_J1) Crashworthiness, impact of road objects and conditions, or modern occupant-protection systems (e.g., airbags) are similarly not covered.
+
+<!-- dl:start car_S1 -->
+
+For the simulated drive to be approved, three separate checks need to be made. First, the combined mass of people and in-cabin items must stay within the payload allowance. Second, anything mounted on the [roof rack]($roofRack) above the vehicle must stay within the roof-load allowance. Third, the overall permitted mass must still not be exceeded.
+
+`loadAllowed = true` 
+**iff** `{payload <= 400kg, roofLoad <= 50kg, totalLoad <= 1220kg}`
+
+<!-- dl:end car_S1 -->
+
+<!-- dl:end car_G1 -->
+
+## 2.1. [](#s:car_G1_1) Payload safety 
+
+Before anything is placed on the roof, the system deployers need to ensure that the people in the vehicle and the items carried inside the [cabin]($Cabin) or the [trunk]($trunk) do not already consume the [](#p:car_C1_1) allowed payload margin of 400 kg. [](#p:car_Sn1) Based on existing evidence from calculations performed on $DATE, the total mass is **within limit**.
+
+Two operating assumptions are made. [](#p:car_A1) First, because the occupants are not weighed before the simulation, we assume that each occupant weight as an average adult male of 80kg. [](#p:car_A2) Second, occupants are assumed to carry only light personal items in the cabin of negligible weight. If this is not the case, please inform the authors before proceeding with the simulation.
 
 ---
 
-## 2. Top-level claim and argument structure
+## 2.2. [](#s:car_G1_2) Roof-load safety
 
-### 2.1 Top-level claim (G1)
+Before the simulated drive is approved, the system deployers also need to ensure that any load mounted on the [roof rack]($roofRack), including a roof box or other attached equipment, does not exceed the [](#p:car_C1_2) allowed roof-load margin of 50 kg. [](#p:car_A3) Because roof-mounted items are weighed before each demonstration run, the roof load is treated as a controlled quantity. [](#p:car_Sn2) Based on existing evidence from calculations performed on $DATE, the total roof-mounted mass is **within limit**.
 
-**G1 — Static structural load safety**
+If the measured roof load exceeds 50 kg, the configuration must not be used for the simulation.
 
-> For all planned demo drives, the OntoGSN Demo Hatchback operates within its static structural load limits.
+`roofLoadAllowed = true`  
+**iff** `{roofLoad <= 50kg}`
 
-This top-level claim concerns the **cabin** and the portions of the vehicle structure that bear the payload, roof load on top of the [roof rack]($roofRack), and overall mass during normal demo operation.
+## 2.3. [](#s:car_G1_3) Total vehicle mass safety
 
-The claim is interpreted in the context of:
+After the payload and roof-load checks have been completed, the system deployers need to confirm that the resulting overall vehicle mass still remains within the [](#p:car_C1_3) total permitted mass of 1220 kg. This check combines the curb mass of the vehicle with the in-cabin payload and any roof-mounted load. [](#p:car_A1) [](#p:car_A2) [](#p:car_A3) All previously stated assumptions continue to apply. [](#p:car_Sn3) Based on the current configuration and the existing vehicle specification, the total mass is **within limit**.
 
-- **C1 – Static load properties**  
-  The vehicle has a payload rating of 400 kg, a roof-load rating of 50 kg, a total permitted mass of 1220 kg, and seating capacity of 5.
+Configurations exceeding the total permitted mass must be rejected during planning and not approved for the simulation.
 
-- **C2 – Planned use**  
-  The vehicle is only used for short, low-speed demonstration drives on a closed course, with at most five occupants and light personal luggage.
+`totalMass = curbMass + payload + roofLoad`  
 
-- **J1 – Scope justification**  
-  The assurance case is explicitly restricted to **static structural loads** and normal loading configurations. Dynamic load phenomena (e.g. crash loads, pothole impacts), crashworthiness, and modern occupant protection features (such as airbags) are recognised but explicitly **out of scope**.
-
-### 2.2 Argument by decomposition (S1)
-
-**S1 — Decomposition over load types**
-
-> The top-level claim is argued by decomposition over three load constraints: payload, roof load, and total vehicle mass.
-
-If each of the following sub-claims can be shown to hold for all planned demo drives, the top-level claim G1 is considered supported:
-
-- **G1.1:** In-cabin payload (occupants + cargo) respects the payload rating.  
-- **G1.2:** Roof-mounted load respects the roof-load rating.  
-- **G1.3:** The resulting overall vehicle mass stays within the total permitted mass.
-
-Structure:
-
-```text
-G1  (Static load safety)
-└─ S1  (Argument by decomposition over load types)
-   ├─ G1.1  Payload within 400 kg rating
-   ├─ G1.2  Roof load within 50 kg rating
-   └─ G1.3  Total mass within 1220 kg limit
-```
-
-## 3. Payload safety (G1.1)
-
-### 3.1 Claim
-
-**G1.1 — Payload within rating**
-
-> The combined mass of occupants and in-cabin cargo does not exceed the **400 kg payload rating**.
-
-### 3.2 Context and assumptions
-
-- **C1.1 — Payload rating:** max. 400 kg  
-- **A1 — Occupant mass model:** average 80 kg  
-- **A2 — Cargo discipline:** only light personal items allowed
-
-### 3.3 Evidence and reasoning
-
-- **Sn1 — Payload rating:** vehicle data specifies 400 kg maximum payload.
-
-Given 5 × 80 kg = **400 kg**, the constraint is satisfied provided that:
-
-- Occupant count does not exceed 5  
-- No heavy cargo is brought in the cabin
-
-Checklist:
-
-- [x] Payload rating documented  
-- [x] Occupant mass model defined  
-- [x] Cargo restrictions defined  
-- [ ] Optional: track exact occupant weights before demo
+`totalMassAllowed = true`  
+**iff** `{totalMass <= 1220kg}`
 
 ---
 
-## 4. Roof load safety (G1.2)
-
-### 4.1 Claim
-
-**G1.2 — Roof load within rating**
-
-> Roof-mounted load does not exceed the **50 kg roof-load rating**.
-
-### 4.2 Context and assumptions
-
-- **C1.2 — Roof-load rating:** max. 50 kg  
-- **A3 — Roof-load control:** roof load is weighed and controlled
-
-### 4.3 Evidence and reasoning
-
-- **Sn2 — Calculated roof load:** Sum of roof-mounted items is verified to be ≤ 50 kg.
-
-Table:
-
-| Aspect              | Content                                            |
-|---------------------|----------------------------------------------------|
-| Limit               | 50 kg                                              |
-| Controlled items    | Roof box, rack, attached equipment                 |
-| Control mechanism   | Weigh items before each demo                       |
-| Evidence            | Roof-load calculation for configuration            |
-
----
-
-## 5. Total vehicle mass safety (G1.3)
-
-### 5.1 Claim
-
-**G1.3 — Total mass within permitted limit**
-
-> Overall vehicle mass does not exceed **1220 kg**.
-
-### 5.2 Context and assumptions
-
-- **C1.3 — Total permitted mass:** max. 1220 kg  
-- **A1, A2, A3:** all previous assumptions apply  
-- Payload ≤ 400 kg; Roof load ≤ 50 kg
-
-### 5.3 Evidence and reasoning
-
-- **Sn3 — Total permitted mass:** specified value of 1220 kg
-
-Formula:
-
-```text
-total mass = curb mass + in-cabin payload + roof load
-```
-
-Demo configurations exceeding the limit are rejected during planning.
-
----
-
-## 6. Consolidated view
+## 3. Consolidated view
 
 | ID   | Type          | Role                                             | Content                                                          |
 |------|---------------|--------------------------------------------------|------------------------------------------------------------------|
@@ -176,7 +96,7 @@ Demo configurations exceeding the limit are rejected during planning.
 
 ---
 
-## 7. Module packaging and reuse
+## 4. Module packaging and reuse
 
 The assurance structure is packaged as module **M:Car**, containing:
 
@@ -184,11 +104,9 @@ The assurance structure is packaged as module **M:Car**, containing:
 - Overall static-load argument  
 - Evidence items for payload, roof load and total mass
 
-This allows reuse in larger assurance cases—for example, broader safety, regulatory or AI-augmented driving cases where the car's structural integrity is a prerequisite.
-
 ---
 
-## 8. Out-of-scope aspects and residual risk
+## 5. Out-of-scope aspects and residual risk
 
 The following aspects remain out of scope:
 
@@ -198,17 +116,3 @@ The following aspects remain out of scope:
 - Airbags, advanced seatbelt systems or modern crash protection
 
 Residual risks related to these aspects are not addressed here.
-
----
-
-## 9. Summary
-
-This document provides a **Markdown mirror** of a graph-structured assurance case for the static structural load safety of the OntoGSN Demo Hatchback.  
-
-If:
-
-- payload is controlled (G1.1),  
-- roof load is controlled (G1.2),  
-- total mass is within limits (G1.3),  
-
-then the vehicle remains within its **static structural load limits** for all planned demo drives (G1).
