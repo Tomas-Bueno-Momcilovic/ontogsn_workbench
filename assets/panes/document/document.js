@@ -707,7 +707,6 @@ export async function mount({ root }) {
 
     if (!isDoc) return;
     if (!d.docQuery) return;
-    if (_currentDocPath) return;
 
     runDocQueryInto(docRoot, d.docQuery, d.docVar || "").catch((err) => {
       console.error("[DocView] left:tab doc load failed", err);
