@@ -1,10 +1,10 @@
-import queries from "./queries.js";
-import panes from "./panes.js";
-import { bus, emitCompat } from "./events.js";
-import { PATHS } from "./rdf/config.js";
-import { fetchRepoText, mountTemplate } from "./utils.js";
+import queries from "@core/queries.js";
+import panes from "@core/panes.js";
+import { bus, emitCompat } from "@core/events.js";
+import { PATHS } from "@rdf/config.js";
+import { fetchRepoText, mountTemplate } from "@core/utils.js";
 
-const BRIDGE_CSS = new URL("../css/bridge_graph_document.css", import.meta.url);
+const BRIDGE_CSS = new URL("./bridgeGraphDocument.css", import.meta.url);
 
 const CFG = {
   // You can add these to rdf/config.js PATHS.q.*, or keep these defaults.
@@ -39,8 +39,8 @@ async function mountBridgeCss() {
   // rootEl can be any existing element; mountTemplate won't modify it if templateUrl is null.
   const root = document.documentElement || document.body;
   await mountTemplate(root, {
-    templateUrl: null,     // CSS-only mount
-    cssUrl: BRIDGE_CSS,    // or BRIDGE_CSS.href if you prefer
+    templateUrl: null,
+    cssUrl: BRIDGE_CSS.href,
     cache: "force-cache",
     bust: false,
   });
@@ -91,14 +91,68 @@ async function runSelectQueryText(qText, source = "bridge:inline") {
   throw new Error("Bridge: no query runner found (expected queries.qs.runText or queries.selectBindings).");
 }
 
-function showDocTab() {
-  if (!CFG.autoShowDoc) return;
-  panes?.activateLeftTab?.("tab-doc");
+async function showDocTab() {
+  if (!CFG.autoShowDoc) return null;
+  return panes?.activateLeftTab?.("tab-doc");
+}
+
+function normalizeDocPathish(x) {
+  return String(x ?? "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^https?:\/\/[^/]+/i, "")
+    .replace(/^\/+/, "")
+    .replace(/^\.\//, "")
+    .replace(/^assets\//, "");
+}
+
+async function emitDocHighlightAfterOpen(path, highlightPayload) {
+  await showDocTab();
+
+  if (!path) {
+    if (highlightPayload) {
+      emitCompat(bus, "doc:highlight", {
+        ...highlightPayload,
+        add: false,
+        scroll: true,
+      });
+    }
+    return;
+  }
+
+  if (!highlightPayload) {
+    emitCompat(bus, "doc:open", { path });
+    return;
+  }
+
+  const wanted = normalizeDocPathish(path);
+  let off = null;
+
+  const onLoaded = (ev) => {
+    const loadedPath = normalizeDocPathish(ev?.detail?.path || "");
+    if (wanted && loadedPath && loadedPath !== wanted) return;
+
+    try { if (typeof off === "function") off(); } catch {}
+
+    const run = () => {
+      emitCompat(bus, "doc:highlight", {
+        ...highlightPayload,
+        add: false,
+        scroll: true,
+      });
+    };
+
+    if (typeof queueMicrotask === "function") queueMicrotask(run);
+    else setTimeout(run, 0);
+  };
+
+  off = bus.on("doc:loaded", onLoaded);
+  emitCompat(bus, "doc:open", { path });
 }
 
 function showGraphTab() {
   if (!CFG.autoShowGraph) return;
-  panes?.activateRightTab?.("tab-graph");
+  panes?.activateRightTab?.("btn-tree-view");
 }
 
 function pushMap(map, k, v) {
@@ -163,13 +217,8 @@ async function refreshDocLinkIndex({ applyToGraph = true, emitEvent = true } = {
   _docLinkIndex = { rows: norm, byNode, byDoc, nodeIds };
 
   // (A) decorate graph nodes that have at least one link
-  if (applyToGraph && nodeIds.length) {
-    // Uses the same event you already emit for doc->graph highlighting. :contentReference[oaicite:2]{index=2}
-    emitCompat(bus, "graph:highlight", {
-      ids: nodeIds,
-      cls: CFG.graphLinkCls,
-      replace: true, // assumes your graph handles replace “per cls”
-    });
+  if (applyToGraph) {
+    applyDocLinkMarkersToGraph();
   }
 
   // (B) publish index for any consumer pane (doc, graph, etc.)
@@ -188,6 +237,16 @@ async function refreshDocLinkIndex({ applyToGraph = true, emitEvent = true } = {
   return _docLinkIndex;
 }
 
+function applyDocLinkMarkersToGraph() {
+  const ids = _docLinkIndex?.nodeIds || [];
+  if (!ids.length) return;
+
+  emitCompat(bus, "graph:highlight", {
+    ids,
+    cls: CFG.graphLinkCls,
+    replace: true,
+  });
+}
 
 // --- mapping: graph -> doc -------------------------------------------------
 
@@ -225,18 +284,11 @@ async function onGraphNodeDblClick(ev) {
   const headingId = firstNonNull(r0, ["headingId", "heading", "hid"]);
   const tag = firstNonNull(r0, ["tag", "docTag"]);
   const text = firstNonNull(r0, ["text", "needle"]);
-  const key = firstNonNull(r0, ["key", "hitKey", "id"]);
-
-  // If a doc is specified, open it (doc.js will activate the tab anyway, but we can do it too)
-  if (path) {
-    showDocTab();
-    emitCompat(bus, "doc:open", { path });
-  } else {
-    // If no doc path is known, we can still try to highlight inside whatever doc is open.
-    showDocTab();
-  }
+  const docKey = firstNonNull(r0, ["key", "hitKey", "linkKey"]);
+  const key = docKey;
 
   // Then highlight something (prefer explicit targets; fallback to tag from IRI fragment)
+
   const fallbackTag = (() => {
     const s = String(iri);
     const frag = s.includes("#") ? s.split("#").pop() : s.split("/").pop();
@@ -244,16 +296,16 @@ async function onGraphNodeDblClick(ev) {
   })();
 
   const highlightPayload =
-    selector ? { selector, key: key ?? selector } :
-    headingId ? { headingId, key: key ?? headingId } :
-    tag ? { tag, key: key ?? tag } :
-    text ? { text, key: key ?? text } :
-    fallbackTag ? { tag: fallbackTag, key: fallbackTag } :
-    null;
+    docKey ? { docKey, key: docKey } :
+      selector ? { selector, key: key ?? selector } :
+        headingId ? { headingId, key: key ?? headingId } :
+          tag ? { tag, key: key ?? tag } :
+            text ? { text, key: key ?? text } :
+              fallbackTag ? { docKey: fallbackTag, key: fallbackTag } :
+                null;
 
-  if (highlightPayload) {
-    emitCompat(bus, "doc:highlight", { ...highlightPayload, add: false, scroll: true });
-  }
+  await emitDocHighlightAfterOpen(path, highlightPayload);
+
 }
 
 // --- mapping: doc -> graph -------------------------------------------------
@@ -310,6 +362,17 @@ export async function initBridgeGraphDocument() {
 
   bus.on("gsn:nodeDblClick", onGraphNodeDblClick);
   bus.on("doc:hitDblClick", onDocHitDblClick);
+  bus.on("right:tab", (ev) => {
+    const d = ev?.detail || {};
+    const isGraph =
+      d.view === "graph" ||
+      d.paneId === "graph-root" ||
+      d.tabId === "tab-graph";
+
+    if (!isGraph) return;
+
+    applyDocLinkMarkersToGraph();
+  });
 
   await refreshDocLinkIndex({ applyToGraph: true, emitEvent: true });
 

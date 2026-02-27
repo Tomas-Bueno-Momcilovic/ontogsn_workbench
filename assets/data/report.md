@@ -6,7 +6,7 @@ Inspired by the Zastava 101 from the late-1970s Yugoslavia, the OntoGSN demo car
 
 1973 Zastava 101. Source: Wikimedia Commons, 2016.             |  OntoCar model of Zastava 101. Own work.
 :-------------------------:|:-------------------------:
-![check out](../../working_files/zastava101_photo.jpg)  |  ![check out](../../working_files/zastava101_model.png)
+![check out](../../working_files/zastava101_photo.jpg)  |  ![check out](../../working_files/zastava101_model.gif)
 
 ### 1.1 Key properties
 

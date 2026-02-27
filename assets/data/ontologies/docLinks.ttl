@@ -1,118 +1,116 @@
-@prefix ex: <https://example.org/car-demo#> .
-@prefix dl: <https://example.org/ontogsn/doclink#> .
+@prefix ex:  <https://example.org/car-demo#> .
+@prefix dl:  <https://example.org/ontogsn/doclink#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-# Node -> document mappings for report.md
-# (Designed to match bridge_graph_document.js: path + (headingId | tag | text)).
+# ------------------------------------------------------------------
+# Minimal vocabulary for graph-node -> document-marker mappings
+# ------------------------------------------------------------------
+
+dl:NodeToDocMapping a owl:Class ;
+  rdfs:label "Node to document mapping"@en .
+
+dl:node a owl:ObjectProperty ;
+  rdfs:domain dl:NodeToDocMapping ;
+  rdfs:label "mapped graph node"@en .
+
+dl:docPath a owl:DatatypeProperty ;
+  rdfs:domain dl:NodeToDocMapping ;
+  rdfs:range xsd:string ;
+  rdfs:label "document path"@en .
+
+dl:key a owl:DatatypeProperty ;
+  rdfs:domain dl:NodeToDocMapping ;
+  rdfs:range xsd:string ;
+  rdfs:label "document marker key"@en .
+
+# ------------------------------------------------------------------
+# Node -> report.md marker mappings
+# Keys MUST match the marker keys used in report.md exactly.
+# ------------------------------------------------------------------
 
 dl:map_car_G1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_G1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:headingId "21-top-level-claim-g1" ;
-  dl:key "G1" .
+  dl:node ex:car_G1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_G1" .
 
 dl:map_car_S1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_S1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:headingId "22-argument-by-decomposition-s1" ;
-  dl:key "S1" .
+  dl:node ex:car_S1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_S1" .
 
 dl:map_car_G1_1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_G1_1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:headingId "3-payload-safety-g11" ;
-  dl:key "G1.1" .
+  dl:node ex:car_G1_1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_G1_1" .
 
 dl:map_car_G1_2 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_G1_2> ;
-  dl:docPath "/assets/report.md" ;
-  dl:headingId "4-roof-load-safety-g12" ;
-  dl:key "G1.2" .
+  dl:node ex:car_G1_2 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_G1_2" .
 
 dl:map_car_G1_3 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_G1_3> ;
-  dl:docPath "/assets/report.md" ;
-  dl:headingId "5-total-vehicle-mass-safety-g13" ;
-  dl:key "G1.3" .
+  dl:node ex:car_G1_3 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_G1_3" .
 
-# C1 is best anchored at the “Key static-load properties” table.
 dl:map_car_C1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_C1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:headingId "11-key-static-load-properties" ;
-  dl:key "C1" .
+  dl:node ex:car_C1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_C1" .
 
-# Fine-grained nodes: use 'text' so doc.js can highlight the exact bullet line(s).
 dl:map_car_C2 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_C2> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "C2 – Planned use" ;
-  dl:key "C2" .
+  dl:node ex:car_C2 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_C2" .
 
 dl:map_car_J1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_J1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "J1 – Scope justification" ;
-  dl:key "J1" .
+  dl:node ex:car_J1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_J1" .
 
 dl:map_car_C1_1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_C1_1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "C1.1 — Payload rating" ;
-  dl:key "C1.1" .
-
-dl:map_car_A1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_A1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "A1 — Occupant mass model" ;
-  dl:key "A1" .
-
-dl:map_car_A2 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_A2> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "A2 — Cargo discipline" ;
-  dl:key "A2" .
+  dl:node ex:car_C1_1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_C1_1" .
 
 dl:map_car_Sn1 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_Sn1> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "Sn1 — Payload rating" ;
-  dl:key "Sn1" .
+  dl:node ex:car_Sn1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_Sn1" .
+
+dl:map_car_A1 a dl:NodeToDocMapping ;
+  dl:node ex:car_A1 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_A1" .
+
+dl:map_car_A2 a dl:NodeToDocMapping ;
+  dl:node ex:car_A2 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_A2" .
 
 dl:map_car_C1_2 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_C1_2> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "C1.2 — Roof-load rating" ;
-  dl:key "C1.2" .
+  dl:node ex:car_C1_2 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_C1_2" .
 
 dl:map_car_A3 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_A3> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "A3 — Roof-load control" ;
-  dl:key "A3" .
+  dl:node ex:car_A3 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_A3" .
 
 dl:map_car_Sn2 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_Sn2> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "Sn2 — Calculated roof load" ;
-  dl:key "Sn2" .
+  dl:node ex:car_Sn2 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_Sn2" .
 
 dl:map_car_C1_3 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_C1_3> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "C1.3 — Total permitted mass" ;
-  dl:key "C1.3" .
+  dl:node ex:car_C1_3 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_C1_3" .
 
 dl:map_car_Sn3 a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#car_Sn3> ;
-  dl:docPath "/assets/report.md" ;
-  dl:text "Sn3 — Total permitted mass" ;
-  dl:key "Sn3" .
-
-# Domain-entity link that already exists in the markdown via [$roofRack]($roofRack):
-# Use 'tag' to highlight the doc-entity button(s).
-dl:map_roofRack a dl:NodeToDocMapping ;
-  dl:node <https://example.org/car-demo#roofRack> ;
-  dl:docPath "/assets/report.md" ;
-  dl:tag "roofRack" ;
-  dl:key "roofRack" .
+  dl:node ex:car_Sn3 ;
+  dl:docPath "data/report.md" ;
+  dl:key "car_Sn3" .

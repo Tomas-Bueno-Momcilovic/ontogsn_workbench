@@ -927,7 +927,7 @@ class GraphApp {
       this._onDocChange = null;
     }
 
-    try { this.graphCtl?.destroy?.(); } catch {}
+    try { this.graphCtl?.destroy?.(); } catch { }
     this.graphCtl = null;
     this.overlays.clear();
   }
@@ -1163,15 +1163,18 @@ class GraphApp {
     this._unsubs.push(
       this.bus.on("graph:highlight", (ev) => {
         const { ids = [], cls = "overlay", replace = true } = ev.detail || {};
-        if (!this.graphCtl) return;
 
-        if (replace) this.overlays.set(cls, new Set(ids));
-        else {
+        if (replace) {
+          this.overlays.set(cls, new Set(ids));
+        } else {
           const cur = this.overlays.get(cls) ?? new Set();
           ids.forEach(x => cur.add(x));
           this.overlays.set(cls, cur);
         }
-        this._reapplyOverlays();
+
+        if (this.graphCtl) {
+          this._reapplyOverlays();
+        }
       })
     );
 
@@ -1303,30 +1306,25 @@ function onRightTab(ev) {
 }
 
 export async function mount({ root }) {
-
   await ensureApp(root);
 
   if (!_offRightTab) {
     _offRightTab = bus.on("right:tab", onRightTab);
   }
 
-  // initial render (default visualize)
-  const q = PATHS?.q?.visualize || "data/queries/visualize_graph.sparql";
-  await _app.run(q);
-
   // cleanup
   return () => {
-    try { _offRightTab?.(); } catch {}
+    try { _offRightTab?.(); } catch { }
     _offRightTab = null;
 
-    try { _app?.destroy?.(); } catch {}
+    try { _app?.destroy?.(); } catch { }
     _app = null;
   };
 }
 
 export async function resume() {
   // optional: refit after coming back
-  try { _app?.graphCtl?.fit?.(); } catch {}
+  try { _app?.graphCtl?.fit?.(); } catch { }
 }
 
 export async function suspend() {
@@ -1336,9 +1334,9 @@ export async function suspend() {
 
 export async function unmount() {
   // hard cleanup (in case PaneManager calls unmount directly)
-  try { _offRightTab?.(); } catch {}
+  try { _offRightTab?.(); } catch { }
   _offRightTab = null;
 
-  try { _app?.destroy?.(); } catch {}
+  try { _app?.destroy?.(); } catch { }
   _app = null;
 }
