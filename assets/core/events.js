@@ -6,19 +6,23 @@ export function createEventBus() {
     return () => target.removeEventListener(type, handler, options);
   }
 
+  function off(type, handler, options) {
+    target.removeEventListener(type, handler, options);
+  }
+
   function emit(type, detail) {
     target.dispatchEvent(new CustomEvent(type, { detail }));
   }
 
   function once(type, handler) {
-    const off = on(type, (e) => {
-      off();
+    const offFn = on(type, (e) => {
+      offFn();
       handler(e);
     });
-    return off;
+    return offFn;
   }
 
-  return { on, once, emit, _target: target };
+  return { on, off, once, emit, _target: target };
 }
 
 export function emitCompat(bus, type, detail, { alsoWindow = true } = {}) {

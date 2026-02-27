@@ -1,7 +1,6 @@
 import app from "@core/queries.js";
 import { marked } from "@vendor/marked.esm.js";
 import DOMPurify from "@vendor/purify.es.js";
-import panes from "@core/panes.js";
 import { bus, emitCompat } from "@core/events.js";
 import {
   mountTemplate,
@@ -9,7 +8,6 @@ import {
   fetchText,
   fetchRepoText,
   repoHref,
-  resolveEl,
   safeInvoke
 } from "@core/utils.js";
 
@@ -18,6 +16,7 @@ const CSS = new URL("./document.css", import.meta.url);
 // --- module state ------------------------------------------------------
 let docRoot = null;
 let _currentDocPath = null;
+let _pendingHighlight = null;
 
 const cssEsc = (s) =>
   (globalThis.CSS?.escape
@@ -53,7 +52,9 @@ function highlightEls(els, { key = null, add = false, scroll = true } = {}) {
     out.push(el);
   }
 
-  if (scroll && out[0]) out[0].scrollIntoView({ block: "center", behavior: "smooth" });
+  if (scroll && out[0]) {
+    out[0].scrollIntoView({ block: "center", behavior: "smooth" });
+  }
   return out;
 }
 
@@ -65,7 +66,10 @@ function highlightBySelector(selector, opts = {}) {
 
 function highlightByTag(tag, opts = {}) {
   if (!tag) return [];
-  return highlightBySelector(`.doc-entity[data-doc-tag="${cssEsc(tag)}"]`, { key: tag, ...opts });
+  return highlightBySelector(
+    `.doc-entity[data-doc-tag="${cssEsc(tag)}"]`,
+    { key: tag, ...opts }
+  );
 }
 
 function highlightByHeadingId(headingId, opts = {}) {
@@ -126,18 +130,73 @@ function highlightByText(text, { key = null, add = false, scroll = true } = {}) 
   return [];
 }
 
+function highlightByDocKey(docKey, opts = {}) {
+  if (!docRoot || !docKey) return [];
+
+  const key = String(docKey);
+  const sel =
+    `[data-doc-key="${cssEsc(key)}"], [data-doc-keys~="${cssEsc(key)}"]`;
+
+  const els = Array.from(docRoot.querySelectorAll(sel));
+  return highlightEls(els, { key, ...opts });
+}
+
+function applyHighlight(detail = {}) {
+  const {
+    selector = null,
+    tag = null,
+    headingId = null,
+    text = null,
+    docKey = null,
+    key = null,
+    add = false,
+    scroll = true
+  } = detail;
+
+  if (!docRoot || !docRoot.querySelector(".doc-view")) return [];
+
+  if (selector) return highlightBySelector(selector, { key, add, scroll });
+  if (docKey) return highlightByDocKey(docKey, { key: key ?? docKey, add, scroll });
+  if (tag) return highlightByTag(tag, { key: key ?? tag, add, scroll });
+  if (headingId) return highlightByHeadingId(headingId, { key: key ?? headingId, add, scroll });
+  if (text) return highlightByText(text, { key, add, scroll });
+
+  return [];
+}
+
+function flushPendingHighlight() {
+  if (!_pendingHighlight) return;
+  const hits = applyHighlight(_pendingHighlight);
+  if (hits.length) _pendingHighlight = null;
+}
+
 // --- markdown rendering ------------------------------------------------
 marked.setOptions({ gfm: true, breaks: false });
 const baseRenderer = new marked.Renderer();
 
+function preprocessDocMarkers(mdText) {
+  return String(mdText || "")
+    .replace(
+      /<!--\s*dl:start\s+([A-Za-z0-9._:-]+)\s*-->/g,
+      '\n<div class="doc-dl-boundary" data-doc-boundary="start" data-doc-marker-key="$1" hidden></div>\n'
+    )
+    .replace(
+      /<!--\s*dl:end\s+([A-Za-z0-9._:-]+)\s*-->/g,
+      '\n<div class="doc-dl-boundary" data-doc-boundary="end" data-doc-marker-key="$1" hidden></div>\n'
+    );
+}
+
 marked.use({
   renderer: {
     link(href, title, text) {
-      if (href && href.startsWith("$")) {
-        const tag = href.slice(1);
+      const rawHref = href ? String(href) : "";
+      const safeTitle = title ? ` title="${escapeHtml(title)}"` : "";
+
+      // Tooltip-only ontology refs: [cabin]($Cabin)
+      if (rawHref.startsWith("$")) {
+        const tag = rawHref.slice(1);
         const safeTag = escapeHtml(tag);
-        const safeTitle = title ? ` title="${escapeHtml(title)}"` : "";
-        const safeText = escapeHtml(text);
+        const safeText = escapeHtml(text || "");
 
         return `
           <button
@@ -147,6 +206,31 @@ marked.use({
           >${safeText}</button>
         `;
       }
+
+      // Paragraph marker: [](#p:car_C1)
+      if (rawHref.startsWith("#p:")) {
+        const key = escapeHtml(rawHref.slice(3));
+        return `
+          <span
+            class="doc-dl-p-marker"
+            data-doc-marker="p"
+            data-doc-marker-key="${key}"
+          >${text || ""}</span>
+        `;
+      }
+
+      // Section marker: [](#s:car_G1_2)
+      if (rawHref.startsWith("#s:")) {
+        const key = escapeHtml(rawHref.slice(3));
+        return `
+          <span
+            class="doc-dl-s-marker"
+            data-doc-marker="s"
+            data-doc-marker-key="${key}"
+          >${text || ""}</span>
+        `;
+      }
+
       return baseRenderer.link.call(this, href, title, text);
     }
   }
@@ -175,7 +259,8 @@ async function fetchDoc(pathLiteral) {
 }
 
 function renderMarkdown(mdText) {
-  const dirty = marked.parse(mdText);
+  const preprocessed = preprocessDocMarkers(mdText);
+  const dirty = marked.parse(preprocessed);
   return DOMPurify.sanitize(dirty, { USE_PROFILES: { html: true } });
 }
 
@@ -212,7 +297,9 @@ async function runDocQueryInto(rootEl, queryPath, varHint) {
   const html = renderMarkdown(md);
   rootEl.innerHTML = `<article class="doc-view">${html}</article>`;
 
+  decorateDocRanges(rootEl);
   _currentDocPath = val;
+  flushPendingHighlight();
   emitCompat(bus, "doc:loaded", { path: val, queryPath, varHint, mode: "query" });
 }
 
@@ -226,8 +313,192 @@ async function openDocPathInto(rootEl, pathLiteral) {
   const html = renderMarkdown(md);
   rootEl.innerHTML = `<article class="doc-view">${html}</article>`;
 
+  decorateDocRanges(rootEl);
   _currentDocPath = pathLiteral;
+  flushPendingHighlight();
   emitCompat(bus, "doc:loaded", { path: pathLiteral, mode: "path" });
+}
+
+function wrapInlineRange(parent, nodes, keys) {
+  const first = nodes.find((n) => n?.parentNode === parent);
+  if (!first) return null;
+
+  const uniq = [...new Set((keys || []).map(String).filter(Boolean))];
+  if (!uniq.length) return null;
+
+  const span = document.createElement("span");
+  span.className = "doc-dl-inline-range";
+  span.setAttribute("data-doc-keys", uniq.join(" "));
+  if (uniq.length === 1) span.setAttribute("data-doc-key", uniq[0]);
+
+  parent.insertBefore(span, first);
+
+  for (const n of nodes) {
+    if (n?.parentNode === parent) span.appendChild(n);
+  }
+
+  return span;
+}
+
+function wrapBlockRange(parent, firstNode, stopNode, key, cls = "doc-dl-block-range") {
+  if (!parent || !firstNode || firstNode === stopNode || !key) return null;
+
+  const box = document.createElement("div");
+  box.className = cls;
+  box.setAttribute("data-doc-key", String(key));
+  parent.insertBefore(box, firstNode);
+
+  let n = firstNode;
+  while (n && n !== stopNode) {
+    const next = n.nextSibling;
+    box.appendChild(n);
+    n = next;
+  }
+
+  return box;
+}
+
+function decorateBlockRanges(root = docRoot) {
+  const starts = Array.from(
+    root.querySelectorAll('.doc-dl-boundary[data-doc-boundary="start"]')
+  );
+
+  for (const start of starts) {
+    if (!start.isConnected) continue;
+
+    const key = start.getAttribute("data-doc-marker-key");
+    const parent = start.parentNode;
+    if (!(parent instanceof Element) || !key) continue;
+
+    let end = start.nextSibling;
+    while (end) {
+      if (
+        end.nodeType === Node.ELEMENT_NODE &&
+        end.matches('.doc-dl-boundary[data-doc-boundary="end"]') &&
+        end.getAttribute("data-doc-marker-key") === key
+      ) {
+        break;
+      }
+      end = end.nextSibling;
+    }
+
+    const firstNode = start.nextSibling;
+    start.remove();
+
+    if (!end) continue;
+    if (firstNode && firstNode !== end) {
+      wrapBlockRange(parent, firstNode, end, key, "doc-dl-block-range");
+    }
+    end.remove();
+  }
+}
+
+function findSectionStopNode(heading) {
+  const level = Number(heading.tagName.slice(1));
+  let n = heading.nextSibling;
+
+  while (n) {
+    if (
+      n.nodeType === Node.ELEMENT_NODE &&
+      /^H[1-6]$/.test(n.tagName)
+    ) {
+      const nextLevel = Number(n.tagName.slice(1));
+      if (nextLevel <= level) return n;
+    }
+    n = n.nextSibling;
+  }
+
+  return null;
+}
+
+function decorateSectionRanges(root = docRoot) {
+  const markers = Array.from(root.querySelectorAll(".doc-dl-s-marker"));
+
+  for (const marker of markers) {
+    if (!marker.isConnected) continue;
+
+    const key = marker.getAttribute("data-doc-marker-key");
+    const heading = marker.closest("h1,h2,h3,h4,h5,h6");
+    if (!key || !heading) continue;
+
+    const parent = heading.parentNode;
+    if (!(parent instanceof Element)) continue;
+
+    const stopNode = findSectionStopNode(heading);
+    wrapBlockRange(parent, heading, stopNode, key, "doc-dl-section-range");
+  }
+}
+
+function isWhitespaceText(node) {
+  return node?.nodeType === Node.TEXT_NODE && !String(node.nodeValue || "").trim();
+}
+
+function decorateParagraphRanges(root = docRoot) {
+  const parents = new Set(
+    Array.from(root.querySelectorAll(".doc-dl-p-marker"))
+      .map((el) => el.parentElement)
+      .filter(Boolean)
+  );
+
+  for (const parent of parents) {
+    const snapshot = Array.from(parent.childNodes);
+
+    let pendingKeys = [];
+    let segmentNodes = [];
+    let hasRealContent = false;
+
+    const flush = () => {
+      if (pendingKeys.length && segmentNodes.length && hasRealContent) {
+        wrapInlineRange(parent, segmentNodes, pendingKeys);
+      }
+      pendingKeys = [];
+      segmentNodes = [];
+      hasRealContent = false;
+    };
+
+    for (const node of snapshot) {
+      if (!node.isConnected || node.parentNode !== parent) continue;
+
+      const isMarker =
+        node.nodeType === Node.ELEMENT_NODE &&
+        node.classList?.contains("doc-dl-p-marker");
+
+      const isBreak =
+        node.nodeType === Node.ELEMENT_NODE &&
+        node.tagName === "BR";
+
+      if (isMarker) {
+        const key = node.getAttribute("data-doc-marker-key");
+
+        // If content has already started, this marker begins the next chunk
+        if (hasRealContent) flush();
+
+        if (key) pendingKeys.push(key);
+        segmentNodes.push(node);
+        if (String(node.textContent || "").trim()) hasRealContent = true;
+        continue;
+      }
+
+      if (isBreak) {
+        flush();
+        continue;
+      }
+
+      if (!pendingKeys.length) continue;
+
+      segmentNodes.push(node);
+      if (!isWhitespaceText(node)) hasRealContent = true;
+    }
+
+    flush();
+  }
+}
+
+function decorateDocRanges(root = docRoot) {
+  if (!root) return;
+  decorateBlockRanges(root);
+  decorateSectionRanges(root);
+  decorateParagraphRanges(root);
 }
 
 // --- tooltip -----------------------------------------------------------
@@ -334,12 +605,11 @@ async function handleDocEntityClick(tag, targetEl) {
 let _cleanup = null;
 
 // DOM listeners
-let _onLeftTabsClick = null;
 let _onRootClick = null;
 let _onDocDblClick = null;
 let _onDocGlobalClick = null;
 
-// bus listeners (if bus supports .off)
+// bus listeners
 let _busDocOpen = null;
 let _busClear = null;
 let _busHighlight = null;
@@ -355,34 +625,6 @@ export async function mount({ root }) {
       <p>Select a document using a button with <code>data-doc-query</code> to show it here.</p>
     </div>
   `;
-
-  // Click handler for any tab/button carrying data-doc-query
-  const leftTabs = document.querySelector('[data-tab-group="left-main"]');
-
-  _onLeftTabsClick = (ev) => {
-    // prevent double-click weirdness
-    if (ev?.detail > 1) return;
-
-    const el = ev.target instanceof Element
-      ? ev.target.closest("[data-doc-query]")
-      : null;
-    if (!el) return;
-
-    ev.preventDefault();
-
-    const queryPath = el.getAttribute("data-doc-query");
-    if (!queryPath) return;
-
-    const varHint = el.getAttribute("data-doc-var") || "";
-
-    runDocQueryInto(root, queryPath, varHint).catch((err) => {
-      console.error("[DocView] error loading document", err);
-      root.innerHTML =
-        `<p class="doc-error">Error loading document: ${escapeHtml(err?.message || String(err))}</p>`;
-    });
-  };
-
-  leftTabs?.addEventListener("click", _onLeftTabsClick);
 
   // Click handler for ontology refs inside the doc view
   _onRootClick = (ev) => {
@@ -432,8 +674,6 @@ export async function mount({ root }) {
     const { path, queryPath, varHint = "" } = ev.detail || {};
     if (!docRoot) return;
 
-    panes.activateLeftTab?.("tab-doc");
-
     if (path) {
       openDocPathInto(docRoot, path).catch((err) =>
         console.error("[DocView] doc:open path failed", err)
@@ -443,6 +683,7 @@ export async function mount({ root }) {
         console.error("[DocView] doc:open query failed", err)
       );
     }
+
     closeDocTooltip();
   };
   bus.on("doc:open", _busDocOpen);
@@ -451,26 +692,12 @@ export async function mount({ root }) {
   bus.on("doc:clearHighlights", _busClear);
 
   _busHighlight = (ev) => {
-    const {
-      selector = null,
-      tag = null,
-      headingId = null,
-      text = null,
-      key = null,
-      add = false,
-      scroll = true
-    } = ev.detail || {};
-
-    if (!docRoot) return;
-
-    if (selector) return highlightBySelector(selector, { key, add, scroll });
-    if (tag) return highlightByTag(tag, { key: key ?? tag, add, scroll });
-    if (headingId) return highlightByHeadingId(headingId, { key: key ?? headingId, add, scroll });
-    if (text) return highlightByText(text, { key, add, scroll });
+    const detail = ev.detail || {};
+    const hits = applyHighlight(detail);
+    if (!hits.length) _pendingHighlight = detail;
   };
   bus.on("doc:highlight", _busHighlight);
 
-  // Optional pane hook
   _busLeftTab = (ev) => {
     const d = ev?.detail || {};
     const isDoc =
@@ -479,30 +706,27 @@ export async function mount({ root }) {
       d.tabId === "tab-doc";
 
     if (!isDoc) return;
+    if (!d.docQuery) return;
+    if (_currentDocPath) return;
 
-    if (d.docQuery) {
-      runDocQueryInto(docRoot, d.docQuery, d.docVar || "").catch((err) => {
-        console.error("[DocView] left:tab doc load failed", err);
-      });
-    }
+    runDocQueryInto(docRoot, d.docQuery, d.docVar || "").catch((err) => {
+      console.error("[DocView] left:tab doc load failed", err);
+    });
   };
   bus.on("left:tab", _busLeftTab);
 
   _cleanup = () => {
     closeDocTooltip();
 
-    try { leftTabs?.removeEventListener("click", _onLeftTabsClick); } catch {}
     try { root?.removeEventListener("click", _onRootClick); } catch {}
     try { root?.removeEventListener("dblclick", _onDocDblClick); } catch {}
     try { document.removeEventListener("click", _onDocGlobalClick); } catch {}
 
-    // if bus.off exists, detach (safe)
     safeInvoke(bus, "off", "doc:open", _busDocOpen);
     safeInvoke(bus, "off", "doc:clearHighlights", _busClear);
     safeInvoke(bus, "off", "doc:highlight", _busHighlight);
     safeInvoke(bus, "off", "left:tab", _busLeftTab);
 
-    _onLeftTabsClick = null;
     _onRootClick = null;
     _onDocDblClick = null;
     _onDocGlobalClick = null;
@@ -511,6 +735,8 @@ export async function mount({ root }) {
     _busClear = null;
     _busHighlight = null;
     _busLeftTab = null;
+
+    _pendingHighlight = null;
   };
 
   return _cleanup;
@@ -529,4 +755,6 @@ export async function unmount() {
   try { _cleanup?.(); } catch {}
   _cleanup = null;
   docRoot = null;
+  _currentDocPath = null;
+  _pendingHighlight = null;
 }

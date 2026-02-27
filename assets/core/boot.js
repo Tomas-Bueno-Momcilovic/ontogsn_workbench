@@ -17,12 +17,15 @@ async function boot() {
     panes.registerPane("left", "terminal-root",   () => import("@panes/terminal/terminal.js"));
     panes.registerPane("left", "chat-root",       () => import("@panes/chat/chat.js"));
 
-    panes.registerPane("right", "audio-root",      () => import("@panes/audio/audio.js"));
-    panes.registerPane("right", "video-root",      () => import("@panes/video/video.js"));
+    panes.registerPane("right", "audio-root",     () => import("@panes/audio/audio.js"));
+    panes.registerPane("right", "video-root",     () => import("@panes/video/video.js"));
     panes.registerPane("right", "image-root",     () => import("@panes/image/image.js"));
     panes.registerPane("right", "graph-root",     () => import("@panes/graph/graph.js"), { cache: false });
-    panes.registerPane("right", "layers-root",   () => import("@panes/layers/layers.js"));
+    panes.registerPane("right", "layers-root",    () => import("@panes/layers/layers.js"));
     panes.registerPane("right", "model-root",     () => import("@panes/model/model.js"));
+
+    const { initBridgeGraphDocument } = await import("@bridges/graph_document/bridge_graph_document.js");
+    await initBridgeGraphDocument();
 
     panes.initLeftTabs();
     panes.initRightTabs();

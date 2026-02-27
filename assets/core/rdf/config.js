@@ -22,6 +22,7 @@ export const PATHS = {
   example : "./assets/data/ontologies/example_ac.ttl",
   car_ac  : "./assets/data/ontologies/car_assurance.ttl",
   car     : "./assets/data/ontologies/car.ttl",
+  doclinks: "./assets/data/ontologies/docLinks.ttl",
   code    : "./assets/data/ontologies/example_python_code.ttl",
   check   : "./assets/data/ontologies/example_checklist.ttl",
 
@@ -34,6 +35,10 @@ export const PATHS = {
     propDef        : "./assets/data/queries/propagate_defeater.sparql",
     listModules    : "./assets/data/queries/list_modules.sparql",
     visualizeByMod : "./assets/data/queries/visualize_graph_by_module.sparql",
+
+    bridge_nodeToDoc : "./assets/data/queries/read_graphToDoc.sparql",
+    bridge_docToGraph: "./assets/data/queries/bridge_doc_hit_to_graph.sparql",
+    read_docLinkIndex: "./assets/data/queries/read_docLinkIndex.sparql",
   },
 };
 
@@ -65,6 +70,7 @@ function _buildDefaultDatasets() {
     { path: PATHS.example, base: BASES.case },
     { path: PATHS.car_ac,  base: BASES.car  },
     { path: PATHS.car,     base: BASES.car  },
+    { path: PATHS.doclinks, base: BASES.car },
     { path: PATHS.code,    base: BASES.code },
     { path: PATHS.check,   base: BASES.case },
   ];

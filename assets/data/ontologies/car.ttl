@@ -553,3 +553,7 @@ ex:Cabin ex:onTopOf ex:car1 .
 ex:roofRack ex:onTopOf ex:Cabin .
 ex:box ex:onTopOf ex:roofRack .
 ex:luggage ex:onTopOf ex:roofRack .
+
+ex:trunk a schema:VehiclePart ;
+  schema:name "Trunk"@en ;
+  schema:isPartOf ex:car1 .

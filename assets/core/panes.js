@@ -338,7 +338,7 @@ class PaneManager {
         : btnOrId;
 
       const b = btn || tabs[0];
-      if (!b) return;
+      if (!b) return Promise.resolve(null);
 
       tabs.forEach(x => x.classList.toggle("active", x === b));
 
@@ -350,30 +350,29 @@ class PaneManager {
 
       const payload = emitPayload(b, paneId);
 
-      safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
-      safeInvoke(this.bus, "emit", "pane:tab", payload);
-
       console.log("[PaneManager] activating", { slot, paneId, tabId: b.id, label: b.textContent });
-      
-      Promise.resolve(this._activatePane(slot, paneId, payload))
+
+      return Promise.resolve(this._activatePane(slot, paneId, payload))
         .then(() => {
           safeInvoke(this.bus, "emit", `${slot}:tab`, payload);
           safeInvoke(this.bus, "emit", "pane:tab", payload);
+          return payload;
         })
-        .catch((e) => console.error(`[PaneManager] activatePane failed ${slot}:${paneId}`, e));
-
-
+        .catch((e) => {
+          console.error(`[PaneManager] activatePane failed ${slot}:${paneId}`, e);
+          return null;
+        });
     };
 
     tabs.forEach(btn => {
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
-        activate(btn);
+        void activate(btn);
       });
     });
 
     const initiallyActive = tabs.find(b => b.classList.contains("active")) || tabs[0];
-    activate(initiallyActive);
+    void activate(initiallyActive);
 
     return { tabs, panes, activate };
   }
@@ -395,7 +394,7 @@ class PaneManager {
 
   activateLeftTab(tabId) {
     if (!this._leftTabsInit) this.initLeftTabs();
-    this._activateLeftTab?.(tabId);
+    return this._activateLeftTab?.(tabId);
   }
 
   // --- Right pane ---------------------------------------------------------
@@ -415,7 +414,7 @@ class PaneManager {
 
   activateRightTab(tabId) {
     if (!this._rightTabsInit) this.initRightTabs();
-    this._activateRightTab?.(tabId);
+    return this._activateRightTab?.(tabId);
   }
 
   // --- Right pane controller lifecycle -----------------------------------

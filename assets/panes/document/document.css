@@ -1,8 +1,40 @@
 #doc-root {
   flex: 1 1 auto;
+  min-width: 0;   /* important for flex layouts */
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.doc-view {
+  min-width: 0;
+}
+
+/* --- markdown content: keep it inside the pane --- */
+
+.doc-view img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.doc-view table {
+  width: 100%;
+  max-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* prevents image cells from forcing horizontal overflow */
+}
+
+.doc-view th,
+.doc-view td {
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.doc-view pre {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .doc-view .doc-entity {
