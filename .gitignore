@@ -5,3 +5,4 @@ assets/panes/*/api.txt
 assets/panes/video/api.txt
 assets/panes/image/api.txt
 assets/panes/audio/api.txt
+*.code-workspace
