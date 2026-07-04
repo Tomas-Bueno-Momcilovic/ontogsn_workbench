@@ -1,0 +1,66 @@
+{
+  "url": "http://localhost:8000/index.html",
+  "viewport": { "width": 1280, "height": 800 },
+  "settleMs": 5200,
+  "scenarios": [
+    { "name": "welcome", "steps": [
+      { "move": { "x": 950, "y": 360 } },
+      { "wheel": -320 },
+      { "waitMs": 1400 },
+      { "wheel": -160 },
+      { "waitMs": 2200 }
+    ]},
+    { "name": "document", "steps": [
+      { "click": "[data-tab-group=\"left-main\"] [data-dropdown-trigger]" },
+      { "waitMs": 450 },
+      { "click": "#tab-doc" },
+      { "waitMs": 2600 },
+      { "eval": "document.querySelector('#doc-root')?.scrollTo({top:260,behavior:'smooth'})" },
+      { "waitMs": 1800 }
+    ]},
+    { "name": "graph", "steps": [
+      { "move": { "x": 950, "y": 360 } },
+      { "wheel": -520 },
+      { "waitMs": 1600 },
+      { "wheel": -220 },
+      { "waitMs": 2400 }
+    ]},
+    { "name": "layers", "steps": [
+      { "click": "[data-tab-group=\"right-main\"] [data-dropdown-trigger]" },
+      { "waitMs": 450 },
+      { "click": "#btn-layers-view" },
+      { "waitMs": 1800 },
+      { "move": { "x": 950, "y": 380 } },
+      { "wheel": -200 },
+      { "waitMs": 2200 }
+    ]},
+    { "name": "model", "steps": [
+      { "click": "[data-tab-group=\"right-main\"] [data-dropdown-trigger]" },
+      { "waitMs": 450 },
+      { "click": "#btn-model-view" },
+      { "waitMs": 2600 },
+      { "eval": "(()=>{const i=[...document.querySelectorAll('input[type=checkbox]')].find(x=>x.closest('label')?.textContent.includes('Box')); i&&i.click();})()" },
+      { "waitMs": 1500 },
+      { "eval": "(()=>{const i=[...document.querySelectorAll('input[type=checkbox]')].find(x=>x.closest('label')?.textContent.includes('Luggage')); i&&i.click();})()" },
+      { "waitMs": 2400 }
+    ]},
+    { "name": "table", "steps": [
+      { "click": "[data-tab-group=\"left-main\"] [data-dropdown-trigger]" },
+      { "waitMs": 450 },
+      { "click": "#tab-table" },
+      { "waitMs": 2200 },
+      { "eval": "[...document.querySelectorAll('#results button, button')].find(b=>b.textContent.trim()==='Relations')?.click()" },
+      { "waitMs": 2000 }
+    ]},
+    { "name": "checklist", "steps": [
+      { "click": "[data-tab-group=\"left-main\"] [data-dropdown-trigger]" },
+      { "waitMs": 450 },
+      { "click": "#tab-checklist" },
+      { "waitMs": 2200 },
+      { "eval": "document.querySelectorAll('#checklist-root input[type=checkbox]')[1]?.click()" },
+      { "waitMs": 900 },
+      { "eval": "document.querySelector('#checklist-root')?.scrollTo({top:220,behavior:'smooth'})" },
+      { "waitMs": 1800 }
+    ]}
+  ]
+}

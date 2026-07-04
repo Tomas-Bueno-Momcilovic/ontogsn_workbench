@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OntoGSN Workbench — Showcase</title>
+<meta name="description" content="Interaktive OntoGSN-Workbench — GSN-v3-Assurance-Cases als Graph, 3D-Modell, Dokument und Tabelle, angetrieben von einem RDF-Triple-Store im Browser.">
+<style>
+  :root{
+    --fortiss-blue:#284AC4; --deep-blue:#004696; --navy:#13294B; --dark-navy:#192846;
+    --light-blue:#7FA2D5; --yellow:#FFCD1C; --orange:#FBAE40; --white:#FFFFFF;
+    --bg:var(--white); --surface:var(--white);
+    --text:var(--navy); --text-muted:#4A5A75; --text-on-dark:var(--white); --link:var(--fortiss-blue);
+    --border:#D7DEEA; --zebra:#F4F6FA; --shadow:0 1px 2px rgba(19,41,75,0.08);
+    --normal:#1E8E3E; --watch:#9C6F00; --alert:#C8332E;
+    --diag-line:var(--border); --diag-goal:var(--fortiss-blue); --diag-strategy:var(--orange);
+    --diag-muted:var(--text-muted); --diag-ok:var(--normal); --diag-pending:var(--watch); --diag-open:var(--alert);
+    --maxw:1200px; --font:"Museo Sans","Museo Sans 500",Arial,"Helvetica Neue",Helvetica,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-weight:300;font-size:17px;line-height:1.5;font-kerning:normal;}
+  h1,h2,h3{line-height:1.05;color:var(--deep-blue);margin:0;}
+  p{margin:0 0 1rem;}
+  a{color:var(--link);text-decoration:none;}
+  a:hover{text-decoration:underline;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 5%;}
+
+  /* Hero */
+  .hero{background:var(--dark-navy);color:var(--text-on-dark);padding:2.5rem 0 3rem;}
+  .hero-top{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:2.25rem;}
+  .brand{font-weight:700;font-size:14px;letter-spacing:.02em;color:var(--light-blue);}
+  .brand b{color:var(--white);}
+  .lang-switch{display:flex;border:1px solid rgba(127,162,213,.5);border-radius:3px;overflow:hidden;flex:0 0 auto;}
+  .lang-switch button{background:transparent;border:0;color:var(--light-blue);font-family:var(--font);font-weight:700;font-size:13px;padding:.35rem .7rem;cursor:pointer;letter-spacing:.04em;}
+  .lang-switch button + button{border-left:1px solid rgba(127,162,213,.5);}
+  .lang-switch button:hover{color:var(--white);}
+  .lang-switch button.active{background:var(--white);color:var(--navy);}
+  .eyebrow{font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:.14em;color:var(--light-blue);margin-bottom:.75rem;}
+  .hero h1{color:var(--white);font-weight:700;font-size:clamp(2.4rem,5vw,3.3rem);margin-bottom:.4rem;}
+  .accent-rule{width:64px;height:5px;background:var(--yellow);margin:1rem 0 1.4rem;border:0;}
+  .hero .lead{color:var(--light-blue);font-weight:300;font-size:clamp(1.05rem,2.2vw,1.3rem);max-width:62ch;margin:0;}
+  .hero .lead strong{color:var(--white);font-weight:500;}
+
+  /* Sections */
+  .section{padding:3rem 0;}
+  .section.alt{background:var(--zebra);}
+  .section-mark{font-weight:700;color:var(--deep-blue);font-size:clamp(1.5rem,3vw,1.85rem);margin-bottom:1.25rem;}
+
+  /* Gallery */
+  .gallery-head{display:flex;align-items:baseline;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;}
+  .gallery-head p{color:var(--text-muted);margin:0;font-size:.95rem;}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:3px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;}
+  .card-media{position:relative;background:var(--navy);aspect-ratio:4/3;cursor:zoom-in;overflow:hidden;}
+  .card-media img{display:block;width:100%;height:100%;object-fit:cover;}
+  .play-hint{position:absolute;bottom:.6rem;right:.6rem;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(19,41,75,.72);color:var(--white);font-size:12px;padding-left:2px;pointer-events:none;transition:opacity .15s ease;}
+  .card-media:hover .play-hint,.card-media:focus-within .play-hint{opacity:0;}
+  .badge{position:absolute;top:.6rem;left:.6rem;font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--white);padding:.22rem .5rem;border-radius:2px;background:var(--navy);}
+  .badge.alert{background:var(--alert);}
+  .badge.watch{background:var(--watch);}
+  .badge.normal{background:var(--normal);}
+  .badge.defeater{background:var(--deep-blue);}
+  .card-body{padding:1rem 1.1rem 1.2rem;}
+  .card-body h3{font-size:1.12rem;font-weight:700;color:var(--deep-blue);margin-bottom:.4rem;}
+  .card-body p{margin:0;color:var(--text-muted);font-size:.92rem;line-height:1.45;}
+  .card-body p strong{color:var(--navy);font-weight:700;}
+
+  /* Overview */
+  .summary-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:2.5rem;align-items:start;}
+  .summary-grid p{color:var(--text);max-width:60ch;}
+  .summary-grid p:last-child{margin-bottom:0;}
+  .chips{list-style:none;margin:0;padding:1.5rem;background:var(--deep-blue);color:var(--white);border-radius:3px;}
+  .chips h3{color:var(--white);font-size:1.1rem;font-weight:700;margin-bottom:1rem;}
+  .chips ul{list-style:none;margin:0;padding:0;}
+  .chips li{position:relative;padding-left:1.1rem;margin:.55rem 0;color:var(--white);font-weight:300;font-size:.97rem;}
+  .chips li::before{content:"";position:absolute;left:0;top:.6em;width:7px;height:7px;background:var(--yellow);border-radius:50%;}
+  .chips li b{font-weight:700;}
+
+  /* Pipeline */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;}
+  .step{background:var(--white);border:1px solid var(--border);border-left:4px solid var(--deep-blue);border-radius:3px;padding:1.25rem 1.3rem;}
+  .step .n{font-weight:700;color:var(--light-blue);font-size:.85rem;letter-spacing:.1em;}
+  .step h3{font-size:1.15rem;font-weight:700;margin:.25rem 0 .5rem;color:var(--deep-blue);}
+  .step p{margin:0;color:var(--text-muted);font-size:.92rem;}
+
+  /* Optional diagram */
+  .diag-intro{max-width:72ch;color:var(--text);margin-bottom:1.5rem;}
+  .diag-intro strong{font-weight:700;color:var(--navy);}
+  .diag-wrap{display:grid;grid-template-columns:1.6fr 1fr;gap:1.5rem;align-items:start;}
+  .diag-graph{background:var(--white);border:1px solid var(--border);border-radius:3px;box-shadow:var(--shadow);padding:1rem 1.1rem;}
+  .diag-legend{display:flex;flex-wrap:wrap;gap:.5rem 1.1rem;font-size:.82rem;color:var(--text-muted);margin-bottom:.6rem;padding-bottom:.6rem;border-bottom:1px solid var(--border);}
+  .diag-legend span{display:flex;align-items:center;gap:.4rem;}
+  .diag-legend i{width:11px;height:11px;border-radius:50%;display:inline-block;flex:0 0 auto;}
+  .diag-legend .lg-sep{width:1px;align-self:stretch;background:var(--border);}
+  .diag-tree{width:100%;overflow-x:auto;}
+  .diag-tree svg{display:block;margin:0 auto;}
+  .diag-edge{fill:none;stroke:var(--diag-line);stroke-width:1;}
+  .diag-shape{stroke:#fff;stroke-width:1;cursor:pointer;transition:stroke .15s ease,stroke-width .15s ease;}
+  .diag-g  .diag-shape{fill:var(--diag-goal);}
+  .diag-st .diag-shape{fill:var(--diag-strategy);}
+  .diag-sn .diag-shape{fill:var(--diag-muted);}
+  .diag-sn.diag-s .diag-shape{fill:var(--diag-ok);}
+  .diag-sn.diag-u .diag-shape{fill:var(--diag-open);}
+  .diag-sn.diag-p .diag-shape{fill:var(--diag-pending);}
+  .diag-node:hover .diag-shape,.diag-node:focus-visible .diag-shape{stroke:var(--navy);stroke-width:2;outline:none;}
+  .diag-node.diag-selected .diag-shape{stroke:var(--navy);stroke-width:2.5;}
+  @keyframes diag-pulse{0%,100%{stroke-opacity:1;}50%{stroke-opacity:.2;}}
+  .diag-node.diag-flag .diag-shape{stroke:var(--diag-open);stroke-width:2.5;animation:diag-pulse 1s ease-in-out infinite;}
+  .diag-warn{font-size:9px;dominant-baseline:central;pointer-events:none;}
+  .diag-side{display:flex;flex-direction:column;gap:1rem;}
+  .diag-detail{background:var(--white);border:1px solid var(--border);border-radius:3px;box-shadow:var(--shadow);padding:1.1rem 1.2rem;}
+  .diag-detail h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-bottom:.75rem;}
+  .diag-detail .empty{color:var(--text-muted);font-size:.9rem;margin:0;}
+  .diag-detail dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:.5rem .9rem;align-items:baseline;}
+  .diag-detail dt{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);font-weight:700;white-space:nowrap;}
+  .diag-detail dd{margin:0;color:var(--navy);font-size:.92rem;}
+  .diag-detail dd.id{font-family:ui-monospace,monospace;font-weight:700;}
+  .diag-detail dd.statement{line-height:1.4;}
+  .dgd-dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:.45rem;vertical-align:-1px;}
+  .diag-detail .note{margin:.9rem 0 0;font-size:.76rem;color:var(--text-muted);}
+  .diag-demo{background:var(--zebra);border:1px solid var(--border);border-radius:3px;padding:1.1rem 1.2rem;}
+  .diag-demo h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-bottom:.55rem;}
+  .diag-demo p{font-size:.88rem;color:var(--text-muted);margin:0 0 .9rem;}
+  .diag-demo p strong{color:var(--navy);font-weight:700;}
+  .btn{background:var(--deep-blue);color:var(--white);border:1px solid var(--deep-blue);font-family:var(--font);font-weight:500;font-size:.9rem;padding:.6rem 1.1rem;border-radius:3px;cursor:pointer;}
+  .btn:hover{background:var(--fortiss-blue);border-color:var(--fortiss-blue);}
+  .btn.on{background:var(--alert);border-color:var(--alert);}
+  .btn.on:hover{background:#a72a26;border-color:#a72a26;}
+  .diag-flag-bar{background:rgba(200,51,46,.08);border-left:3px solid var(--diag-open);color:var(--diag-open);border-radius:3px;padding:.6rem .8rem;font-size:.85rem;line-height:1.4;margin-top:.9rem;}
+  .diag-flag-bar b{font-weight:700;}
+  .diag-flag-bar .det{color:var(--text-muted);margin-top:.25rem;}
+
+  /* Additional info */
+  .res-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem;margin-bottom:2rem;}
+  .res-card{display:flex;flex-direction:column;background:var(--white);border:1px solid var(--border);border-left:4px solid var(--deep-blue);border-radius:3px;padding:1.25rem 1.3rem;text-decoration:none;color:var(--text);box-shadow:var(--shadow);transition:border-color .15s ease,box-shadow .15s ease;}
+  .res-card:hover{border-left-color:var(--fortiss-blue);box-shadow:0 2px 6px rgba(19,41,75,.12);}
+  .res-kicker{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--light-blue);font-weight:700;}
+  .res-card h3{font-size:1.15rem;font-weight:700;color:var(--deep-blue);margin:.3rem 0 .4rem;}
+  .res-card p{font-size:.92rem;color:var(--text-muted);margin:0 0 .9rem;}
+  .res-go{margin-top:auto;font-size:.8rem;font-weight:500;color:var(--link);font-family:ui-monospace,monospace;overflow-wrap:anywhere;}
+  .res-card:hover .res-go{text-decoration:underline;}
+  .author-block{display:flex;align-items:center;justify-content:space-between;gap:1rem 1.5rem;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:1.5rem;}
+  .author-id{display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap;}
+  .author-meta{display:flex;flex-direction:column;gap:.15rem;}
+  .author-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;}
+  .author-name{font-size:1.1rem;font-weight:700;color:var(--navy);}
+  .author-links{display:flex;gap:.6rem;align-items:center;}
+  .icon-link{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);color:var(--deep-blue);background:var(--white);transition:background .15s ease,color .15s ease,border-color .15s ease;}
+  .icon-link:hover{background:var(--deep-blue);color:var(--white);border-color:var(--deep-blue);}
+  .icon-link svg{width:18px;height:18px;fill:currentColor;display:block;}
+  .supported{font-size:.85rem;color:var(--text-muted);font-weight:500;}
+  .supported b{color:var(--navy);font-weight:700;}
+
+  /* Footer */
+  footer{background:var(--dark-navy);color:var(--light-blue);padding:2rem 0;font-size:.85rem;font-weight:500;}
+  footer .wrap{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;}
+  footer b{color:var(--white);font-weight:700;}
+
+  /* Lightbox */
+  .lightbox{position:fixed;inset:0;z-index:50;background:rgba(19,41,75,.92);display:none;align-items:center;justify-content:center;padding:4vh 4vw;cursor:zoom-out;}
+  .lightbox.open{display:flex;}
+  .lightbox figure{margin:0;max-width:1000px;width:100%;text-align:center;}
+  .lightbox img{max-width:100%;max-height:78vh;border-radius:3px;box-shadow:0 1px 2px rgba(0,0,0,.4);}
+  .lightbox figcaption{color:var(--white);font-weight:500;margin-top:1rem;font-size:1rem;}
+  .lightbox figcaption span{display:block;color:var(--light-blue);font-weight:300;font-size:.9rem;margin-top:.25rem;}
+  .lb-close{position:absolute;top:1.25rem;right:1.5rem;background:none;border:0;color:var(--white);font-size:2rem;line-height:1;cursor:pointer;font-family:var(--font);}
+
+  /* Responsive */
+  @media (max-width:900px){
+    .grid,.steps,.res-grid{grid-template-columns:repeat(2,1fr);}
+    .summary-grid,.diag-wrap{grid-template-columns:1fr;gap:1.75rem;}
+  }
+  @media (max-width:560px){
+    .grid,.steps,.res-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <div class="brand" data-i18n="brand"><b>fortiss</b> · OntoGSN</div>
+      <div class="lang-switch" role="group" aria-label="Sprache / Language">
+        <button type="button" data-lang-btn="de">DE</button>
+        <button type="button" data-lang-btn="en">EN</button>
+      </div>
+    </div>
+    <div class="eyebrow" data-i18n="eyebrow">Demo · Semantische Assurance Cases im Browser</div>
+    <h1 data-i18n="title">ontogsn workbench.</h1>
+    <hr class="accent-rule">
+    <p class="lead" data-i18n="lead">Eine client-seitige Workbench, die <strong>GSN-v3-Assurance-Cases</strong> als lebendiges, semantisches Netz behandelt — gleichzeitig als interaktiver Graph, 3D-Modell, Dokument und Tabelle, getrieben von einem RDF-Triple-Store direkt im Browser.</p>
+  </div>
+</header>
+
+<!-- GALLERY (centerpiece) -->
+<section class="section">
+  <div class="wrap">
+    <div class="gallery-head">
+      <h2 class="section-mark" style="margin-bottom:0" data-i18n="gallery_mark">erkunden.</h2>
+      <p data-i18n="gallery_sub">7 aufgezeichnete Szenarien · zum Vergrößern anklicken</p>
+    </div>
+    <div class="grid" id="grid">
+
+      <figure class="card">
+        <div class="card-media"
+             data-title-de="Willkommen in der Workbench" data-title-en="Welcome to the workbench"
+             data-caption-de="Zwei synchronisierte Bereiche — Text links, Visualisierung rechts — über demselben Assurance Case." data-caption-en="Two synchronized panes — text on the left, visualization on the right — over a single assurance case.">
+          <span class="badge">Übersicht</span>
+          <img class="media-img" loading="lazy" decoding="async"
+               src="posters/welcome.webp"
+               data-poster="posters/welcome.webp"
+               data-anim="media/welcome.webp"
+               alt="Startansicht der OntoGSN-Workbench mit Begrüßungsdokument und GSN-Graph">
+          <span class="play-hint" aria-hidden="true">▶</span>
+        </div>
+        <figcaption class="card-body">
+          <h3 data-i18n="c1_h">Willkommen in der Workbench</h3>
+          <p data-i18n="c1_p">Der Einstieg: ein Begrüßungstext links, der <strong>GSN-Graph</strong> rechts — beide aus demselben Ontologie-Datensatz.</p>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="card-media"
+             data-title-de="GSN-Argument als Graph" data-title-en="GSN argument as a graph"
+             data-caption-de="Ziele, Strategien, Lösungen und Kontexte als kraftgerichteter D3.js-Graph; hineinzoomen offenbart die Knotenstruktur." data-caption-en="Goals, strategies, solutions and contexts as a force-directed D3.js graph; zooming in reveals the node structure.">
+          <span class="badge">Graph</span>
+          <img class="media-img" loading="lazy" decoding="async"
+               src="posters/graph.webp" data-poster="posters/graph.webp"
+               data-anim="media/graph.webp" alt="In den GSN-Graph hineingezoomt mit beschrifteten Knoten">
+          <span class="play-hint" aria-hidden="true">▶</span>
+        </div>
+        <figcaption class="card-body">
+          <h3 data-i18n="c2_h">GSN-Argument als Graph</h3>
+          <p data-i18n="c2_p">Das Assurance-Argument als interaktiver <strong>D3.js</strong>-Graph — Ziele, Strategien und Belege mit ihren Beziehungen.</p>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="card-media"
+             data-title-de="Geschichtete Ansicht" data-title-en="Layered view"
+             data-caption-de="Dieselben Knoten in Schwimmbahnen nach Argumentationsebene — von der Interaktion bis zur Erkennung." data-caption-en="The same nodes arranged into swimlanes by argument layer — from interaction down to detection.">
+          <span class="badge">Ebenen</span>
+          <img class="media-img" loading="lazy" decoding="async"
+               src="posters/layers.webp" data-poster="posters/layers.webp"
+               data-anim="media/layers.webp" alt="Geschichtete Swimlane-Ansicht des Assurance Case">
+          <span class="play-hint" aria-hidden="true">▶</span>
+        </div>
+        <figcaption class="card-body">
+          <h3 data-i18n="c3_h">Geschichtete Ansicht</h3>
+          <p data-i18n="c3_p">Eine alternative <strong>Swimlane</strong>-Darstellung ordnet die Knoten nach Ebene — nützlich, um den Argumentfluss zu lesen.</p>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="card-media"
+             data-title-de="Dokument-Ansicht" data-title-en="Document view"
+             data-caption-de="Ein Markdown-Lastenbericht, dessen Verweise live aus der Ontologie aufgelöst werden — formales Argument trifft Erzählung." data-caption-en="A Markdown load report whose references resolve live from the ontology — formal argument meets narrative.">
+          <span class="badge">Dokument</span>
+          <img class="media-img" loading="lazy" decoding="async"
+               src="posters/document.webp" data-poster="posters/document.webp"
+               data-anim="media/document.webp" alt="Statischer Lastenbericht als Dokument-Ansicht mit Bildern des Demo-Autos">
+          <span class="play-hint" aria-hidden="true">▶</span>
+        </div>
+        <figcaption class="card-body">
+          <h3 data-i18n="c4_h">Dokument-Ansicht</h3>
+          <p data-i18n="c4_p">Ein <strong>Markdown</strong>-Bericht über den Demo-Wagen — Verweise wie <code>$roof-rack</code> werden direkt aus der Ontologie aufgelöst.</p>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="card-media"
+             data-title-de="Daten als Tabelle" data-title-en="Data as a table"
+             data-caption-de="Die zugrunde liegenden RDF-Tripel (Subjekt · Prädikat · Objekt), umschaltbar zwischen Knoten und Beziehungen." data-caption-en="The underlying RDF triples (subject · predicate · object), switchable between nodes and relations.">
+          <span class="badge">Daten</span>
+          <img class="media-img" loading="lazy" decoding="async"
+               src="posters/table.webp" data-poster="posters/table.webp"
+               data-anim="media/table.webp" alt="Tabellenansicht der RDF-Tripel neben dem 3D-Modell">
+          <span class="play-hint" aria-hidden="true">▶</span>
+        </div>
+        <figcaption class="card-body">
+          <h3 data-i18n="c5_h">Daten als Tabelle</h3>
+          <p data-i18n="c5_p">Dieselben Fakten als <strong>RDF-Tripel</strong> — direkt per SPARQL aus dem Triple-Store gelesen und in eine Tabelle gerendert.</p>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="card-media"
+             data-title-de="Assurance-Checkliste" data-title-en="Assurance checklist"
+             data-caption-de="Ziele und Lösungen als abhakbare Liste mit Fortschrittszähler — 7 von 18 Blättern erledigt." data-caption-en="Goals and solutions as a checkable list with a progress counter — 7 of 18 leaves done.">
+          <span class="badge">Checkliste</span>
+          <img class="media-img" loading="lazy" decoding="async"
+               src="posters/checklist.webp" data-poster="posters/checklist.webp"
+               data-anim="media/checklist.webp" alt="Checklistenansicht mit Fortschritt und Zielkarten">
+          <span class="play-hint" aria-hidden="true">▶</span>
+        </div>
+        <figcaption class="card-body">
+          <h3 data-i18n="c6_h">Assurance-Checkliste</h3>
+          <p data-i18n="c6_p">Dasselbe Argument als <strong>Fortschrittsliste</strong> — jedes Ziel und jeder Beleg abhakbar, mit live gezähltem Stand.</p>
+        </figcaption>
+      </figure>
+
+      <figure class="card">
+        <div class="card-media"
+             data-title-de="3D-Modell — Dach beladen" data-title-en="3D model — load the roof"
+             data-caption-de="Box und Gepäck werden per SPARQL-UPDATE auf das Dach des OntoCar geladen; das Three.js-Modell reagiert sofort." data-caption-en="A box and luggage are loaded onto the OntoCar's roof via SPARQL UPDATE; the Three.js model reacts instantly.">
+          <span class="badge defeater">3D-Modell</span>
+          <img class="media-img" loading="lazy" decoding="async"
+               src="posters/model.webp" data-poster="posters/model.webp"
+               data-anim="media/model.webp" alt="Interaktives 3D-Modell des Demo-Autos mit beladener Dachlast">
+          <span class="play-hint" aria-hidden="true">▶</span>
+        </div>
+        <figcaption class="card-body">
+          <h3 data-i18n="c7_h">3D-Modell — Dach beladen</h3>
+          <p data-i18n="c7_p">Ein interaktives <strong>Three.js</strong>-Modell des OntoCar: Box und Gepäck anhaken, und ein SPARQL-UPDATE belädt das Dach in Echtzeit.</p>
+        </figcaption>
+      </figure>
+
+    </div>
+  </div>
+</section>
+
+<!-- OVERVIEW -->
+<section class="section alt">
+  <div class="wrap">
+    <h2 class="section-mark" data-i18n="ov_mark">verstehen.</h2>
+    <div class="summary-grid">
+      <div>
+        <p data-i18n="ov_p1">Die <strong>OntoGSN Workbench</strong> ist eine client-seitige Oberfläche zum Visualisieren, Erkunden und Erweitern von Assurance Cases in Goal Structuring Notation (GSN v3). Sie ist zugleich eine prototypische App für Anwender, die komplexe Argumente verstehen wollen, und ein offener Sandkasten für Entwickler, die Assurance Cases mit Domänen-Ontologien, Modellen, Dokumenten oder Code verknüpfen.</p>
+        <p data-i18n="ov_p2">Im Kern lädt ein In-Browser-RDF-Triple-Store (Oxigraph, als WebAssembly) Ontologien aus Turtle-Dateien. Jede Ansicht entsteht aus <strong>SPARQL</strong>-Abfragen über denselben Datensatz: ein kraftgerichteter 2D-Graph (D3.js), ein 3D-Modell (Three.js), ein Markdown-Dokument, eine Tabelle und eine Checkliste — alle bleiben synchron.</p>
+      </div>
+      <aside class="chips" aria-label="Kernkomponenten">
+        <h3 data-i18n="chips_h">Auf einen Blick</h3>
+        <ul>
+          <li data-i18n="chip1"><b>Notation</b> — GSN v3, als OntoGSN-Ontologie</li>
+          <li data-i18n="chip2"><b>Triple-Store</b> — Oxigraph (RDF, WASM, im Browser)</li>
+          <li data-i18n="chip3"><b>Abfragen</b> — SPARQL SELECT &amp; UPDATE</li>
+          <li data-i18n="chip4"><b>Visualisierung</b> — D3.js (2D) &amp; Three.js (3D)</li>
+          <li data-i18n="chip5"><b>Ansichten</b> — Graph · Ebenen · Modell · Dokument · Tabelle · Checkliste</li>
+        </ul>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS (always 3 steps) -->
+<section class="section">
+  <div class="wrap">
+    <h2 class="section-mark" data-i18n="pl_mark">funktionsweise.</h2>
+    <div class="steps">
+      <div class="step"><div class="n" data-i18n="step1_n">01 — Laden</div><h3 data-i18n="step1_h">Ontologien laden</h3><p data-i18n="step1_p">Der GSN-Assurance-Case und die Domänen-Ontologien (z. B. das Auto-Modell) werden als Turtle-Dateien in den Oxigraph-Triple-Store im Browser geladen.</p></div>
+      <div class="step"><div class="n" data-i18n="step2_n">02 — Abfragen</div><h3 data-i18n="step2_h">SPARQL ausführen</h3><p data-i18n="step2_p">Ein Klick holt die passende SPARQL-Abfrage; SELECT liest den Graphen, UPDATE schreibt Änderungen zurück — etwa neue Belege oder Defeater.</p></div>
+      <div class="step"><div class="n" data-i18n="step3_n">03 — Darstellen</div><h3 data-i18n="step3_h">Synchron rendern</h3><p data-i18n="step3_p">Die Ergebnisse fließen in die gewählte Ansicht — Graph, 3D-Modell, Dokument, Tabelle oder Checkliste — und bleiben über denselben Datensatz konsistent.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- INTERACTIVE DIAGRAM -->
+<section class="section alt">
+  <div class="wrap">
+    <h2 class="section-mark" data-i18n="dg_mark">absichern.</h2>
+    <p class="diag-intro" data-i18n="dg_intro">Der Demo-Case argumentiert, dass der <strong>OntoCar</strong> innerhalb seiner statischen Lastgrenzen bleibt. Klicken Sie einen Knoten an, um seine Aussage zu sehen — oder lösen Sie den „Überladen“-Defeater aus, der das Dachlast-Ziel anficht.</p>
+    <div class="diag-wrap">
+      <div class="diag-graph">
+        <div class="diag-legend">
+          <span><i style="background:var(--diag-goal)"></i><span data-i18n="lg_goal">Ziel</span></span>
+          <span><i style="background:var(--diag-strategy)"></i><span data-i18n="lg_strategy">Strategie</span></span>
+          <span><i style="background:var(--diag-muted)"></i><span data-i18n="lg_solution">Beleg</span></span>
+          <span class="lg-sep"></span>
+          <span><i style="background:var(--diag-ok)"></i><span data-i18n="lg_sat">erfüllt</span></span>
+          <span><i style="background:var(--diag-pending)"></i><span data-i18n="lg_pend">ausstehend</span></span>
+          <span><i style="background:var(--diag-open)"></i><span data-i18n="lg_open">offen</span></span>
+        </div>
+        <div id="diag-tree" class="diag-tree" aria-label="Strukturbaum"></div>
+      </div>
+      <div class="diag-side">
+        <div class="diag-detail">
+          <h3 data-i18n="dg_detail_title">Knotendetails</h3>
+          <p class="empty" id="dgd-empty" data-i18n="dg_detail_empty">Wählen Sie einen Knoten.</p>
+          <dl id="dgd-body" hidden>
+            <dt data-i18n="dg_lbl_node">Knoten</dt><dd class="id" id="dgd-id">—</dd>
+            <dt data-i18n="dg_lbl_type">Typ</dt><dd id="dgd-type">—</dd>
+            <dt data-i18n="dg_lbl_status">Status</dt><dd id="dgd-status">—</dd>
+            <dt data-i18n="dg_lbl_statement">Aussage</dt><dd class="statement" id="dgd-statement">—</dd>
+          </dl>
+          <p class="note" id="dgd-note" data-i18n="dg_detail_note" hidden>Vereinfachter Ausschnitt des Demo-Assurance-Case (OntoCar). Der echte Graph in der Workbench umfasst Kontexte, Annahmen und Justifikationen.</p>
+        </div>
+        <div class="diag-demo">
+          <h3 data-i18n="dg_demo_title">Demo</h3>
+          <p data-i18n="dg_demo_p">Eine Regel prüft die Dachlast. Übersteigt sie die Bewertung, fügt ein SPARQL-UPDATE einen <strong>Defeater</strong> hinzu, der das Ziel anficht.</p>
+          <button type="button" id="diag-demo-btn" class="btn" data-i18n="dg_demo_on">Dach überladen</button>
+          <div id="diag-demo-bar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ADDITIONAL INFO -->
+<section class="section">
+  <div class="wrap">
+    <h2 class="section-mark" data-i18n="ai_mark">vertiefen.</h2>
+    <p class="diag-intro" data-i18n="ai_intro">Quellcode, eine gehostete Live-Version und das übergeordnete OntoGSN-Projekt.</p>
+    <div class="res-grid">
+      <a class="res-card" href="https://github.com/Tomas-Bueno-Momcilovic/html_ontogsn_test" target="_blank" rel="noopener">
+        <span class="res-kicker">GitHub</span>
+        <h3 data-i18n="res1_h">Quellcode</h3>
+        <p data-i18n="res1_p">Die vollständige client-seitige Workbench — HTML, JavaScript-Module, Ontologien und SPARQL-Abfragen.</p>
+        <span class="res-go">github.com/Tomas-Bueno-Momcilovic/html_ontogsn_test &rarr;</span>
+      </a>
+      <a class="res-card" href="https://fortiss.github.io/OntoGSN/playground/" target="_blank" rel="noopener">
+        <span class="res-kicker">Live-Demo</span>
+        <h3 data-i18n="res2_h">OntoGSN Playground</h3>
+        <p data-i18n="res2_p">Die gehostete Workbench direkt im Browser ausprobieren — am besten am PC.</p>
+        <span class="res-go">fortiss.github.io/OntoGSN/playground/ &rarr;</span>
+      </a>
+      <a class="res-card" href="https://fortiss.github.io/OntoGSN/" target="_blank" rel="noopener">
+        <span class="res-kicker">Projekt</span>
+        <h3 data-i18n="res3_h">OntoGSN</h3>
+        <p data-i18n="res3_p">Das ontologiebasierte Rahmenwerk für semantisches Management und Erweiterung von Assurance Cases.</p>
+        <span class="res-go">fortiss.github.io/OntoGSN/ &rarr;</span>
+      </a>
+    </div>
+    <div class="author-block">
+      <div class="author-id">
+        <div class="author-meta">
+          <span class="author-label" data-i18n="ai_author_label">Autor</span>
+          <span class="author-name">Tomas Bueno Momčilović</span>
+        </div>
+        <div class="author-links">
+          <a class="icon-link" href="https://github.com/Tomas-Bueno-Momcilovic" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></a>
+          <a class="icon-link" href="https://fortiss.github.io/OntoGSN/" target="_blank" rel="noopener" aria-label="OntoGSN-Projekt" title="OntoGSN"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.93 6h-2.95a15.7 15.7 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.93 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14a7.96 7.96 0 0 1 0-4h3.38a16.6 16.6 0 0 0 0 4H4.26zm.81 2h2.95c.32 1.25.78 2.45 1.38 3.56A8.03 8.03 0 0 1 5.07 16zm2.95-8H5.07a8.03 8.03 0 0 1 4.33-3.56A15.7 15.7 0 0 0 8.02 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66a14.8 14.8 0 0 1 0-4h4.68a14.8 14.8 0 0 1 0 4zm.27 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14a16.6 16.6 0 0 0 0-4h3.38a7.96 7.96 0 0 1 0 4h-3.38z"/></svg></a>
+        </div>
+      </div>
+      <div class="supported" data-i18n="ai_supported">Unterstützt durch <b>fortiss</b></div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <div><b>OntoGSN Workbench</b> — Showcase</div>
+    <div>© fortiss</div>
+  </div>
+</footer>
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Vergrößerte Ansicht">
+  <button class="lb-close" id="lbClose" aria-label="Schließen">&times;</button>
+  <figure><img id="lbImg" src="" alt=""><figcaption id="lbCap"></figcaption></figure>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ===== i18n dictionary — keep de & en key sets IDENTICAL ===== */
+  var I18N = {
+    de: {
+      brand:'<b>fortiss</b> · OntoGSN', eyebrow:'Demo · Semantische Assurance Cases im Browser',
+      title:'ontogsn workbench.', lead:'Eine client-seitige Workbench, die <strong>GSN-v3-Assurance-Cases</strong> als lebendiges, semantisches Netz behandelt — gleichzeitig als interaktiver Graph, 3D-Modell, Dokument und Tabelle, getrieben von einem RDF-Triple-Store direkt im Browser.',
+      gallery_mark:'erkunden.', gallery_sub:'7 aufgezeichnete Szenarien · zum Vergrößern anklicken',
+      c1_h:'Willkommen in der Workbench', c1_p:'Der Einstieg: ein Begrüßungstext links, der <strong>GSN-Graph</strong> rechts — beide aus demselben Ontologie-Datensatz.',
+      c2_h:'GSN-Argument als Graph', c2_p:'Das Assurance-Argument als interaktiver <strong>D3.js</strong>-Graph — Ziele, Strategien und Belege mit ihren Beziehungen.',
+      c3_h:'Geschichtete Ansicht', c3_p:'Eine alternative <strong>Swimlane</strong>-Darstellung ordnet die Knoten nach Ebene — nützlich, um den Argumentfluss zu lesen.',
+      c4_h:'Dokument-Ansicht', c4_p:'Ein <strong>Markdown</strong>-Bericht über den Demo-Wagen — Verweise wie <code>$roof-rack</code> werden direkt aus der Ontologie aufgelöst.',
+      c5_h:'Daten als Tabelle', c5_p:'Dieselben Fakten als <strong>RDF-Tripel</strong> — direkt per SPARQL aus dem Triple-Store gelesen und in eine Tabelle gerendert.',
+      c6_h:'Assurance-Checkliste', c6_p:'Dasselbe Argument als <strong>Fortschrittsliste</strong> — jedes Ziel und jeder Beleg abhakbar, mit live gezähltem Stand.',
+      c7_h:'3D-Modell — Dach beladen', c7_p:'Ein interaktives <strong>Three.js</strong>-Modell des OntoCar: Box und Gepäck anhaken, und ein SPARQL-UPDATE belädt das Dach in Echtzeit.',
+      ov_mark:'verstehen.',
+      ov_p1:'Die <strong>OntoGSN Workbench</strong> ist eine client-seitige Oberfläche zum Visualisieren, Erkunden und Erweitern von Assurance Cases in Goal Structuring Notation (GSN v3). Sie ist zugleich eine prototypische App für Anwender, die komplexe Argumente verstehen wollen, und ein offener Sandkasten für Entwickler, die Assurance Cases mit Domänen-Ontologien, Modellen, Dokumenten oder Code verknüpfen.',
+      ov_p2:'Im Kern lädt ein In-Browser-RDF-Triple-Store (Oxigraph, als WebAssembly) Ontologien aus Turtle-Dateien. Jede Ansicht entsteht aus <strong>SPARQL</strong>-Abfragen über denselben Datensatz: ein kraftgerichteter 2D-Graph (D3.js), ein 3D-Modell (Three.js), ein Markdown-Dokument, eine Tabelle und eine Checkliste — alle bleiben synchron.',
+      chips_h:'Auf einen Blick',
+      chip1:'<b>Notation</b> — GSN v3, als OntoGSN-Ontologie', chip2:'<b>Triple-Store</b> — Oxigraph (RDF, WASM, im Browser)',
+      chip3:'<b>Abfragen</b> — SPARQL SELECT &amp; UPDATE', chip4:'<b>Visualisierung</b> — D3.js (2D) &amp; Three.js (3D)',
+      chip5:'<b>Ansichten</b> — Graph · Ebenen · Modell · Dokument · Tabelle · Checkliste',
+      pl_mark:'funktionsweise.',
+      step1_n:'01 — Laden', step1_h:'Ontologien laden', step1_p:'Der GSN-Assurance-Case und die Domänen-Ontologien (z. B. das Auto-Modell) werden als Turtle-Dateien in den Oxigraph-Triple-Store im Browser geladen.',
+      step2_n:'02 — Abfragen', step2_h:'SPARQL ausführen', step2_p:'Ein Klick holt die passende SPARQL-Abfrage; SELECT liest den Graphen, UPDATE schreibt Änderungen zurück — etwa neue Belege oder Defeater.',
+      step3_n:'03 — Darstellen', step3_h:'Synchron rendern', step3_p:'Die Ergebnisse fließen in die gewählte Ansicht — Graph, 3D-Modell, Dokument, Tabelle oder Checkliste — und bleiben über denselben Datensatz konsistent.',
+      dg_mark:'absichern.', dg_intro:'Der Demo-Case argumentiert, dass der <strong>OntoCar</strong> innerhalb seiner statischen Lastgrenzen bleibt. Klicken Sie einen Knoten an, um seine Aussage zu sehen — oder lösen Sie den „Überladen“-Defeater aus, der das Dachlast-Ziel anficht.',
+      lg_goal:'Ziel', lg_strategy:'Strategie', lg_solution:'Beleg', lg_sat:'erfüllt', lg_pend:'ausstehend', lg_open:'offen',
+      dg_detail_title:'Knotendetails', dg_detail_empty:'Wählen Sie einen Knoten.',
+      dg_lbl_node:'Knoten', dg_lbl_type:'Typ', dg_lbl_status:'Status', dg_lbl_statement:'Aussage',
+      dg_detail_note:'Vereinfachter Ausschnitt des Demo-Assurance-Case (OntoCar). Der echte Graph in der Workbench umfasst Kontexte, Annahmen und Justifikationen.',
+      dg_demo_title:'Demo', dg_demo_p:'Eine Regel prüft die Dachlast. Übersteigt sie die Bewertung, fügt ein SPARQL-UPDATE einen <strong>Defeater</strong> hinzu, der das Ziel anficht.',
+      dg_demo_on:'Dach überladen', dg_demo_off:'Defeater zurücksetzen',
+      dg_flag_statement:'wird durch den „Überladen“-Defeater angefochten.', dg_flag_detail:'Die Dachlast übersteigt die Bewertung von 50 kg — das Ziel gilt nicht mehr als erfüllt, bis der Defeater behandelt ist.',
+      ai_mark:'vertiefen.', ai_intro:'Quellcode, eine gehostete Live-Version und das übergeordnete OntoGSN-Projekt.',
+      res1_h:'Quellcode', res1_p:'Die vollständige client-seitige Workbench — HTML, JavaScript-Module, Ontologien und SPARQL-Abfragen.',
+      res2_h:'OntoGSN Playground', res2_p:'Die gehostete Workbench direkt im Browser ausprobieren — am besten am PC.',
+      res3_h:'OntoGSN', res3_p:'Das ontologiebasierte Rahmenwerk für semantisches Management und Erweiterung von Assurance Cases.',
+      ai_author_label:'Autor', ai_supported:'Unterstützt durch <b>fortiss</b>',
+      kind_g:'Ziel', kind_st:'Strategie', kind_sn:'Beleg', stat_s:'erfüllt', stat_p:'ausstehend', stat_u:'offen', stat_none:'—'
+    },
+    en: {
+      brand:'<b>fortiss</b> · OntoGSN', eyebrow:'Demo · Semantic assurance cases in the browser',
+      title:'ontogsn workbench.', lead:'A client-side workbench that treats <strong>GSN v3 assurance cases</strong> as a living, semantic web — at once an interactive graph, 3D model, document and table, driven by an RDF triple store running right in the browser.',
+      gallery_mark:'explore.', gallery_sub:'7 recorded scenarios · click to enlarge',
+      c1_h:'Welcome to the workbench', c1_p:'The starting point: a welcome text on the left, the <strong>GSN graph</strong> on the right — both from the same ontology data.',
+      c2_h:'GSN argument as a graph', c2_p:'The assurance argument as an interactive <strong>D3.js</strong> graph — goals, strategies and solutions with their relationships.',
+      c3_h:'Layered view', c3_p:'An alternative <strong>swimlane</strong> layout arranges the nodes by layer — handy for reading the flow of the argument.',
+      c4_h:'Document view', c4_p:'A <strong>Markdown</strong> report about the demo car — references such as <code>$roof-rack</code> are resolved straight from the ontology.',
+      c5_h:'Data as a table', c5_p:'The same facts as <strong>RDF triples</strong> — read straight from the triple store via SPARQL and rendered into a table.',
+      c6_h:'Assurance checklist', c6_p:'The same argument as a <strong>progress list</strong> — every goal and solution checkable, with a live-counted status.',
+      c7_h:'3D model — load the roof', c7_p:'An interactive <strong>Three.js</strong> model of the OntoCar: tick the box and luggage, and a SPARQL UPDATE loads the roof in real time.',
+      ov_mark:'understand.',
+      ov_p1:'The <strong>OntoGSN Workbench</strong> is a client-side interface for visualizing, exploring and extending assurance cases in Goal Structuring Notation (GSN v3). It is at once a prototypical app for users who want to grasp complex arguments, and an open sandbox for developers who want to link assurance cases with domain ontologies, models, documents or code.',
+      ov_p2:'At its core, an in-browser RDF triple store (Oxigraph, as WebAssembly) loads ontologies from Turtle files. Every view is produced by <strong>SPARQL</strong> queries over the same dataset: a force-directed 2D graph (D3.js), a 3D model (Three.js), a Markdown document, a table and a checklist — all kept in sync.',
+      chips_h:'At a glance',
+      chip1:'<b>Notation</b> — GSN v3, as the OntoGSN ontology', chip2:'<b>Triple store</b> — Oxigraph (RDF, WASM, in the browser)',
+      chip3:'<b>Queries</b> — SPARQL SELECT &amp; UPDATE', chip4:'<b>Visualization</b> — D3.js (2D) &amp; Three.js (3D)',
+      chip5:'<b>Views</b> — graph · layers · model · document · table · checklist',
+      pl_mark:'how it works.',
+      step1_n:'01 — Load', step1_h:'Load the ontologies', step1_p:'The GSN assurance case and the domain ontologies (e.g. the car model) are loaded as Turtle files into the Oxigraph triple store in the browser.',
+      step2_n:'02 — Query', step2_h:'Run SPARQL', step2_p:'A click fetches the matching SPARQL query; SELECT reads the graph, UPDATE writes changes back — such as new solutions or defeaters.',
+      step3_n:'03 — Render', step3_h:'Render in sync', step3_p:'Results flow into the chosen view — graph, 3D model, document, table or checklist — and stay consistent over the same dataset.',
+      dg_mark:'secure.', dg_intro:'The demo case argues that the <strong>OntoCar</strong> stays within its static load limits. Click a node to read its statement — or trigger the “overload” defeater that challenges the roof-load goal.',
+      lg_goal:'Goal', lg_strategy:'Strategy', lg_solution:'Solution', lg_sat:'satisfied', lg_pend:'pending', lg_open:'open',
+      dg_detail_title:'Node details', dg_detail_empty:'Select a node.',
+      dg_lbl_node:'Node', dg_lbl_type:'Type', dg_lbl_status:'Status', dg_lbl_statement:'Statement',
+      dg_detail_note:'A simplified slice of the demo assurance case (OntoCar). The real graph in the workbench also carries contexts, assumptions and justifications.',
+      dg_demo_title:'Demo', dg_demo_p:'A rule checks the roof load. If it exceeds the rating, a SPARQL UPDATE adds a <strong>defeater</strong> that challenges the goal.',
+      dg_demo_on:'Overload the roof', dg_demo_off:'Reset defeater',
+      dg_flag_statement:'is challenged by the “overload” defeater.', dg_flag_detail:'The roof load exceeds the 50 kg rating — the goal no longer counts as satisfied until the defeater is addressed.',
+      ai_mark:'explore.', ai_intro:'Source code, a hosted live version, and the wider OntoGSN project.',
+      res1_h:'Source code', res1_p:'The full client-side workbench — HTML, JavaScript modules, ontologies and SPARQL queries.',
+      res2_h:'OntoGSN Playground', res2_p:'Try the hosted workbench right in your browser — best on a PC.',
+      res3_h:'OntoGSN', res3_p:'The ontology-based framework for semantic management and extension of assurance cases.',
+      ai_author_label:'Author', ai_supported:'Supported by <b>fortiss</b>',
+      kind_g:'Goal', kind_st:'Strategy', kind_sn:'Solution', stat_s:'satisfied', stat_p:'pending', stat_u:'open', stat_none:'—'
+    }
+  };
+
+  /* ===== Diagram data — a simplified slice of the OntoCar assurance case. =====
+     kind: "g"=goal/box, "st"=strategy, "sn"=solution/evidence (status via st: s|p|u). */
+  var NODES = {"id":"G1","kind":"g","s":"Der OntoGSN-Demo-Hatchback (OntoCar) bleibt bei allen geplanten Demofahrten innerhalb seiner statischen Lastgrenzen.","c":[
+    {"id":"S1","kind":"st","s":"Argumentation über jeden statischen Lastpfad — Nutzlast in der Kabine und Last auf dem Dach.","c":[
+      {"id":"G1.1","kind":"g","s":"Die kombinierte Masse von Insassen und Innenraum-Ladung übersteigt die Nutzlast-Bewertung nicht.","c":[
+        {"id":"Sn1","kind":"sn","st":"s","s":"car.ttl spezifiziert schema:payload 400 kg; die Last bleibt innerhalb der Bewertung."}]},
+      {"id":"G1.2","kind":"g","s":"Jede auf dem Dach montierte Last übersteigt die Dachlast-Bewertung (50 kg) nicht.","c":[
+        {"id":"Sn2","kind":"sn","st":"p","s":"Die Dachlast wird beim Demolauf live aus dem 3D-Modell berechnet (Box + Gepäck)."}]},
+      {"id":"G1.3","kind":"g","s":"Auch beim Hinzuladen von Gepäck bleibt die Dachlast innerhalb der Grenzen.","c":[
+        {"id":"Sn3","kind":"sn","st":"u","s":"Offen: wird durch den „Überladen“-Defeater angefochten, sobald die Dachlast 50 kg übersteigt."}]}]}]};
+  var FLAG_NODE_ID = "G1.2";   // which node the demo button flags
+
+  var lang = (function(){ try{var s=localStorage.getItem('demo-lang'); if(s==='de'||s==='en')return s;}catch(e){} return 'de'; })();
+  function t(k){ return (I18N[lang] && I18N[lang][k]!=null) ? I18N[lang][k] : k; }
+
+  function applyLang(l){
+    lang=l; document.documentElement.lang=l;
+    try{ localStorage.setItem('demo-lang',l); }catch(e){}
+    document.querySelectorAll('[data-lang-btn]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-lang-btn')===l); });
+    document.querySelectorAll('[data-i18n]').forEach(function(el){ var k=el.getAttribute('data-i18n'); if(I18N[l]&&I18N[l][k]!=null) el.innerHTML=I18N[l][k]; });
+    renderDetail(); renderFlagBar();
+    if(demoBtn) demoBtn.innerHTML=t(flagOn?'dg_demo_off':'dg_demo_on');
+  }
+  document.querySelectorAll('[data-lang-btn]').forEach(function(b){ b.addEventListener('click', function(){ applyLang(b.getAttribute('data-lang-btn')); }); });
+
+  /* ===== Lightbox ===== */
+  (function(){
+    var lb=document.getElementById('lightbox'), lbImg=document.getElementById('lbImg'), lbCap=document.getElementById('lbCap'), lbClose=document.getElementById('lbClose');
+    function open(media){
+      var img=media.querySelector('img');
+      lbImg.src=img.getAttribute('data-anim')||img.currentSrc||img.src; lbImg.alt=img.alt;
+      lbCap.innerHTML=(media.getAttribute('data-title-'+lang)||'')+'<span>'+(media.getAttribute('data-caption-'+lang)||'')+'</span>';
+      lb.classList.add('open');
+    }
+    function close(){ lb.classList.remove('open'); lbImg.src=''; }
+    var grid=document.getElementById('grid');
+    if(grid) grid.addEventListener('click', function(e){ var m=e.target.closest('.card-media'); if(m) open(m); });
+    lb.addEventListener('click', function(e){ if(e.target===lb||e.target===lbClose||e.target===lbImg.parentNode) close(); });
+    lbClose.addEventListener('click', close);
+    document.addEventListener('keydown', function(e){ if(e.key==='Escape') close(); });
+  })();
+
+  /* ===== Hover-to-play (poster <-> animated webp) ===== */
+  Array.prototype.forEach.call(document.querySelectorAll('.card-media'), function(media){
+    var img=media.querySelector('img'); if(!img) return;
+    var poster=img.getAttribute('data-poster'), anim=img.getAttribute('data-anim');
+    function play(){ if(anim && img.src.indexOf(anim)===-1) img.src=anim; }
+    function stop(){ if(poster) img.src=poster; }
+    media.addEventListener('mouseenter',play); media.addEventListener('mouseleave',stop);
+    media.addEventListener('focusin',play); media.addEventListener('focusout',stop);
+  });
+
+  /* ===== Optional clickable diagram (no-op if #diag-tree is absent) ===== */
+  var host=document.getElementById('diag-tree');
+  var NS='http://www.w3.org/2000/svg', ROWV=30, DOTR=5, HITR=11, PADX=12, PADY=12;
+  var nodeById=Object.create(null), selectedId=null, flagOn=false;
+  var NODE_HEX={g:'#284AC4',st:'#FBAE40',s:'#1E8E3E',p:'#9C6F00',u:'#C8332E',muted:'#4A5A75'};
+  function nodeKind(n){ return n.kind || 'g'; }
+  function nodeHex(n){ var k=nodeKind(n); if(k==='g')return NODE_HEX.g; if(k==='st')return NODE_HEX.st; return NODE_HEX[n.st]||NODE_HEX.muted; }
+  var dgdEmpty=document.getElementById('dgd-empty'), dgdBody=document.getElementById('dgd-body'), dgdNote=document.getElementById('dgd-note'),
+      dgdId=document.getElementById('dgd-id'), dgdType=document.getElementById('dgd-type'), dgdStatus=document.getElementById('dgd-status'),
+      dgdStatement=document.getElementById('dgd-statement'), demoBtn=document.getElementById('diag-demo-btn'), demoBar=document.getElementById('diag-demo-bar');
+
+  function build(){
+    if(!host) return;
+    var leaf=0,maxDepth=0;
+    (function layout(n,d){ n._d=d; if(d>maxDepth)maxDepth=d; if(n.c&&n.c.length){ n.c.forEach(function(c){layout(c,d+1);}); n._x=(n.c[0]._x+n.c[n.c.length-1]._x)/2; } else { n._x=leaf++; } })(NODES,0);
+    var leaves=Math.max(1,leaf), W=host.clientWidth||600, span=W-PADX*2, H=PADY*2+maxDepth*ROWV+DOTR*2;
+    function cx(n){ return PADX+(leaves>1?n._x/(leaves-1)*span:span/2); }
+    function cy(n){ return PADY+n._d*ROWV+DOTR; }
+    var svg=document.createElementNS(NS,'svg'); svg.setAttribute('width',W); svg.setAttribute('height',H); svg.setAttribute('viewBox','0 0 '+W+' '+H);
+    var gE=document.createElementNS(NS,'g'), gN=document.createElementNS(NS,'g'); svg.appendChild(gE); svg.appendChild(gN);
+    (function draw(n){
+      var xc=cx(n), yc=cy(n), k=nodeKind(n);
+      if(n.c) n.c.forEach(function(c){ var ex=cx(c),ey=cy(c)-DOTR,py=yc+DOTR,my=(py+ey)/2; var p=document.createElementNS(NS,'path'); p.setAttribute('class','diag-edge'); p.setAttribute('d','M'+xc+','+py+' C'+xc+','+my+' '+ex+','+my+' '+ex+','+ey); gE.appendChild(p); draw(c); });
+      var g=document.createElementNS(NS,'g'); g.setAttribute('class','diag-node diag-'+k+(n.st?' diag-'+n.st:'')); g.setAttribute('data-id',n.id); g.setAttribute('tabindex','0'); g.setAttribute('role','button');
+      var title=document.createElementNS(NS,'title'); title.textContent=n.id+' — '+n.s; g.appendChild(title);
+      var hit=document.createElementNS(NS,'circle'); hit.setAttribute('cx',xc); hit.setAttribute('cy',yc); hit.setAttribute('r',HITR); hit.setAttribute('fill','transparent'); g.appendChild(hit);
+      var c=document.createElementNS(NS,'circle'); c.setAttribute('class','diag-shape'); c.setAttribute('cx',xc); c.setAttribute('cy',yc); c.setAttribute('r',DOTR); g.appendChild(c);
+      g.addEventListener('click', function(){ selectNode(n.id); });
+      g.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); selectNode(n.id); } });
+      gN.appendChild(g); nodeById[n.id]=n;
+    })(NODES);
+    host.innerHTML=''; host.appendChild(svg);
+    if(selectedId) highlightSelected();
+    if(flagOn) flagNode(true);
+  }
+  function highlightSelected(){
+    Array.prototype.forEach.call(host.querySelectorAll('.diag-node.diag-selected'), function(g){ g.classList.remove('diag-selected'); });
+    if(!selectedId) return; var g=host.querySelector('[data-id="'+cssEsc(selectedId)+'"]'); if(g) g.classList.add('diag-selected');
+  }
+  function cssEsc(s){ return String(s).replace(/(["\\.])/g,'\\$1'); }
+  function selectNode(id){ selectedId=id; highlightSelected(); renderDetail(); }
+  function renderDetail(){
+    if(!dgdBody) return;
+    var n=selectedId?nodeById[selectedId]:null;
+    if(!n){ if(dgdEmpty)dgdEmpty.hidden=false; dgdBody.hidden=true; if(dgdNote)dgdNote.hidden=true; return; }
+    if(dgdEmpty)dgdEmpty.hidden=true; dgdBody.hidden=false; if(dgdNote)dgdNote.hidden=false;
+    var k=nodeKind(n); dgdId.textContent=n.id; dgdType.textContent=t('kind_'+k);
+    dgdStatus.innerHTML=''; var dot=document.createElement('span'); dot.className='dgd-dot'; dot.style.background=nodeHex(n); dgdStatus.appendChild(dot);
+    dgdStatus.appendChild(document.createTextNode(n.st?t('stat_'+n.st):t('stat_none')));
+    dgdStatement.textContent=n.s;
+  }
+  function flagNode(on){
+    if(!host) return; var g=host.querySelector('[data-id="'+cssEsc(FLAG_NODE_ID)+'"]'); if(!g) return;
+    if(on){ if(!g.classList.contains('diag-flag')){ g.classList.add('diag-flag'); var cir=g.querySelector('.diag-shape'); if(cir){ var w=document.createElementNS(NS,'text'); w.setAttribute('class','diag-warn'); w.setAttribute('x',parseFloat(cir.getAttribute('cx'))+DOTR+1); w.setAttribute('y',parseFloat(cir.getAttribute('cy'))-DOTR); w.textContent='⚠️'; g.appendChild(w); } } }
+    else { g.classList.remove('diag-flag'); var ww=g.querySelector('.diag-warn'); if(ww) g.removeChild(ww); }
+  }
+  function renderFlagBar(){
+    if(!demoBar) return; demoBar.innerHTML='';
+    if(!flagOn) return;
+    var bar=document.createElement('div'); bar.className='diag-flag-bar';
+    var b=document.createElement('b'); b.textContent='⚠️ '+FLAG_NODE_ID; bar.appendChild(b);
+    bar.appendChild(document.createTextNode('  '+t('dg_flag_statement')));
+    var det=document.createElement('div'); det.className='det'; det.textContent=t('dg_flag_detail'); bar.appendChild(det);
+    demoBar.appendChild(bar);
+  }
+  if(demoBtn) demoBtn.addEventListener('click', function(){ flagOn=!flagOn; flagNode(flagOn); renderFlagBar(); demoBtn.innerHTML=t(flagOn?'dg_demo_off':'dg_demo_on'); demoBtn.classList.toggle('on',flagOn); });
+
+  if(host){ build(); selectNode(NODES.id); var rt; window.addEventListener('resize', function(){ clearTimeout(rt); rt=setTimeout(build,150); }); }
+  applyLang(lang);
+})();
+</script>
+
+</body>
+</html>
