@@ -7,6 +7,8 @@ This directory contains the data assets for the OntoGSN frontend application. It
 ```
 /assets/data/
 ├── report.md
+├── zastava101_photo.jpg
+├── zastava101_model.gif
 ├── ontologies/
 │   ├── car_assurance.ttl
 │   ├── car.ttl
