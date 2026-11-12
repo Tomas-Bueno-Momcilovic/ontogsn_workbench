@@ -89,7 +89,7 @@
 
         <!-- Valid -->
         <label class="gsn-legend-row" title="Node marked as valid">
-            <input type="checkbox" data-query="data/queries/visualize_valid_nodes.sparql" data-class="valid"
+            <input type="checkbox" data-query="./assets/data/queries/visualize_valid_nodes.sparql" data-class="valid"
                 data-no-table="1">
             <span class="gsn-legend-icon">
                 <svg class="gsn-legend-node" viewBox="0 0 80 36" aria-hidden="true">
@@ -103,7 +103,7 @@
 
         <!-- Invalid -->
         <label class="gsn-legend-row" title="Node marked as invalid">
-            <input type="checkbox" data-query="data/queries/visualize_invalid_nodes.sparql" data-class="invalid"
+            <input type="checkbox" data-query="./assets/data/queries/visualize_invalid_nodes.sparql" data-class="invalid"
                 data-no-table="1">
             <span class="gsn-legend-icon">
                 <svg class="gsn-legend-node" viewBox="0 0 80 36" aria-hidden="true">
@@ -117,7 +117,7 @@
 
         <!-- Undeveloped -->
         <label class="gsn-legend-row" title="Undeveloped goal">
-            <input type="checkbox" data-query="data/queries/visualize_undev_nodes.sparql" data-class="undev"
+            <input type="checkbox" data-query="./assets/data/queries/visualize_undev_nodes.sparql" data-class="undev"
                 data-no-table="1">
             <span class="gsn-legend-icon">
                 <svg class="gsn-legend-node" viewBox="0 0 80 36" aria-hidden="true">
@@ -133,7 +133,7 @@
 
         <!-- Artefacts -->
         <label class="gsn-legend-row" title="Artefacts (evidential or contextual)">
-            <input type="checkbox" data-query="data/queries/read_all_collections.sparql" data-class="collection"
+            <input type="checkbox" data-query="./assets/data/queries/read_all_collections.sparql" data-class="collection"
                 data-no-table="1">
             <span class="gsn-legend-icon">
                 <svg class="gsn-legend-node" viewBox="0 0 80 36" aria-hidden="true">
@@ -166,25 +166,25 @@
     <div class="gsn-graph-rules btns">
         <span class="gsn-rules-label">Rules:</span>
 
-        <label><input type="checkbox" data-query="data/queries/rule_assumptionInvalidation.sparql"
+        <label><input type="checkbox" data-query="./assets/data/queries/rule_assumptionInvalidation.sparql"
                 data-class="rule" data-no-table="1">
             Invalid assumptions
         </label>
 
-        <label><input type="checkbox" data-query="data/queries/rule_truthContradiction.sparql" data-class="rule"
+        <label><input type="checkbox" data-query="./assets/data/queries/rule_truthContradiction.sparql" data-class="rule"
                 data-no-table="1">
             Contradicting truth
         </label>
 
-        <label><input type="checkbox" data-query="data/queries/rule_untrueSolution.sparql" data-class="rule"
+        <label><input type="checkbox" data-query="./assets/data/queries/rule_untrueSolution.sparql" data-class="rule"
                 data-no-table="1">
             Untrue solution
         </label>
 
-        <label><input type="checkbox" data-queries="data/queries/rule_checkLoadWeight.sparql;
-                    data/queries/propagate_overloadedCar.sparql;
-                    data/queries/write_defeater_overloadedCar.sparql"
-                data-delete-query="data/queries/delete_defeater_overloadedCar.sparql" data-class="rule"
+        <label><input type="checkbox" data-queries="./assets/data/queries/rule_checkLoadWeight.sparql;
+                    ./assets/data/queries/propagate_overloadedCar.sparql;
+                    ./assets/data/queries/write_defeater_overloadedCar.sparql"
+                data-delete-query="./assets/data/queries/delete_defeater_overloadedCar.sparql" data-class="rule"
                 data-no-table="1" data-event="car:overloadChanged">
             Overloaded car
         </label>

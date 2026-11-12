@@ -106,6 +106,7 @@ class GraphApp {
       });
 
       await this._handleQueryResult(res, overlayClass);
+      return res;
     } finally {
       this._endBusy();
     }
@@ -182,6 +183,9 @@ class GraphApp {
     const host = this.rootEl;
     if (!host) return;
 
+    // The template is mounted again on each render. Keep what the user selected.
+    const checked = [...host.querySelectorAll('input[type="checkbox"]')].map((el) => el.checked);
+
     this.panes.clearRightPane?.();
     this.graphCtl = null;
     host.innerHTML = "";
@@ -200,6 +204,10 @@ class GraphApp {
     }
 
     this.graphCtl = newCtl;
+
+    host.querySelectorAll('input[type="checkbox"]').forEach((el, i) => {
+      if (i < checked.length) el.checked = checked[i];
+    });
 
     this.graphCtl?.fit?.();
     this._applyVisibility();
@@ -265,21 +273,34 @@ class GraphApp {
         ev.stopPropagation();
         ev.stopImmediatePropagation();
 
-        this._activeModuleIri = iri;
-
-        const tmpl = await this.qs.fetchQueryText(this.paths.q.visualizeByMod, {
-          cache: "no-store",
-          bust: true,
-        });
-
-        let q = tmpl;
-        q = q.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
-        q = q.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
-
-        await this.runInline(q, null, { source: this.paths.q.visualizeByMod });
+        await this._renderModule(iri);
       });
 
       bar.appendChild(b);
+    }
+  }
+
+  async _renderModule(iri) {
+    this._activeModuleIri = iri;
+
+    const tmpl = await this.qs.fetchQueryText(this.paths.q.visualizeByMod, {
+      cache: "no-store",
+      bust: true,
+    });
+
+    let q = tmpl;
+    q = q.replaceAll("<{{MODULE_IRI}}>", `<${iri}>`);
+    q = q.replaceAll("{{MODULE_IRI}}", `<${iri}>`);
+
+    await this.runInline(q, null, { source: this.paths.q.visualizeByMod });
+  }
+
+  // Draw the current view again, after an update query changed the data.
+  async _rerender() {
+    if (this._activeModuleIri) {
+      await this._renderModule(this._activeModuleIri);
+    } else {
+      await this.run(this.paths.q.visualize);
     }
   }
 
@@ -422,9 +443,12 @@ class GraphApp {
 
       if (el.checked) {
         void (async () => {
+          let updated = false;
           for (const path of paths) {
-            await this.run(path, cls);
+            const res = await this.run(path, cls);
+            if (res?.kind === "update") updated = true;
           }
+          if (updated) await this._rerender();
 
           if (isOverloadRule) {
             emitCompat(this.bus, "car:overloadChanged", { active: true });
@@ -442,6 +466,8 @@ class GraphApp {
 
           this.overlays.set(cls, new Set());
           this._reapplyOverlays();
+
+          if (deletePath) await this._rerender();
 
           if (cls === "collection") {
             this.graphCtl?.clearCollections?.();
