@@ -4,7 +4,7 @@ This directory contains the ontology files (`.ttl`) that define the data models 
 
 | Ontology | Contents | Purpose |
 | :--- | :--- | :--- |
-| `ontogsn_lite.ttl` | Core GSN classes (Goal, Strategy, Solution), properties (supportedBy, inContextOf), and SWRL rules. | Provides the formal semantic structure for representing Goal Structuring Notation (GSN) assurance cases as an OWL ontology, enabling automated reasoning. |
+| `ontogsn.ttl` | Core GSN classes (Goal, Strategy, Solution), properties (supportedBy, inContextOf), and SWRL rules. | Provides the formal semantic structure for representing Goal Structuring Notation (GSN) assurance cases as an OWL ontology, enabling automated reasoning. |
 | `example_ac.ttl` | Individuals for two assurance cases: one for LLM adversarial robustness (`ACT-FAST`) and one for the car's static load safety. | Serves as the primary instance data for the application demo, combining multiple assurance cases and linking them to other ontologies. |
 | `car.ttl` | A `schema:Car` individual with detailed properties (VIN, dimensions, weight), a list of car parts, and custom properties for geometry and spatial relationships. | Provides a detailed, machine-readable model of the demo car and its components, which is used to drive the 3D visualization and as evidence in the assurance case. |
 | `car_assurance.ttl` | GSN `Goal`, `Strategy`, `Context`, `Assumption`, and `Solution` individuals that form a specific assurance case about the car's static load safety. | Instantiates the OntoGSN model with a concrete assurance argument for the car demo, linking claims about safety back to the data in `car.ttl`. |

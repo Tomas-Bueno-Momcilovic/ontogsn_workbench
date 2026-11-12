@@ -7,11 +7,23 @@ export const OPENROUTER_CHAT_ENDPOINT =
 export const OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini";
 
 export const OPENROUTER_STORAGE_KEYS = {
-  apiKey: "openrouter_api_key",
-  model: "openrouter_model",
+  apiKey: "ontogsn.chat.openrouter_api_key",
+  model: "ontogsn.chat.openrouter_model",
 };
 
-// ---- prefs (localStorage) ------------------------------------------------
+// Names that earlier versions used in localStorage. They are deleted on load.
+const LEGACY_STORAGE_KEYS = ["openrouter_api_key", "openrouter_model"];
+
+// ---- prefs ---------------------------------------------------------------
+// A page on GitHub Pages shares its origin with other projects of the same owner.
+// The API key therefore lives in sessionStorage only: it is gone when the tab closes.
+// The model name is not a secret, so it stays in localStorage across visits.
+
+function dropLegacyKeys() {
+  try {
+    for (const k of LEGACY_STORAGE_KEYS) localStorage.removeItem(k);
+  } catch {}
+}
 
 export function loadOpenRouterPrefs(opts = {}) {
   const {
@@ -24,8 +36,12 @@ export function loadOpenRouterPrefs(opts = {}) {
   let apiKey = "";
   let model = defaultModel;
 
+  dropLegacyKeys();
+
   try {
-    apiKey = localStorage.getItem(apiKeyKey) || "";
+    apiKey = sessionStorage.getItem(apiKeyKey) || "";
+  } catch {}
+  try {
     model = localStorage.getItem(modelKey) || defaultModel;
   } catch {}
 
@@ -41,7 +57,9 @@ export function saveOpenRouterPrefs(opts = {}) {
   } = opts;
 
   try {
-    if (typeof apiKey === "string") localStorage.setItem(apiKeyKey, apiKey);
+    if (typeof apiKey === "string") sessionStorage.setItem(apiKeyKey, apiKey);
+  } catch {}
+  try {
     if (typeof model === "string") localStorage.setItem(modelKey, model);
   } catch {}
 }

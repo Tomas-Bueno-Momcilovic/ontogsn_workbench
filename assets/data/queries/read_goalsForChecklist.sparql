@@ -1,5 +1,5 @@
 PREFIX gsn:    <https://w3id.org/OntoGSN/ontology#>
-PREFIX schema: <https://schema.org/>
+PREFIX schema: <http://schema.org/>
 PREFIX rdfs:   <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX xyz:    <http://www.example.com/placeholder#>
 
@@ -29,7 +29,7 @@ WHERE {
 
   OPTIONAL {
     ?m a gsn:Module ;
-       gsn:contains ?goal .
+       gsn:contains+ ?goal .
     OPTIONAL { ?m schema:identifier ?mIdent . }
     OPTIONAL { ?m rdfs:label ?mLabel . }
     BIND(COALESCE(STR(?mIdent), STR(?mLabel), STR(?m)) AS ?modId)

@@ -17,7 +17,7 @@ export const BASES = {
 // Paths to data files
 export const PATHS = {
   // Ontologies
-  onto    : "./assets/data/ontologies/ontogsn_lite.ttl",
+  onto    : "./assets/data/ontologies/ontogsn.ttl",
   did     : "./assets/data/ontologies/defence_in_depth.ttl",
   example : "./assets/data/ontologies/example_ac.ttl",
   car_ac  : "./assets/data/ontologies/car_assurance.ttl",

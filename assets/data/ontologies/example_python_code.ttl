@@ -1,6 +1,6 @@
 @prefix py:     <https://example.org/python-code#> .
 @prefix gsn:    <https://w3id.org/OntoGSN/ontology#> .
-@prefix schema: <https://schema.org/> .
+@prefix schema: <http://schema.org/> .
 @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix case:   <https://w3id.org/OntoGSN/cases/ACT-FAST-robust-llm#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -17,7 +17,8 @@ py:implements rdf:type owl:ObjectProperty ;
 py:implementedIn rdf:type owl:ObjectProperty ;
               rdfs:label "implemented in" .
 
-py:SqlSanitizer_v1 a py:CodeArtefact ;
+py:SqlSanitizer_v1 a py:CodeArtefact , gsn:Artefact ;
+  schema:identifier "SqlSanitizer_v1" ;
   rdfs:label "sanitize_input in db_utils.py" ;
   py:progLanguage "Python" ;
   py:filePath "code_example.py#sanitize_input" ;

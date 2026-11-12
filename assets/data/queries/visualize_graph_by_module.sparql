@@ -6,7 +6,7 @@ PREFIX ex:   <https://example.org/car-demo#>
 SELECT DISTINCT ?s ?p ?o ?type
 WHERE {
     BIND(<{{MODULE_IRI}}> AS ?mod)
-    ?mod gsn:contains ?s .
+    ?mod gsn:contains+ ?s .
     ?s ?p ?o .
     OPTIONAL { ?s a ?typeS . }
     OPTIONAL { ?o a ?typeO . }

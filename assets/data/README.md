@@ -7,13 +7,15 @@ This directory contains the data assets for the OntoGSN frontend application. It
 ```
 /assets/data/
 ├── report.md
+├── zastava101_photo.jpg
+├── zastava101_model.gif
 ├── ontologies/
 │   ├── car_assurance.ttl
 │   ├── car.ttl
 │   ├── defence_in_depth.ttl
 │   ├── example_ac.ttl
 │   ├── harmbench_targets_text.ttl
-│   └── ontogsn_lite.ttl
+│   └── ontogsn.ttl
 └── queries/
     ├── create_gsn_element.sparql
     ├── delete_defeater_overloadedCar.sparql

@@ -88,7 +88,7 @@ const BASE_CAR  = "https://example.org/car-demo#";
 // FILE PATHS
 const PATHS = {
   // --OntoGSN path (KEEP THIS)
-  onto    : "/assets/data/ontologies/ontogsn_lite.ttl",
+  onto    : "/assets/data/ontologies/ontogsn.ttl",
   // --Assurance case path (REPLACE THIS)
   example : "/assets/data/ontologies/example_ac.ttl",
   // --Domain ontology path (REPLACE THIS)
@@ -177,7 +177,7 @@ The main entry point of the application. It defines the UI layout, including but
 
 The interaction between the JavaScript files and the data assets is central to the application:
 
-1.  **Loading**: On startup, `model.js` loads the ontology schemas and instance data from `.ttl` files (e.g., `ontogsn_lite.ttl`, `example_ac.ttl`, `car.ttl`) into the Oxigraph store.
+1.  **Loading**: On startup, `model.js` loads the ontology schemas and instance data from `.ttl` files (e.g., `ontogsn.ttl`, `example_ac.ttl`, `car.ttl`) into the Oxigraph store.
 
 2.  **Reading & Visualization**:
     -   A user clicks the "Tree View" button.
