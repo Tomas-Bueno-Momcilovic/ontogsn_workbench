@@ -6,7 +6,7 @@
 
     <form id="chat-form" class="chat-form">
       <input id="chat-key" type="password"
-             placeholder="OpenRouter API key (stored locally)"
+             placeholder="OpenRouter API key (kept for this tab only)"
              autocomplete="off">
       <input id="chat-model" type="text"
              value="openai/gpt-4o-mini"
@@ -16,6 +16,6 @@
       <button id="chat-send" type="submit">Send</button>
     </form>
 
-    <small>Tip: your key is kept in <code>localStorage</code> on this device only.</small>
+    <small>Your key stays in this browser tab (<code>sessionStorage</code>) and is deleted when you close the tab. Questions and parts of the graph go to OpenRouter.</small>
   </details>
 </div>

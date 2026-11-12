@@ -5,7 +5,7 @@ Minimal chat UI that connects **OntoGSN** to **OpenRouter** for asking questions
 ![Screenshot of the Chat pane.](screenshot.png)
 
 ## What it does
-- Stores your OpenRouter API key + chosen model in `localStorage` (device-local only)
+- Keeps your OpenRouter API key in `sessionStorage` (this browser tab only) and the chosen model in `localStorage`
 - Builds a small KG-aware context using SPARQL (`chat_context.sparql` + `chat_neighborhood.sparql`)
 - Sends a non-streaming chat completion request to OpenRouter and renders the reply
 
