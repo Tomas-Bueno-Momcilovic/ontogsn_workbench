@@ -1,4 +1,5 @@
-@prefix asce_m: <https://fortiss.github.io/OntoGSN/ontology/asce_mappings#>
+@prefix asce_m: <https://fortiss.github.io/OntoGSN/ontology/asce_mappings#> .
+@prefix schema: <http://schema.org/> .
 @prefix asce:   <https://fortiss.github.io/OntoGSN/ontology/asce#> .
 @prefix gsn:    <https://w3id.org/OntoGSN/ontology#> .
 @prefix owl:    <http://www.w3.org/2002/07/owl#> .
@@ -120,8 +121,6 @@ asce:View           owl:equivalentClass     gsn:View .
 asce:EmbeddedImage  rdfs:subClassOf         gsn:Artefact .
 asce:ExportPath     rdfs:subClassOf         gsn:Argument .
 asce:contains       owl:equivalentProperty  gsn:contains .
-asce:startReference rdfs:subPropertyOf      gsn:source .
-asce:endReference   rdfs:subPropertyOf      gsn:target .
 
 asce:GoalNode           owl:equivalentClass gsn:Goal .
 asce:SolutionNode       owl:equivalentClass gsn:Solution .

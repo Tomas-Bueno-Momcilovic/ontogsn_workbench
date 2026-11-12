@@ -1,6 +1,6 @@
 PREFIX ex: <https://example.org/car-demo#>
 PREFIX case: <https://w3id.org/OntoGSN/cases/ACT-FAST-robust-llm#>
-PREFIX schema: <https://schema.org/>
+PREFIX schema: <http://schema.org/>
 
 SELECT ?doc
 WHERE {

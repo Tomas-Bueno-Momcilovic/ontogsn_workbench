@@ -13,7 +13,7 @@ This directory contains the data assets for the OntoGSN frontend application. It
 │   ├── defence_in_depth.ttl
 │   ├── example_ac.ttl
 │   ├── harmbench_targets_text.ttl
-│   └── ontogsn_lite.ttl
+│   └── ontogsn.ttl
 └── queries/
     ├── create_gsn_element.sparql
     ├── delete_defeater_overloadedCar.sparql
