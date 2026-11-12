@@ -6,6 +6,7 @@ import { bus } from "@core/events.js";
 
 import { ensureCarConfig } from "./model.carConfig.js";
 import { createCarScene } from "./model.scene.js";
+import { EX } from "./model.constants.js";
 import {
   ensureModelQueriesCached,
   setLoadActive,
@@ -71,6 +72,39 @@ export async function renderModelView({ mount = null, height = 520 } = {}) {
   // Wire up toggles + overloaded rule checkbox
   const boxToggle     = rootEl.querySelector("#toggle-roof-box");
   const luggageToggle = rootEl.querySelector("#toggle-roof-luggage");
+
+  // The pane is mounted again on each visit. The store holds which loads are active.
+  function readActiveLoads() {
+    const active = new Set();
+    if (!app?.store) return active;
+    try {
+      const res = app.store.query(
+        `PREFIX ex: <${EX}> SELECT ?key WHERE { ?load ex:uiToggleKey ?key ; ex:isActive true . }`
+      );
+      for (const b of res) {
+        const key = b.get("key");
+        if (key) active.add(key.value);
+      }
+    } catch (err) {
+      console.error("Failed to read the active loads:", err);
+    }
+    return active;
+  }
+
+  // The overload rule is on when its challenge is in the store.
+  function overloadChallengeExists() {
+    if (!app?.store) return false;
+    try {
+      return !!app.store.query(`ASK { <${EX}car_D1_2> ?p ?o }`);
+    } catch (err) {
+      console.error("Failed to read the overload challenge:", err);
+      return false;
+    }
+  }
+
+  const activeLoads = readActiveLoads();
+  if (boxToggle) boxToggle.checked = activeLoads.has("roofBox");
+  if (luggageToggle) luggageToggle.checked = activeLoads.has("roofLuggage");
 
   const overloadCheckbox = document.querySelector(
     'input[type="checkbox"][data-queries*="propagate_overloadedCar.sparql"]'
@@ -184,7 +218,7 @@ export async function renderModelView({ mount = null, height = 520 } = {}) {
   offOverload = bus?.on?.("car:overloadChanged", overloadEventListener) ?? null;
 
   // Initial sync
-  if (overloadCheckbox?.checked) {
+  if (overloadCheckbox?.checked || overloadChallengeExists()) {
     overloadEventListener({ detail: { active: true } });
   }
 }
