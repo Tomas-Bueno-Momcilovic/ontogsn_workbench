@@ -28,6 +28,7 @@ This directory contains the data assets for the OntoGSN frontend application. It
     ├── read_all_relations.sparql
     ├── read_allowed_gsnElements.sparql
     ├── read_carLoadWeight.sparql
+    ├── read_defeater_overloadedCar.sparql
     ├── read_document.sparql
     ├── rule_assumptionInvalidation.sparql
     ├── rule_checkLoadWeight.sparql

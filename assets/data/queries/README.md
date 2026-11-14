@@ -15,6 +15,7 @@ This directory contains all the SPARQL queries used by the frontend application 
 | `read_all_relations.sparql` | **Selects** all relationships between GSN nodes, showing the source, relationship type, and target(s). |
 | `read_allowed_gsnElements.sparql` | **Selects** all classes that are subclasses of `gsn:GSNElement`. This populates the dropdown in the editor UI for creating new GSN nodes. |
 | `read_carLoadWeight.sparql` | **Selects** and calculates the current total weight of "active" loads on the car roof and retrieves the maximum allowed roof load from the ontology. |
+| `read_defeater_overloadedCar.sparql` | **Selects** the challenge of the "overloaded car" rule when it is in the store. The graph pane sets the rule checkbox from the result. |
 | `read_document.sparql` | **Selects** the URL of the Markdown document that is associated with the main assurance case for display in the "Document" tab. |
 | `rule_assumptionInvalidation.sparql` | **Selects** GSN elements that should be considered invalid because they depend on an `gsn:Assumption` that has been marked as `gsn:valid false`. |
 | `rule_checkLoadWeight.sparql` | **Selects** a boolean indicating if the current roof load is compliant with the maximum weight, and calculates the amount of overweight if applicable. |
